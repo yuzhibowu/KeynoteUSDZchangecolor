@@ -1,7 +1,12 @@
 import { DEFAULT_COMP } from './color';
 import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SIDES, type FaceTransform, type Params } from './types';
 
-const KEY = 'prism-usdz-exporter/v3';
+/**
+ * 存档键带版本号。参数结构变了（长度/粗细改成像素、分辨率换档位、端面多了镂空、
+ * 底色可透明）之后，旧存档里的值对不上，硬读回来会得到一个奇怪的状态。
+ * 换个键就等于旧档自然作废，从默认值重新开始。
+ */
+const KEY = 'prism-usdz-exporter/v4';
 
 type Persisted = { params: Params; transforms: FaceTransform[] };
 

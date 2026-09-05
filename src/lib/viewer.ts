@@ -66,7 +66,7 @@ export class PrismViewer {
   private capLeft: THREE.Mesh;
   private capRightMat: THREE.MeshStandardMaterial;
   private capLeftMat: THREE.MeshStandardMaterial;
-  private outline: THREE.Mesh;
+  private outline: THREE.Group;
   private hoverline: THREE.Mesh;
   private grid: THREE.GridHelper;
 
@@ -159,9 +159,9 @@ export class PrismViewer {
       this.prism.add(mesh);
     }
 
-    // 选中用深黑（和界面的黑白反转一致），悬停用中灰
-    this.outline = makeOutline(0x1d1d1f, 0.045);
-    this.hoverline = makeOutline(0x86868b, 0.02);
+    // 选中：四个角点（深黑）。悬停：一圈很细的灰描边，用来区分「指着」和「已选」。
+    this.outline = makeCornerDots(0x1d1d1f, 0.055);
+    this.hoverline = makeOutline(0x86868b, 0.014);
     this.outline.visible = false;
     this.hoverline.visible = false;
     this.pivot.add(this.outline, this.hoverline);
@@ -263,6 +263,10 @@ export class PrismViewer {
       m.emissive.setRGB(lift, lift, lift);
       m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
     }
+    // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
+    const showCaps = params.capMode !== 'none';
+    this.capRight.visible = showCaps;
+    this.capLeft.visible = showCaps;
     this.applyCapColors(false);
 
     this.refreshOutline();
@@ -395,7 +399,7 @@ export class PrismViewer {
     if (sel === null || sel >= sides) {
       this.outline.visible = false;
     } else {
-      setOutline(this.outline, faceFrame(sel, sides, radius, length));
+      setCornerDots(this.outline, faceFrame(sel, sides, radius, length));
       this.outline.visible = true;
     }
     if (this.hovered === null || this.hovered >= sides || this.hovered === sel) {
@@ -674,6 +678,57 @@ export class PrismViewer {
       true,
     );
   };
+}
+
+/**
+ * 选中标记：面的四个角各放一个圆点，而不是描一整圈边框。
+ * 边框会压着贴图边缘、也挡画面；四个角点只是「标住这里」，干净得多。
+ */
+function makeCornerDots(color: number, sizeRatio: number): THREE.Group {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.95,
+    depthWrite: false,
+  });
+  for (let i = 0; i < 4; i++) {
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.5, 24), mat);
+    dot.renderOrder = 11;
+    group.add(dot);
+  }
+  group.userData.sizeRatio = sizeRatio;
+  return group;
+}
+
+/** 把四个角点摆到面的四个角上，并让它们朝向面外 */
+function setCornerDots(group: THREE.Group, frame: FaceFrame) {
+  const { center, normal, u, v, width, height } = frame;
+  const r = Math.min(width, height) * (group.userData.sizeRatio as number);
+  // 往面内收一点，别让圆点悬在棱外面
+  const hw = Math.max(0, width / 2 - r * 1.15);
+  const hh = Math.max(0, height / 2 - r * 1.15);
+  const off = normal.clone().multiplyScalar(Math.max(width, height) * 0.006 + 0.0004);
+  const signs: [number, number][] = [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ];
+  const look = new THREE.Vector3();
+  group.children.forEach((child, i) => {
+    const dot = child as THREE.Mesh;
+    const [su, sv] = signs[i];
+    dot.position
+      .copy(center)
+      .add(off)
+      .add(u.clone().multiplyScalar(su * hw))
+      .add(v.clone().multiplyScalar(sv * hh));
+    dot.scale.setScalar(r * 2);
+    look.copy(dot.position).add(normal);
+    dot.lookAt(look);
+  });
 }
 
 function makeOutline(color: number, thicknessRatio: number): THREE.Mesh {

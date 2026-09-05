@@ -4,7 +4,11 @@
  * 参数和 face transform 走 localStorage 就够了，但图片太大塞不进去，
  * 结果就是一刷新贴图全没、得重新上传一遍。IndexedDB 没这个限制。
  */
-const DB = 'prism-usdz-exporter';
+/**
+ * 库名带版本：换版本等于把之前存的贴图（包括早期测试用的照片）一起作废，
+ * 打开就是干净的默认彩色块。
+ */
+const DB = 'prism-usdz-exporter-v2';
 const STORE = 'faces';
 
 export type StoredFace = { index: number; blob: Blob; name: string };

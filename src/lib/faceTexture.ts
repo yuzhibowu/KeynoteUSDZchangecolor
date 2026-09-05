@@ -6,6 +6,8 @@ export type BakeOptions = {
   aspect: number;
   resolution: Resolution;
   bgColor: string;
+  /** 底色留透明（不填任何颜色）。Keynote 对带 alpha 的贴图行为不稳，默认关着 */
+  bgTransparent?: boolean;
   comp: ColorComp;
   /** true = 把颜色预补偿烘进去（只有导出时才开） */
   compensate: boolean;
@@ -43,9 +45,12 @@ export function canvasSizeFor(aspect: number, resolution: Resolution): CanvasSiz
     w *= k;
     h *= k;
   }
+  // 长边上限跟着所选档位走 —— 选了 4K 就得让它真的到 4K，
+  // 但短边被放大到 256 之后可能把长边顶超，所以还是要收一下。
   const long = Math.max(w, h);
-  if (long > 2048) {
-    const k = 2048 / long;
+  const cap = Math.max(resolution, 512);
+  if (long > cap) {
+    const k = cap / long;
     w *= k;
     h *= k;
   }
@@ -197,9 +202,11 @@ export class FaceTextureStore {
     // 不留透明：Keynote 对带 alpha 的贴图渲染行为不好预测。
     // fillStyle 赋一个非法字符串时浏览器会「静默忽略」，保留上一次的值（默认是黑）——
     // 那样整张贴图会变黑，所以这里先校验。
-    const safeBg = /^#[0-9a-f]{6}$/i.test(opts.bgColor.trim()) ? opts.bgColor.trim() : '#ffffff';
-    ctx.fillStyle = useComp ? applyToHex(safeBg, opts.comp) : safeBg;
-    ctx.fillRect(0, 0, w, h);
+    if (!opts.bgTransparent) {
+      const safeBg = /^#[0-9a-f]{6}$/i.test(opts.bgColor.trim()) ? opts.bgColor.trim() : '#ffffff';
+      ctx.fillStyle = useComp ? applyToHex(safeBg, opts.comp) : safeBg;
+      ctx.fillRect(0, 0, w, h);
+    }
 
     if (face.source) {
       const src: CanvasImageSource = useComp
@@ -237,6 +244,7 @@ export class FaceTextureStore {
       w,
       h,
       opts.bgColor,
+      opts.bgTransparent ? 'alpha' : 'opaque',
       compSig,
     ].join('|');
     if (!force && sig === this.sigs[index]) return false;

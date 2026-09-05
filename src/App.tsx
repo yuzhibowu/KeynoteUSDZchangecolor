@@ -139,6 +139,7 @@ export default function App() {
       aspect,
       resolution: params.resolution,
       bgColor: params.bgColor,
+      bgTransparent: params.bgTransparent,
       comp: params.color,
       compensate: false,
     };
@@ -168,6 +169,7 @@ export default function App() {
           aspect: faceAspect(params.radius, params.sides, params.length),
           resolution: params.resolution,
           bgColor: params.bgColor,
+      bgTransparent: params.bgTransparent,
           comp: params.color,
           compensate: true,
         })
@@ -295,6 +297,7 @@ export default function App() {
         aspect: faceAspect(params.radius, params.sides, params.length),
         resolution: params.resolution,
         bgColor: params.bgColor,
+      bgTransparent: params.bgTransparent,
         comp: params.color,
       };
       store.bakeAll(faces, { ...base, compensate: true });
@@ -343,7 +346,7 @@ export default function App() {
             // 从底部选面就顺手转到正对着它 —— 否则改缩放、旋转在预览里根本看不见
             viewerRef.current?.faceOn(i);
           }}
-          onDropFiles={(files, i) => assignFiles(files, i)}
+          onFiles={(files, i) => assignFiles(files, i)}
         />
       </main>
 
@@ -357,7 +360,6 @@ export default function App() {
         store={store}
         tick={tick}
         onExportChart={handleExportChart}
-        onFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? selected ?? 0)}
         onResetFace={() => patchFace(DEFAULT_TRANSFORM)}
         onClearFace={() => {
           if (selected !== null) void clearFace(selected);

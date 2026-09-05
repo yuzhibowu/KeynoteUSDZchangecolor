@@ -1,9 +1,20 @@
-import { useRef } from 'react';
 import { ColorPanel } from './ColorPanel';
 import { Slider } from './Slider';
 import { canvasSizeFor } from '../lib/faceTexture';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import { faceChord, MAX_SIDES, MIN_SIDES, type FaceState, type Params, type Resolution } from '../lib/types';
+import {
+  ASPECT_SNAPS,
+  faceChord,
+  fromPx,
+  MAX_SIDES,
+  MIN_SIDES,
+  RESOLUTIONS,
+  toPx,
+  type CapMode,
+  type FaceState,
+  type Params,
+  type Resolution,
+} from '../lib/types';
 import type { ColorComp } from '../lib/color';
 
 type Props = {
@@ -16,7 +27,6 @@ type Props = {
   store: FaceTextureStore;
   tick: number;
   onExportChart: () => void;
-  onFiles: (files: File[], faceIndex?: number) => void;
   onResetFace: () => void;
   onClearFace: () => void;
   onTestFill: () => void;
@@ -24,45 +34,6 @@ type Props = {
   sizeText: string;
   busy: string | null;
 };
-
-/** 通栏深色按钮，可以点也可以把文件拖上去 */
-function ImportButton({ onFiles }: { onFiles: (files: File[]) => void }) {
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <button
-      className="btn-primary"
-      onClick={() => input.current?.click()}
-      onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes('Files')) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
-        e.currentTarget.classList.add('drag-over');
-      }}
-      onDragLeave={(e) => e.currentTarget.classList.remove('drag-over')}
-      onDrop={(e) => {
-        e.currentTarget.classList.remove('drag-over');
-        const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
-        if (files.length === 0) return;
-        e.preventDefault();
-        onFiles(files);
-      }}
-    >
-      导入图片
-      <input
-        ref={input}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        onChange={(e) => {
-          const files = [...(e.target.files ?? [])];
-          e.target.value = '';
-          if (files.length) onFiles(files);
-        }}
-      />
-    </button>
-  );
-}
 
 export function ControlPanel({
   params,
@@ -74,7 +45,6 @@ export function ControlPanel({
   store,
   tick,
   onExportChart,
-  onFiles,
   onResetFace,
   onClearFace,
   onTestFill,
@@ -85,6 +55,12 @@ export function ControlPanel({
   const chord = faceChord(params.radius, params.sides);
   const aspect = params.length / chord;
   const canvas = canvasSizeFor(aspect, params.resolution);
+  // 长度滑块上的比例吸附点：宽高比 = 长度 / 弦长，所以每个比例对应一个长度
+  const lengthSnaps = ASPECT_SNAPS.map((s) => ({ value: toPx(s.ratio * chord), label: s.label })).filter(
+    (s) => s.value >= 100 && s.value <= 10000,
+  );
+  const hitSnap = lengthSnaps.find((s) => Math.abs(s.value - toPx(params.length)) <= 1);
+  const snapNote = hitSnap ? hitSnap.label : undefined;
   const hasImage = !!face?.source;
 
   return (
@@ -95,9 +71,8 @@ export function ControlPanel({
 
       <div className="side-body">
         <section>
-          <h2>当前面{selected === null ? '' : ` · 第 ${selected} 个`}</h2>
+          <h2>贴图位置</h2>
           <div className="stack">
-            <ImportButton onFiles={(f) => onFiles(f, f.length > 1 ? 0 : (selected ?? 0))} />
             {face && hasImage ? (
               <>
                 <div className="filename" title={face.sourceName ?? ''}>
@@ -133,7 +108,7 @@ export function ControlPanel({
               </>
             ) : (
               <p className="hint">
-                下面那排缩略图里选一个面，再导入图片。也可以把图片直接拖到某个面上。
+                点下面那排缩略图右下角的 <b>+</b> 导入图片，或者直接把图片从访达拖到某一格上。
               </p>
             )}
             <div className="row">
@@ -166,23 +141,23 @@ export function ControlPanel({
             />
             <Slider
               label="粗细（外接圆半径）"
-              value={params.radius * 100}
-              min={1}
-              max={50}
-              step={0.5}
-              suffix=" cm"
-              digits={1}
-              onChange={(v) => patch({ radius: v / 100 })}
+              value={toPx(params.radius)}
+              min={100}
+              max={5000}
+              step={10}
+              suffix=" px"
+              onChange={(v) => patch({ radius: fromPx(v) })}
             />
             <Slider
               label="长度（左右方向）"
-              value={params.length * 100}
-              min={1}
-              max={100}
-              step={0.5}
-              suffix=" cm"
-              digits={1}
-              onChange={(v) => patch({ length: v / 100 })}
+              value={toPx(params.length)}
+              min={100}
+              max={10000}
+              step={10}
+              suffix=" px"
+              note={snapNote}
+              snaps={lengthSnaps}
+              onChange={(v) => patch({ length: fromPx(v) })}
             />
             <div className="derived">
               <div>
@@ -206,8 +181,22 @@ export function ControlPanel({
         </section>
 
         <section>
-          <h2>端面（左右两端）</h2>
+          <h2>端面</h2>
           <div className="stack">
+            <div className="opts">
+              {([['solid', '实心'], ['none', '没有端面']] as [CapMode, string][]).map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  className="opt"
+                  aria-pressed={params.capMode === m}
+                  onClick={() => patch({ capMode: m })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {params.capMode === 'solid' && (
             <div className="color-row">
               <input
                 type="color"
@@ -228,14 +217,20 @@ export function ControlPanel({
                 </>
               )}
             </div>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={params.separateCaps}
-                onChange={(e) => patch({ separateCaps: e.target.checked })}
-              />
-              <span>两端分别设置</span>
-            </label>
+            )}
+            {params.capMode === 'solid' && (
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={params.separateCaps}
+                  onChange={(e) => patch({ separateCaps: e.target.checked })}
+                />
+                <span>两端分别设置</span>
+              </label>
+            )}
+            {params.capMode === 'none' && (
+              <p className="hint tight">两头不封口，做成一根通透的管子。</p>
+            )}
           </div>
         </section>
 
@@ -246,30 +241,54 @@ export function ControlPanel({
               <span className="slider-head">
                 <span>分辨率（长边）</span>
               </span>
-              {/* 默认项 1024 排在第一位 */}
-              <div className="opts">
-                {([1024, 512, 2048] as Resolution[]).map((r) => (
+              {/* 默认项 1080P 排在第一位 */}
+              <div className="opts four">
+                {RESOLUTIONS.map((r) => (
                   <button
-                    key={r}
+                    key={r.value}
                     type="button"
                     className="opt"
-                    aria-pressed={params.resolution === r}
-                    onClick={() => patch({ resolution: r })}
+                    aria-pressed={params.resolution === r.value}
+                    onClick={() => patch({ resolution: r.value as Resolution })}
                   >
-                    {r}
+                    {r.label}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="color-row">
-              <input
-                type="color"
-                aria-label="留白底色"
-                value={params.bgColor}
-                onChange={(e) => patch({ bgColor: e.target.value })}
-              />
-              <span>留白底色（不留透明）</span>
+            <div className="opts">
+              <button
+                type="button"
+                className="opt"
+                aria-pressed={!params.bgTransparent}
+                onClick={() => patch({ bgTransparent: false })}
+              >
+                留白底色
+              </button>
+              <button
+                type="button"
+                className="opt"
+                aria-pressed={params.bgTransparent}
+                onClick={() => patch({ bgTransparent: true })}
+              >
+                透明
+              </button>
             </div>
+            {params.bgTransparent ? (
+              <p className="hint tight">
+                Keynote 对带透明的贴图渲染行为不太稳定，导出后最好自己核一眼。
+              </p>
+            ) : (
+              <div className="color-row">
+                <input
+                  type="color"
+                  aria-label="留白底色"
+                  value={params.bgColor}
+                  onChange={(e) => patch({ bgColor: e.target.value })}
+                />
+                <span>图片没盖住的地方填这个色</span>
+              </div>
+            )}
           </div>
         </section>
 
