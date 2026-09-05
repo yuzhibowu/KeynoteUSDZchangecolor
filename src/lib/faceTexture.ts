@@ -14,6 +14,11 @@ export type BakeOptions = {
 /** 预补偿后的源图最长边 —— 反正烘焙也用不到比这更大的像素 */
 const CORRECTED_MAX = 2048;
 
+/** usda 文本 + zip 头的固定开销（实测拟合，见 estimateBytes） */
+const USDA_BASE_BYTES = 4063;
+/** 每多一个侧面带来的 usda 开销：一份材质定义 + 一个几何文件 */
+const USDA_PER_FACE_BYTES = 4241;
+
 export type CanvasSize = { w: number; h: number };
 
 /**
@@ -106,6 +111,8 @@ export class FaceTextureStore {
   readonly textures: THREE.CanvasTexture[] = [];
   readonly versions: number[] = [];
   private sigs: string[] = [];
+  /** 估体积用的离屏画布，复用一张就够 —— 逐个面画上去、编码、丢掉 */
+  private estimateCanvas: HTMLCanvasElement | null = null;
   private corrected: (HTMLCanvasElement | null)[] = [];
   private correctedKey: string[] = [];
   private listeners = new Set<(index: number) => void>();
@@ -166,26 +173,21 @@ export class FaceTextureStore {
     return canvas;
   }
 
-  /** 返回是否真的重烘焙过 */
-  bake(index: number, face: FaceState, opts: BakeOptions, force = false): boolean {
-    const { w, h } = canvasSizeFor(opts.aspect, opts.resolution);
-    const useComp = opts.compensate && !isIdentity(opts.comp);
-    const compSig = useComp ? compSignature(opts.comp) : 'off';
-    const sig = [
-      face.sourceKey,
-      face.offsetX.toFixed(5),
-      face.offsetY.toFixed(5),
-      face.scale.toFixed(5),
-      face.rotation.toFixed(5),
-      w,
-      h,
-      opts.bgColor,
-      compSig,
-    ].join('|');
-    if (!force && sig === this.sigs[index]) return false;
-    this.sigs[index] = sig;
-
-    const canvas = this.canvases[index];
+  /**
+   * 把一个面画到给定的画布上。
+   *
+   * 烘焙和体积预估共用这一段 —— 预估必须画的是**真正会导出的那张图**（补偿之后的），
+   * 否则报出来的数字和实际文件对不上。曾经就是拿视口那张未补偿的去估，结果差了一截。
+   */
+  private paint(
+    canvas: HTMLCanvasElement,
+    index: number,
+    face: FaceState,
+    opts: BakeOptions,
+    w: number,
+    h: number,
+    useComp: boolean,
+  ) {
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
@@ -219,6 +221,28 @@ export class FaceTextureStore {
       ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
       ctx.restore();
     }
+  }
+
+  /** 返回是否真的重烘焙过 */
+  bake(index: number, face: FaceState, opts: BakeOptions, force = false): boolean {
+    const { w, h } = canvasSizeFor(opts.aspect, opts.resolution);
+    const useComp = opts.compensate && !isIdentity(opts.comp);
+    const compSig = useComp ? compSignature(opts.comp) : 'off';
+    const sig = [
+      face.sourceKey,
+      face.offsetX.toFixed(5),
+      face.offsetY.toFixed(5),
+      face.scale.toFixed(5),
+      face.rotation.toFixed(5),
+      w,
+      h,
+      opts.bgColor,
+      compSig,
+    ].join('|');
+    if (!force && sig === this.sigs[index]) return false;
+    this.sigs[index] = sig;
+
+    this.paint(this.canvases[index], index, face, opts, w, h, useComp);
 
     this.textures[index].needsUpdate = true;
     this.versions[index]++;
@@ -239,19 +263,28 @@ export class FaceTextureStore {
   }
 
   /** 用 PNG 实际编码体积估算导出文件大小（USDZ 里贴图就是 PNG，且不再压缩） */
-  async estimateBytes(sides: number): Promise<number> {
-    let total = 4096; // usda 文本 + zip 头的粗略量级
-    const jobs: Promise<number>[] = [];
+  async estimateBytes(
+    faces: FaceState[],
+    sides: number,
+    opts: BakeOptions,
+  ): Promise<number> {
+    // 关键：按**导出口径**估，也就是补偿之后的像素。
+    // 视口里那张是不带补偿的，颜色被推开之后 PNG 压缩率会变，两者体积对不上。
+    const useComp = opts.compensate && !isIdentity(opts.comp);
+    const { w, h } = canvasSizeFor(opts.aspect, opts.resolution);
+    const probe = this.estimateCanvas ?? (this.estimateCanvas = document.createElement('canvas'));
+
+    // 非贴图开销：usda 文本 + zip 头 + 64 字节对齐。
+    // 实测是漂亮的线性：4 面时 21028 字节、12 面时 54958 字节 —— 每多一个面约 4.2 KB
+    // （每个面各有一份材质定义和一个几何文件），基础约 4 KB。
+    // 原来这里拍了个 4096 的常数，12 面时会少估 50 KB。
+    let total = USDA_BASE_BYTES + sides * USDA_PER_FACE_BYTES;
     for (let i = 0; i < sides; i++) {
-      const canvas = this.canvases[i];
-      jobs.push(
-        new Promise<number>((resolve) => {
-          canvas.toBlob((b) => resolve(b ? b.size : 0), 'image/png', 1);
-        }),
-      );
+      this.paint(probe, i, faces[i], opts, w, h, useComp);
+      total += await new Promise<number>((resolve) => {
+        probe.toBlob((b) => resolve(b ? b.size : 0), 'image/png', 1);
+      });
     }
-    const sizes = await Promise.all(jobs);
-    for (const s of sizes) total += s;
     return total;
   }
 }

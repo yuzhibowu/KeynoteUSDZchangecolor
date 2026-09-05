@@ -154,13 +154,32 @@ export default function App() {
     });
   }, [store]);
 
-  // 体积预估：拖拽时不算，停下来 500ms 再算
+  // 体积预估：拖拽时不算，停下来 500ms 再算。
+  // 按导出口径估（补偿之后的像素），否则和实际文件对不上。
   useEffect(() => {
     const id = setTimeout(() => {
-      store.estimateBytes(params.sides).then((b) => setSizeText(formatBytes(b)));
+      store
+        .estimateBytes(faces, params.sides, {
+          aspect: faceAspect(params.radius, params.sides, params.length),
+          resolution: params.resolution,
+          bgColor: params.bgColor,
+          comp: params.color,
+          compensate: true,
+        })
+        .then((b) => setSizeText(formatBytes(b)));
     }, 500);
     return () => clearTimeout(id);
-  }, [tick, params.sides, params.resolution, store]);
+  }, [
+    tick,
+    faces,
+    params.sides,
+    params.resolution,
+    params.radius,
+    params.length,
+    params.bgColor,
+    params.color,
+    store,
+  ]);
 
   // 持久化：参数 + face transform，图片本体不存
   useEffect(() => {
