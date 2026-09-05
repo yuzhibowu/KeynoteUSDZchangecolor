@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
-import { FaceStrip } from './components/FaceStrip';
-import { Toolbar } from './components/Toolbar';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
 import { download, exportUsdz, formatBytes } from './lib/exportUsdz';
@@ -308,44 +306,39 @@ export default function App() {
 
   return (
     <div className="app">
+      <main className="stage">
+        <div className="titlebar">
+          <div className="title-left">
+            <span className="brand">饼饼SHOW</span>
+            <span className="tool-name">棱柱 USDZ 导出器</span>
+          </div>
+          <span className="tool-en">Prism to USDZ · Keynote color-matched</span>
+        </div>
+        <Viewport
+          store={store}
+          params={params}
+          faces={faces}
+          selected={selected}
+          onSelect={setSelected}
+          onTransform={onTransform}
+          onDropFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? 0)}
+          viewerRef={viewerRef}
+        />
+      </main>
+
       <ControlPanel
         params={params}
         patch={patch}
         selected={selected}
         face={face}
+        faces={faces}
         patchFace={patchFace}
-        onResetRotation={() => viewerRef.current?.resetRotation()}
-        onFaceOn={() => selected !== null && viewerRef.current?.faceOn(selected)}
+        onSelect={setSelected}
         patchColor={patchColor}
         store={store}
         tick={tick}
         onExportChart={handleExportChart}
-      />
-      <Viewport
-        store={store}
-        params={params}
-        faces={faces}
-        selected={selected}
-        onSelect={setSelected}
-        onTransform={onTransform}
-        onDropFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? 0)}
-        viewerRef={viewerRef}
-      />
-      <FaceStrip
-        store={store}
-        faces={faces}
-        sides={params.sides}
-        selected={selected}
-        tick={tick}
-        onSelect={setSelected}
-        onDropFiles={(files, i) => assignFiles(files, i)}
-      />
-      <Toolbar
-        selected={selected}
-        hasImage={!!face?.source}
-        sizeText={sizeText}
-        busy={busy}
-        onFiles={(files) => assignFiles(files, files.length > 1 ? 0 : (selected ?? 0))}
+        onFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? selected ?? 0)}
         onResetFace={() => patchFace(DEFAULT_TRANSFORM)}
         onClearFace={() => {
           if (selected !== null) void clearFace(selected);
@@ -353,7 +346,10 @@ export default function App() {
         }}
         onTestFill={onTestFill}
         onExport={handleExport}
+        sizeText={sizeText}
+        busy={busy}
       />
+
       {status && (
         <div className="status" onClick={() => setStatus(null)}>
           {status}

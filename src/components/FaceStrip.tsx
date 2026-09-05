@@ -17,7 +17,7 @@ function Thumb({
     if (!el) return;
     const src = store.canvases[index];
     const dpr = Math.min(2, window.devicePixelRatio);
-    const box = 64;
+    const box = 96;
     el.width = box * dpr;
     el.height = box * dpr;
     const ctx = el.getContext('2d')!;
@@ -29,7 +29,7 @@ function Thumb({
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(src, (box - w) / 2, (box - h) / 2, w, h);
   }, [store, index, tick]);
-  return <canvas ref={ref} style={{ width: 64, height: 64 }} />;
+  return <canvas ref={ref} />;
 }
 
 type Props = {
@@ -47,17 +47,24 @@ export function FaceStrip({ store, faces, sides, selected, tick, onSelect, onDro
   for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
 
   return (
-    <div className="strip">
-      <div className="strip-scroll">
+    <>
+      <div className="faces">
         {Array.from({ length: sides }, (_, i) => (
           <button
             key={i}
-            className={`thumb${selected === i ? ' active' : ''}${faces[i].source ? '' : ' empty'}`}
+            type="button"
+            className="face-cell"
+            aria-pressed={selected === i}
+            aria-label={`第 ${i} 个面${faces[i].sourceName ? '：' + faces[i].sourceName : '（未贴图）'}`}
             onClick={() => onSelect(i)}
             onDragOver={(e) => {
-              if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+              if (!e.dataTransfer.types.includes('Files')) return;
+              e.preventDefault();
+              e.currentTarget.classList.add('drag-over');
             }}
+            onDragLeave={(e) => e.currentTarget.classList.remove('drag-over')}
             onDrop={(e) => {
+              e.currentTarget.classList.remove('drag-over');
               const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
               if (files.length === 0) return;
               e.preventDefault();
@@ -66,15 +73,15 @@ export function FaceStrip({ store, faces, sides, selected, tick, onSelect, onDro
             title={faces[i].sourceName ?? '未贴图'}
           >
             <Thumb store={store} index={i} tick={tick} />
-            <span className="thumb-idx">{i}</span>
+            <i>{i}</i>
           </button>
         ))}
       </div>
       {hidden.length > 0 && (
-        <div className="strip-note">
-          face {hidden.join(', ')} 的贴图已保留在内存里，把边数加回去就会回来
-        </div>
+        <p className="hint tight">
+          第 {hidden.join('、')} 个面的贴图还在内存里，把边数加回去就会回来
+        </p>
       )}
-    </div>
+    </>
   );
 }

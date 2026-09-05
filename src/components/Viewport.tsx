@@ -43,7 +43,7 @@ export function Viewport({ store, params, faces, selected, onSelect, onTransform
   return (
     <div
       ref={hostRef}
-      className={`viewport${dropping ? ' dropping' : ''}`}
+      className={`viewport${dropping ? ' drag-over' : ''}`}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes('Files')) return;
         e.preventDefault();
@@ -65,9 +65,22 @@ export function Viewport({ store, params, faces, selected, onSelect, onTransform
     >
       {dropping && (
         <div className="drop-hint">
-          {dropFace === null ? '松手 → 从 face 0 开始依次分配' : `松手 → 贴到 face ${dropFace}`}
+          {dropFace === null ? '松手 → 从第 0 个面开始依次分配' : `松手 → 贴到第 ${dropFace} 个面`}
         </div>
       )}
+      {/* 范式：恢复视角这类辅助操作贴近预览边角 */}
+      <div className="stage-tools">
+        <button
+          className="btn"
+          onClick={() => selected !== null && viewerRef.current?.faceOn(selected)}
+          disabled={selected === null}
+        >
+          正对当前面
+        </button>
+        <button className="btn" onClick={() => viewerRef.current?.resetRotation()}>
+          重置角度
+        </button>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { applyToHex, applyToImageData, DEFAULT_COMP, type ColorComp } from '../l
 /** 累积的实测样本上限 —— 局部修正建表是 n³ 的，攒太多会拖慢导出 */
 const MAX_SAMPLES = 400;
 import { COLS, fitChart, sampleChart, type Sample } from '../lib/chart';
+import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
 
@@ -424,21 +425,16 @@ export function ColorPanel({
         {selected !== null && hasImage && (
           <BeforeAfter store={store} index={selected} tick={tick} comp={comp} />
         )}
-      <label className="slider">
-        <span className="slider-head">
-          <span>补光（换取更亮的颜色上限）</span>
-          <b>{Math.round(lift * 100)}%</b>
-        </span>
-        <input
-          type="range"
+      <Slider
+          label="补光（换取更亮的颜色上限）"
+          value={Math.round(lift * 100)}
           min={0}
-          max={1}
-          step={0.05}
-          value={lift}
+          max={100}
+          step={5}
+          suffix="%"
           disabled={unlit}
-          onChange={(e) => setLift(Number(e.target.value))}
+          onChange={(v) => setLift(v / 100)}
         />
-      </label>
       <p className="hint tight">
         Keynote 算像素是「贴图 × 灯光 + 自发光」。乘法那项有天花板（灯光系数小于 1，贴图再白也到不了纯白），
         加法那项没有。往上加自发光能把上限抬起来，代价是自发光不随角度变化，加得越多明暗越平。
@@ -464,7 +460,7 @@ export function ColorPanel({
         </p>
         <ol className="steps">
           <li>
-            <button className="ghost" onClick={onExportChart}>
+            <button className="btn" onClick={onExportChart}>
               导出色卡棱柱
             </button>
             <span>
@@ -493,13 +489,13 @@ export function ColorPanel({
             存成文件就能带走，也能发给别人直接用。
           </span>
           <div className="profile-btns">
-            <button className="ghost" onClick={onExportProfile}>
+            <button className="btn" onClick={onExportProfile}>
               导出校准档
             </button>
             <ChartDrop onPick={onImportProfile} label="导入校准档" accept="application/json,.json" />
           </div>
         </div>
-        <button className="ghost" onClick={() => patch(DEFAULT_COMP)}>
+        <button className="btn" onClick={() => patch(DEFAULT_COMP)}>
           恢复内置校准
         </button>
       </details>

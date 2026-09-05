@@ -102,7 +102,8 @@ export class PrismViewer {
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
-    this.renderer.setClearColor(0x14161a, 1);
+    // 范式：工作区是白底。视口只是「看」的地方，导出的模型不含背景。
+    this.renderer.setClearColor(0xffffff, 1);
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.touchAction = 'none';
@@ -124,9 +125,9 @@ export class PrismViewer {
     bottom.position.set(0, -2, 0.5);
     this.scene.add(bottom);
 
-    this.grid = new THREE.GridHelper(1, 20, 0x3a4150, 0x262b34);
+    this.grid = new THREE.GridHelper(1, 20, 0xd2d2d7, 0xe5e5e7);
     (this.grid.material as THREE.Material).transparent = true;
-    (this.grid.material as THREE.Material).opacity = 0.5;
+    (this.grid.material as THREE.Material).opacity = 0.9;
     this.scene.add(this.grid);
 
     this.scene.add(this.pivot);
@@ -158,8 +159,9 @@ export class PrismViewer {
       this.prism.add(mesh);
     }
 
-    this.outline = makeOutline(0x5ac8fa, 0.045);
-    this.hoverline = makeOutline(0xffffff, 0.02);
+    // 选中用深黑（和界面的黑白反转一致），悬停用中灰
+    this.outline = makeOutline(0x1d1d1f, 0.045);
+    this.hoverline = makeOutline(0x86868b, 0.02);
     this.outline.visible = false;
     this.hoverline.visible = false;
     this.pivot.add(this.outline, this.hoverline);
