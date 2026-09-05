@@ -66,10 +66,21 @@ describe('动态探针挑色：必须覆盖明暗，不能只挑出现最多的'
   }
 
   it('挑出来的颜色要横跨暗部到亮部', () => {
-    const picked = pickCovering(photoLikeHistogram(), 12);
+    // 只挑 5 个（候选有 12 个）—— 必须挑少于候选数，否则全选中，怎么挑都"覆盖"了
+    const picked = pickCovering(photoLikeHistogram(), 5);
     const ls = picked.map(lum);
     expect(Math.min(...ls)).toBeLessThan(60);
-    expect(Math.max(...ls)).toBeGreaterThan(180); // 旧的 top-N 挑法这里只有 ~77
+    // 按「出现最多」挑，前 5 个全是阴影和黑背景，亮度上不过 60
+    expect(Math.max(...ls), `挑中的亮度：${ls.map((v) => v.toFixed(0)).join(', ')}`)
+      .toBeGreaterThan(150);
+  });
+
+  it('权重悬殊时也不会全挑暗部 —— 这正是照片翻车的那个场景', () => {
+    // 暗部像素比亮部多一个数量级，top-N 会被它们完全占满
+    const picked = pickCovering(photoLikeHistogram(), 6);
+    const bright = picked.filter((c) => lum(c) > 120);
+    expect(bright.length, `挑中 ${picked.length} 个，其中亮的只有 ${bright.length} 个`)
+      .toBeGreaterThanOrEqual(2);
   });
 
   it('不会挤在一起 —— 任意两个挑中的颜色都得拉开距离', () => {
