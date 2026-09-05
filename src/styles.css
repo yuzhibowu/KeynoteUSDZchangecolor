@@ -47,7 +47,7 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--surface);
   box-shadow: var(--shadow);
   display: grid;
-  grid-template-rows: 43px 1fr;
+  grid-template-rows: 43px 1fr auto;
   min-width: 0;
   overflow: hidden;
 }
@@ -61,7 +61,6 @@ button, input, select { font: inherit; color: inherit; }
   padding: 0 16px;
   gap: 12px;
 }
-.title-left { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .tool-name { font-size: clamp(13.6px, 1.12vw, 19.2px); font-weight: 800; white-space: nowrap; }
 .tool-en {
   font-size: clamp(8.5px, 0.7vw, 12px);
@@ -79,23 +78,16 @@ button, input, select { font: inherit; color: inherit; }
   overflow: hidden;
 }
 
-.side-head {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-/* 品牌放在顶部黑条上：黄色下划线在深底上最醒目，也把右栏顶部让给导入操作 */
+.side-head { padding: 14px 16px 12px; }
 .brand {
-  font-size: clamp(15px, 1.25vw, 21px);
+  display: inline-block;
+  font-size: clamp(17px, 1.4vw, 24px);
   font-weight: 850;
   line-height: 1.1;
   white-space: nowrap;
-  border-bottom: 5px solid var(--brand);
+  border-bottom: 6px solid var(--brand);
   padding-bottom: 1px;
 }
-.asset-status { font-size: 12px; font-weight: 650; color: var(--muted); }
 
 .side-body {
   overflow-y: auto;
@@ -261,7 +253,16 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 
 /* ================= 面缩略图 ================= */
 
-.faces { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+/* 预览下方的一排面缩略图，水平居中，像一条 dock */
+.dock-wrap { border-top: 1px solid var(--line); padding: 10px 12px; }
+.dock {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.dock .face-cell { width: 62px; }
+.dock-note { margin: 8px 0 0; text-align: center; font-size: 11px; color: var(--faint); }
 .face-cell {
   position: relative;
   aspect-ratio: 1.4 / 1;
@@ -447,7 +448,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
     height: auto;
     min-height: 100%;
   }
-  .stage { grid-template-rows: 43px minmax(320px, 46vh); }
+  .stage { grid-template-rows: 43px minmax(320px, 46vh) auto; }
   .side { overflow: visible; grid-template-rows: auto auto; }
   .side-body { overflow: visible; }
 }
@@ -455,7 +456,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 @media (max-width: 560px) {
   .app { padding: 10px; gap: 10px; }
   .titlebar { flex-wrap: wrap; height: auto; padding: 6px 12px; }
-  .stage { grid-template-rows: auto minmax(280px, 44vh); }
+  .stage { grid-template-rows: auto minmax(280px, 44vh) auto; }
   .row { flex-direction: column; }
   .opts { grid-auto-flow: row; }
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
+import { FaceDock } from './components/FaceDock';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
 import { download, exportUsdz, formatBytes } from './lib/exportUsdz';
@@ -81,6 +82,12 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     loadFaces().then(async (stored) => {
+      // 头一次打开：给每个面填上带编号的彩色块，一眼能分清哪个面是哪个，
+      // 也省得对着一个白棱柱不知道从哪下手。之后有存档就按存档来。
+      if (alive && stored.length === 0 && !load()) {
+        void fillTestBlocks();
+        return;
+      }
       if (!alive || stored.length === 0) return;
       const decoded: { index: number; bmp: ImageBitmap; name: string }[] = [];
       for (const s of stored) {
@@ -244,7 +251,7 @@ export default function App() {
     setStatus(overflow > 0 ? `有 ${overflow} 张图超出 12 个面，已忽略` : null);
   }, []);
 
-  const onTestFill = useCallback(async () => {
+  const fillTestBlocks = useCallback(async () => {
     const imgs = await makeTestImages(params.sides);
     setFaces((prev) => {
       const next = prev.slice();
@@ -260,8 +267,12 @@ export default function App() {
       });
       return next;
     });
-    setStatus('已填入测试色块：导出后在 Keynote 里核对每个面的颜色和编号是否对得上');
   }, [params.sides]);
+
+  const onTestFill = useCallback(async () => {
+    await fillTestBlocks();
+    setStatus('已填入测试色块：导出后在 Keynote 里核对每个面的颜色和编号是否对得上');
+  }, [fillTestBlocks]);
 
   const handleExportChart = useCallback(async () => {
     try {
@@ -308,10 +319,7 @@ export default function App() {
     <div className="app">
       <main className="stage">
         <div className="titlebar">
-          <div className="title-left">
-            <span className="brand">饼饼SHOW</span>
-            <span className="tool-name">棱柱 USDZ 导出器</span>
-          </div>
+          <span className="tool-name">棱柱 USDZ 导出器</span>
           <span className="tool-en">Prism to USDZ · Keynote color-matched</span>
         </div>
         <Viewport
@@ -324,6 +332,19 @@ export default function App() {
           onDropFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? 0)}
           viewerRef={viewerRef}
         />
+        <FaceDock
+          store={store}
+          faces={faces}
+          sides={params.sides}
+          selected={selected}
+          tick={tick}
+          onSelect={(i) => {
+            setSelected(i);
+            // 从底部选面就顺手转到正对着它 —— 否则改缩放、旋转在预览里根本看不见
+            viewerRef.current?.faceOn(i);
+          }}
+          onDropFiles={(files, i) => assignFiles(files, i)}
+        />
       </main>
 
       <ControlPanel
@@ -331,9 +352,7 @@ export default function App() {
         patch={patch}
         selected={selected}
         face={face}
-        faces={faces}
         patchFace={patchFace}
-        onSelect={setSelected}
         patchColor={patchColor}
         store={store}
         tick={tick}

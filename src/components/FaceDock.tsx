@@ -42,13 +42,13 @@ type Props = {
   onDropFiles: (files: File[], faceIndex: number) => void;
 };
 
-export function FaceStrip({ store, faces, sides, selected, tick, onSelect, onDropFiles }: Props) {
+export function FaceDock({ store, faces, sides, selected, tick, onSelect, onDropFiles }: Props) {
   const hidden: number[] = [];
   for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
 
   return (
-    <>
-      <div className="faces">
+    <div className="dock-wrap">
+      <div className="dock">
         {Array.from({ length: sides }, (_, i) => (
           <button
             key={i}
@@ -78,10 +78,8 @@ export function FaceStrip({ store, faces, sides, selected, tick, onSelect, onDro
         ))}
       </div>
       {hidden.length > 0 && (
-        <p className="hint tight">
-          第 {hidden.join('、')} 个面的贴图还在内存里，把边数加回去就会回来
-        </p>
+        <p className="dock-note">第 {hidden.join('、')} 个面的贴图还在内存里，把边数加回去就会回来</p>
       )}
-    </>
+    </div>
   );
 }

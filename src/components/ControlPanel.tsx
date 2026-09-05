@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 import { ColorPanel } from './ColorPanel';
-import { FaceStrip } from './FaceStrip';
 import { Slider } from './Slider';
 import { canvasSizeFor } from '../lib/faceTexture';
 import type { FaceTextureStore } from '../lib/faceTexture';
@@ -12,9 +11,7 @@ type Props = {
   patch: (p: Partial<Params>) => void;
   selected: number | null;
   face: FaceState | null;
-  faces: FaceState[];
   patchFace: (t: Partial<FaceState>) => void;
-  onSelect: (i: number) => void;
   patchColor: (c: Partial<ColorComp>) => void;
   store: FaceTextureStore;
   tick: number;
@@ -72,9 +69,7 @@ export function ControlPanel({
   patch,
   selected,
   face,
-  faces,
   patchFace,
-  onSelect,
   patchColor,
   store,
   tick,
@@ -90,33 +85,19 @@ export function ControlPanel({
   const chord = faceChord(params.radius, params.sides);
   const aspect = params.length / chord;
   const canvas = canvasSizeFor(aspect, params.resolution);
-  const withImage = faces.slice(0, params.sides).filter((f) => f.source).length;
   const hasImage = !!face?.source;
 
   return (
     <aside className="side">
       <div className="side-head">
-        <ImportButton onFiles={(f) => onFiles(f, f.length > 1 ? 0 : (selected ?? 0))} />
-        <div className="asset-status">
-          {withImage === 0
-            ? '还没有贴图 · 单张贴到选中面，多张按文件名依次分配'
-            : `已贴 ${withImage} / ${params.sides} 个面`}
-        </div>
+        <span className="brand">饼饼SHOW</span>
       </div>
 
       <div className="side-body">
         <section>
-          <h2>面</h2>
+          <h2>当前面{selected === null ? '' : ` · 第 ${selected} 个`}</h2>
           <div className="stack">
-            <FaceStrip
-              store={store}
-              faces={faces}
-              sides={params.sides}
-              selected={selected}
-              tick={tick}
-              onSelect={onSelect}
-              onDropFiles={(files, i) => onFiles(files, i)}
-            />
+            <ImportButton onFiles={(f) => onFiles(f, f.length > 1 ? 0 : (selected ?? 0))} />
             {face && hasImage ? (
               <>
                 <div className="filename" title={face.sourceName ?? ''}>
@@ -152,7 +133,7 @@ export function ControlPanel({
               </>
             ) : (
               <p className="hint">
-                选中一个面再导入图片。空白处拖动 = 转物体；有图的选中面上拖动 = 挪贴图，滚轮缩放。
+                下面那排缩略图里选一个面，再导入图片。也可以把图片直接拖到某个面上。
               </p>
             )}
             <div className="row">
