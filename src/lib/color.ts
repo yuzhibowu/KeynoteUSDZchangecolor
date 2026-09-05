@@ -570,6 +570,19 @@ export function applyToHex(hex: string, c: ColorComp): string {
   return `#${v.map((x) => x.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/**
+ * 正向：往贴图里写这个值，预计在 Keynote 里显示成什么。0..255 进、0..255 出。
+ *
+ * 这是模型的正向出口，和 `solveWritten`（反解）配成一对。
+ * 局部修正是「插值」而不是「加权平均」这件事，只能从这个方向验证 ——
+ * 在每一个实测点上，它的输出必须等于当初量到的值。
+ */
+export function forwardOf(r: number, g: number, b: number, c: ColorComp): Triple {
+  if (isIdentity(c)) return [r, g, b];
+  const y = forwardModel(c)([r / 255, g / 255, b / 255]);
+  return y.map((v) => Math.max(0, Math.min(255, Math.round(v * 255)))) as Triple;
+}
+
 /** 给界面看的：这个颜色补偿之后，预计在 Keynote 里会变成什么 */
 export function predictKeynote(hex: string, c: ColorComp): string | null {
   if (isIdentity(c)) return null;

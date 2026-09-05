@@ -97,6 +97,48 @@ export function chartPatches(): RGB[] {
   return [...BASE_PATCHES, ...filled.slice(0, EXTRA_SLOTS), ALIGN_CHECK];
 }
 
+/**
+ * 从直方图里挑出**覆盖整张图明暗分布**的代表色，而不是「像素最多的前几个」。
+ *
+ * 只取 top-N 会栽得很惨：照片里像素最多的往往是阴影和黑背景，于是探针格全是
+ * 又暗又接近的颜色（实测采到过 0,2,0 / 4,7,1 / 12,12,5 这种），而真正看得见、
+ * 误差也最大的中间调和亮部一个都没测到 —— 标定完等于没标。
+ *
+ * 改成加权最远点采样：既要离已选的点足够远（保证铺开），又要足够常见（不去测噪点）。
+ */
+export function pickCovering(hist: Map<number, number>, n: number): RGB[] {
+  const items = [...hist.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 600) // 只在够常见的颜色里挑，避开孤立噪点
+    .map(([k, w]) => ({
+      rgb: [((k >> 10) & 31) * 8 + 4, ((k >> 5) & 31) * 8 + 4, (k & 31) * 8 + 4] as RGB,
+      w,
+    }));
+  const picked: RGB[] = [];
+  while (picked.length < n && items.length > 0) {
+    let best = 0;
+    let bestScore = -1;
+    for (let i = 0; i < items.length; i++) {
+      let d2 = Infinity;
+      for (const p of picked) {
+        const e =
+          (items[i].rgb[0] - p[0]) ** 2 + (items[i].rgb[1] - p[1]) ** 2 + (items[i].rgb[2] - p[2]) ** 2;
+        if (e < d2) d2 = e;
+      }
+      // 第一个点直接按常见程度挑
+      const far = picked.length === 0 ? 1 : Math.sqrt(d2);
+      const score = far * Math.log1p(items[i].w);
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    picked.push(items[best].rgb);
+    items.splice(best, 1);
+  }
+  return picked;
+}
+
 export function drawChart(canvas: HTMLCanvasElement, size = 1024) {
   const w = size;
   const h = Math.round((size * ROWS) / COLS);
