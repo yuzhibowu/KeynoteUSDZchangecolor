@@ -82,12 +82,6 @@ export default function App() {
   useEffect(() => {
     let alive = true;
     loadFaces().then(async (stored) => {
-      // 头一次打开：给每个面填上带编号的彩色块，一眼能分清哪个面是哪个，
-      // 也省得对着一个白棱柱不知道从哪下手。之后有存档就按存档来。
-      if (alive && stored.length === 0 && !load()) {
-        void fillTestBlocks();
-        return;
-      }
       if (!alive || stored.length === 0) return;
       const decoded: { index: number; bmp: ImageBitmap; name: string }[] = [];
       for (const s of stored) {
@@ -140,6 +134,7 @@ export default function App() {
       resolution: params.resolution,
       bgColor: params.bgColor,
       bgTransparent: params.bgTransparent,
+      sides: params.sides,
       comp: params.color,
       compensate: false,
     };
@@ -170,6 +165,7 @@ export default function App() {
           resolution: params.resolution,
           bgColor: params.bgColor,
       bgTransparent: params.bgTransparent,
+      sides: params.sides,
           comp: params.color,
           compensate: true,
         })
@@ -298,6 +294,7 @@ export default function App() {
         resolution: params.resolution,
         bgColor: params.bgColor,
       bgTransparent: params.bgTransparent,
+      sides: params.sides,
         comp: params.color,
       };
       store.bakeAll(faces, { ...base, compensate: true });

@@ -8,6 +8,8 @@ export type BakeOptions = {
   bgColor: string;
   /** 底色留透明（不填任何颜色）。Keynote 对带 alpha 的贴图行为不稳，默认关着 */
   bgTransparent?: boolean;
+  /** 当前边数 —— 没贴图的面按它算占位色的色相 */
+  sides: number;
   comp: ColorComp;
   /** true = 把颜色预补偿烘进去（只有导出时才开） */
   compensate: boolean;
@@ -29,6 +31,18 @@ export type CanvasSize = { w: number; h: number };
  * 因为 canvas 的宽高比一旦和面的宽高比不一致，贴图就会在面上被拉伸。
  * 尺寸取偶数，对 mipmap 友好。
  */
+/**
+ * 还没贴图的面，用一个彩色块占位。
+ *
+ * 之前是「首次打开时自动填一批测试图片」，但那依赖「有没有存档」来判断，
+ * 而存档的写入和读取是两条异步路径 —— 谁先谁后不一定，一旦存档先写进去，
+ * 填充就被跳过，打开就是一个白棱柱。改成渲染时直接上色就没有这个时序问题：
+ * 没有图 = 彩色块，永远成立。
+ */
+export function placeholderColor(index: number, sides: number): string {
+  return `hsl(${(index * 360) / Math.max(1, sides)}, 72%, 56%)`;
+}
+
 export function canvasSizeFor(aspect: number, resolution: Resolution): CanvasSize {
   let w: number;
   let h: number;
@@ -202,7 +216,12 @@ export class FaceTextureStore {
     // 不留透明：Keynote 对带 alpha 的贴图渲染行为不好预测。
     // fillStyle 赋一个非法字符串时浏览器会「静默忽略」，保留上一次的值（默认是黑）——
     // 那样整张贴图会变黑，所以这里先校验。
-    if (!opts.bgTransparent) {
+    if (!face.source) {
+      // 还没贴图：整面铺占位色，一眼能分清哪个面是哪个
+      const c = placeholderColor(index, opts.sides);
+      ctx.fillStyle = useComp ? applyToHex(c, opts.comp) : c;
+      ctx.fillRect(0, 0, w, h);
+    } else if (!opts.bgTransparent) {
       const safeBg = /^#[0-9a-f]{6}$/i.test(opts.bgColor.trim()) ? opts.bgColor.trim() : '#ffffff';
       ctx.fillStyle = useComp ? applyToHex(safeBg, opts.comp) : safeBg;
       ctx.fillRect(0, 0, w, h);
@@ -245,6 +264,7 @@ export class FaceTextureStore {
       h,
       opts.bgColor,
       opts.bgTransparent ? 'alpha' : 'opaque',
+      opts.sides,
       compSig,
     ].join('|');
     if (!force && sig === this.sigs[index]) return false;
