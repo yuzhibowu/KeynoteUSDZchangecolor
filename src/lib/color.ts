@@ -420,64 +420,6 @@ export const linearToSrgb = (v: number) =>
   v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(Math.max(0, v), 1 / 2.4) - 0.055;
 
 /**
- * 不截断的逆运算，返回值可能 > 1。
- *
- * Keynote 开着灯光时会把整体压暗（白色 255 只能到 225），要抵消它就得写「比纯白更白」的值 —— 
- * 8 位贴图写不下。出路是 USDZ 里的 `float4 inputs:scale`：那是文件里的一个浮点乘数，
- * 不受 8 位限制。贴图里存 L/gain，材质上写 gain，渲染时乘回来，天花板就绕开了。
- */
-export function rawInverse(c: ColorComp): ((r: number, g: number, b: number) => Triple) | null {
-  if (!c.matrix) return null;
-  const inv = invert3(c.matrix);
-  if (!inv) return null;
-  const off = c.offset ?? [0, 0, 0];
-  const curve = c.curve;
-  return (r, g, b) => {
-    const dr = (curve ? pwInvert(r / 255, curve[0]) : r / 255) - off[0];
-    const dg = (curve ? pwInvert(g / 255, curve[1]) : g / 255) - off[1];
-    const db = (curve ? pwInvert(b / 255, curve[2]) : b / 255) - off[2];
-    return [
-      inv[0] * dr + inv[1] * dg + inv[2] * db,
-      inv[3] * dr + inv[4] * dg + inv[5] * db,
-      inv[6] * dr + inv[7] * dg + inv[8] * db,
-    ];
-  };
-}
-
-/** 补偿后需要的线性光增益（1 = 不需要，没有任何颜色顶到天花板） */
-export function requiredGain(c: ColorComp, sample: (cb: (r: number, g: number, b: number) => void) => void): number {
-  const raw = isIdentity(c) ? null : rawInverse(c);
-  if (!raw) return 1;
-  let max = 1;
-  sample((r, g, b) => {
-    const v = raw(r, g, b);
-    for (let i = 0; i < 3; i++) {
-      const lin = srgbToLinear(v[i]);
-      if (lin > max) max = lin;
-    }
-  });
-  return max;
-}
-
-/** 带增益的补偿：返回写进贴图的 0..255 值（贴图存 L/gain，材质上带回 gain） */
-export function compensateWithGain(
-  c: ColorComp,
-  gain: number,
-): ((r: number, g: number, b: number) => Triple) | null {
-  const raw = isIdentity(c) ? null : rawInverse(c);
-  if (!raw) return null;
-  const q = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
-  return (r, g, b) => {
-    const v = raw(r, g, b);
-    return [
-      q(linearToSrgb(srgbToLinear(v[0]) / gain)),
-      q(linearToSrgb(srgbToLinear(v[1]) / gain)),
-      q(linearToSrgb(srgbToLinear(v[2]) / gain)),
-    ];
-  };
-}
-
-/**
  * 「想要这个外观，该往贴图 / 材质里写什么」—— 0..255 进、0..255 出。
  *
  * 贴图像素、端面纯色、色卡上的动态探针格全都走这一个入口。三处必须是同一个值，

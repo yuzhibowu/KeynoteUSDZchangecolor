@@ -19,7 +19,6 @@ export async function exportUsdz(
   viewer: PrismViewer,
   store: FaceTextureStore,
   params: Params,
-  gain = 1,
 ): Promise<{ blob: Blob; name: string }> {
   let maxTex = params.resolution as number;
   for (let i = 0; i < params.sides; i++) {
@@ -49,7 +48,10 @@ export async function exportUsdz(
 
   const exporter = new USDZExporter();
   // runCanonical：视口里的旋转只是给人看的，导出的模型要是正的
-  const buffer = await viewer.runCanonical(gain, () =>
+  // 没有「亮度增益」这回事：材质上写 inputs:scale > 1 实测被 Keynote 忽略，
+  // 而贴图那边已经先除过一遍，净效果是白白变暗 30%。抬高亮度上限靠的是自发光。
+  // 详见 KEYNOTE-COLOR.md 第四节「走过的死路」。
+  const buffer = await viewer.runCanonical(() =>
     exporter.parseAsync(viewer.prism, {
       maxTextureSize: maxTex, // 默认值是 1024，会偷偷把 2048 的贴图降采样
       includeAnchoringProperties: true,

@@ -1,13 +1,5 @@
 import * as THREE from 'three';
-import {
-  applyToHex,
-  applyToImageData,
-  compSignature,
-  compensateWithGain,
-  isIdentity,
-  requiredGain,
-  type ColorComp,
-} from './color';
+import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
 import { MAX_SIDES, type FaceState, type FaceTransform, type Resolution } from './types';
 
 export type BakeOptions = {
@@ -17,8 +9,6 @@ export type BakeOptions = {
   comp: ColorComp;
   /** true = 把颜色预补偿烘进去（只有导出时才开） */
   compensate: boolean;
-  /** 线性光增益：贴图里存 L/gain，导出时材质上写回 gain，用来突破 8 位天花板 */
-  gain?: number;
 };
 
 /** 预补偿后的源图最长边 —— 反正烘焙也用不到比这更大的像素 */
@@ -154,9 +144,9 @@ export class FaceTextureStore {
    * 预补偿是作用在「源图」上的（结果缓存起来），不是每帧在整张画布上跑像素循环，
    * 所以开了补偿也不会拖慢拖拽。
    */
-  private correctedSource(index: number, face: FaceState, comp: ColorComp, gain: number): CanvasImageSource {
+  private correctedSource(index: number, face: FaceState, comp: ColorComp): CanvasImageSource {
     const src = face.source!;
-    const key = `${face.sourceKey}|${compSignature(comp)}|${gain.toFixed(4)}`;
+    const key = `${face.sourceKey}|${compSignature(comp)}`;
     if (this.correctedKey[index] === key && this.corrected[index]) return this.corrected[index]!;
 
     const k = Math.min(1, CORRECTED_MAX / Math.max(src.width, src.height));
@@ -169,20 +159,7 @@ export class FaceTextureStore {
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(src, 0, 0, w, h);
     const img = ctx.getImageData(0, 0, w, h);
-    if (gain > 1.0001) {
-      const map = compensateWithGain(comp, gain);
-      if (map) {
-        const d = img.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const [r, g, b] = map(d[i], d[i + 1], d[i + 2]);
-          d[i] = r;
-          d[i + 1] = g;
-          d[i + 2] = b;
-        }
-      }
-    } else {
-      applyToImageData(img.data, comp);
-    }
+    applyToImageData(img.data, comp);
     ctx.putImageData(img, 0, 0);
     this.corrected[index] = canvas;
     this.correctedKey[index] = key;
@@ -204,7 +181,6 @@ export class FaceTextureStore {
       h,
       opts.bgColor,
       compSig,
-      (opts.gain ?? 1).toFixed(4),
     ].join('|');
     if (!force && sig === this.sigs[index]) return false;
     this.sigs[index] = sig;
@@ -225,7 +201,7 @@ export class FaceTextureStore {
 
     if (face.source) {
       const src: CanvasImageSource = useComp
-        ? this.correctedSource(index, face, opts.comp, opts.gain ?? 1)
+        ? this.correctedSource(index, face, opts.comp)
         : face.source;
       const sw = face.source.width;
       const sh = face.source.height;
@@ -254,37 +230,6 @@ export class FaceTextureStore {
    * 导出前算一遍需要多大增益：扫一遍每张源图，看补偿之后有没有颜色顶到天花板。
    * 没有就返回 1，一切照旧、零风险；有才启用增益。
    */
-  measureGain(faces: FaceState[], sides: number, comp: ColorComp, bgColor: string): number {
-    if (isIdentity(comp)) return 1;
-    const probe = document.createElement('canvas');
-    const ctx = probe.getContext('2d', { willReadFrequently: true })!;
-    let gain = 1;
-    for (let i = 0; i < sides; i++) {
-      const src = faces[i].source;
-      if (!src) continue;
-      const k = Math.min(1, 512 / Math.max(src.width, src.height));
-      const w = Math.max(1, Math.round(src.width * k));
-      const h = Math.max(1, Math.round(src.height * k));
-      probe.width = w;
-      probe.height = h;
-      ctx.clearRect(0, 0, w, h);
-      ctx.drawImage(src, 0, 0, w, h);
-      const d = ctx.getImageData(0, 0, w, h).data;
-      gain = Math.max(
-        gain,
-        requiredGain(comp, (cb) => {
-          for (let p = 0; p < d.length; p += 4) cb(d[p], d[p + 1], d[p + 2]);
-        }),
-      );
-    }
-    const bg = /^#?([0-9a-f]{6})$/i.exec(bgColor.trim());
-    if (bg) {
-      const n = parseInt(bg[1], 16);
-      gain = Math.max(gain, requiredGain(comp, (cb) => cb((n >> 16) & 255, (n >> 8) & 255, n & 255)));
-    }
-    return gain;
-  }
-
   bakeAll(faces: FaceState[], opts: BakeOptions, force = false): number {
     let n = 0;
     for (let i = 0; i < MAX_SIDES; i++) {

@@ -269,20 +269,15 @@ export default function App() {
         bgColor: params.bgColor,
         comp: params.color,
       };
-      // 增益（材质上写 scale > 1 来突破 8 位天花板）实测无效：Keynote 会忽略或截断
-      // inputs:scale 大于 1 的部分，而贴图这边已经先除过一遍，净效果是整体变暗 30%。
-      // 结论是这条路走不通，固定为 1。判据：拿实测值去对两种假设，
-      // 「不认增益」那一支的绿通道 181 分毫不差，「认增益」差 20 阶。
-      const gain = 1;
-      store.bakeAll(faces, { ...base, compensate: true, gain });
-      const { blob, name } = await exportUsdz(viewer, store, params, gain);
+      store.bakeAll(faces, { ...base, compensate: true });
+      const { blob, name } = await exportUsdz(viewer, store, params);
       download(blob, name);
       const note = isIdentity(params.color)
         ? ''
-        : ` · 已套用颜色补偿${gain > 1.001 ? `（增益 ${gain.toFixed(2)}×）` : ''}`;
+        : ' · 已套用颜色补偿';
       setStatus(`已导出 ${name} · ${formatBytes(blob.size)}${note}`);
       // 烘回不带补偿的版本，视口继续显示「Keynote 里应有的样子」
-      store.bakeAll(faces, { ...base, compensate: false, gain: 1 });
+      store.bakeAll(faces, { ...base, compensate: false });
     } catch (err) {
       setStatus(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {

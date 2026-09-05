@@ -341,13 +341,13 @@ export class PrismViewer {
   }
 
   /**
-   * 导出时把增益写到材质上：贴图里存的是 L/gain，这里乘回来。
-   * three 的 Color 分量本来就是线性值，导出器原样写进 usdz 的 inputs:scale，
-   * 不做截断，所以 > 1 能过去。
+   * 让侧面材质跟上当前状态：自发光该不该挂贴图、漫反射该不该压黑。
+   *
+   * 补光（自发光）只在导出时挂上 —— 视口的三条光和 Keynote 不是一套，
+   * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
-  setExportGain(gain: number | null) {
+  syncSideMaterials() {
     const p = this.state!.params;
-    const v = gain ?? 1;
     const unlit = p.emissiveExport;
     const lift = this.liftNow();
     for (let i = 0; i < MAX_SIDES; i++) {
@@ -361,19 +361,19 @@ export class PrismViewer {
         m.emissiveMap = want;
         m.needsUpdate = true;
       }
-      m.emissive.setRGB(lift * v, lift * v, lift * v);
-      m.color.setRGB(unlit ? 0 : v, unlit ? 0 : v, unlit ? 0 : v);
+      m.emissive.setRGB(lift, lift, lift);
+      m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
     }
   }
 
   /** 导出期间把旋转归零、端面颜色换成补偿后的值，让 usdz 里的模型是正的、颜色是补过的 */
-  async runCanonical<T>(gain: number, fn: () => Promise<T>): Promise<T> {
+  async runCanonical<T>(fn: () => Promise<T>): Promise<T> {
     this.canonical = true;
     this.exportMode = true;
     this.pivot.quaternion.identity();
     this.pivot.updateMatrixWorld(true);
     this.applyCapColors(true);
-    this.setExportGain(gain);
+    this.syncSideMaterials();
     try {
       return await fn();
     } finally {
@@ -381,7 +381,7 @@ export class PrismViewer {
       this.exportMode = false;
       this.applyRotation();
       this.applyCapColors(false);
-      this.setExportGain(null);
+      this.syncSideMaterials();
     }
   }
 
