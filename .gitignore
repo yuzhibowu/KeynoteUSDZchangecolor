@@ -1,0 +1,20 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+*.tsbuildinfo
+
+# 打包给别人的资料（需要时用 for-codex/ 目录重新打）
+for-codex.zip
+
+# 素材（属于个人图片，不进仓库）
+public/*.png
+public/*.jpg
+public/*.jpeg
+
+# 系统
+.DS_Store
+
+# 给 AI / 朋友的打包目录：内容都是从 src/ 和 PORTING.md 复制的，需要时重新生成
+for-codex/
