@@ -35,11 +35,21 @@ export function faceFrame(i: number, sides: number, radius: number, length: numb
 }
 
 /** 单个侧面 —— 一个独立 mesh、一个独立材质、UV 干净地 0→1 满铺。 */
+/**
+ * 侧面。`face` 决定生成外面还是内面 —— 内面是独立的一组三角形，挂自己的贴图。
+ *
+ * 为什么在**几何**里做，而不是把材质设成 DoubleSide：
+ * USD 格式本身是支持双面的 —— `doubleSided` 就是 UsdGeomGprim 的标准属性。
+ * 但 three 的 USDZExporter **不写这个属性**（遇到 DoubleSide 材质只会 console.warn 一句），
+ * 所以从它导出的文件里几何仍然是单面。补一组反向三角形不依赖导出器的支持，
+ * 而且反面可以挂自己的材质 —— 正反两面用不同的图，这是 doubleSided 做不到的。
+ */
 export function sideGeometry(
   i: number,
   sides: number,
   radius: number,
   length: number,
+  face: 'outer' | 'inner' = 'outer',
 ): THREE.BufferGeometry {
   const a = faceCenterAngle(i, sides);
   const half = Math.PI / sides;
@@ -64,10 +74,23 @@ export function sideGeometry(
   const uvs = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]);
 
   const g = new THREE.BufferGeometry();
+  if (face === 'outer') {
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    return g;
+  }
+
+  // 内面：同样四个角，法线翻过来、绕序反过来，这样只有从里面才看得见。
+  // u 也左右镜像 —— 从里面看这个面，左右本来就是反的，不镜像的话贴上去的图是反着的。
+  const inv = new Float32Array(12);
+  for (let k = 0; k < 12; k++) inv[k] = -normals[k];
+  const uvMirror = new Float32Array([1, 0, 0, 0, 0, 1, 1, 1]);
   g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-  g.setIndex([0, 1, 2, 0, 2, 3]);
+  g.setAttribute('normal', new THREE.BufferAttribute(inv, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uvMirror, 2));
+  g.setIndex([0, 2, 1, 0, 3, 2]);
   return g;
 }
 

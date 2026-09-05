@@ -9,7 +9,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import { clampTransform, type FaceTextureStore } from './faceTexture';
-import { MAX_SIDES, faceAspect, type FaceState, type FaceTransform, type Params } from './types';
+import { MAX_SIDES, faceAspect, innerSlot, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -62,6 +62,8 @@ export class PrismViewer {
 
   private sideMeshes: THREE.Mesh[] = [];
   private sideMaterials: THREE.MeshStandardMaterial[] = [];
+  private innerMaterials: THREE.MeshStandardMaterial[] = [];
+  private innerMeshes: THREE.Mesh[] = [];
   private capRight: THREE.Mesh;
   private capLeft: THREE.Mesh;
   private capRightMat: THREE.MeshStandardMaterial;
@@ -153,6 +155,22 @@ export class PrismViewer {
       const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
       mesh.name = `face_${i}`;
       mesh.userData.faceIndex = i;
+
+      // 同一个面的内面：法线朝里，挂它自己那张贴图。
+      // 正反两面各贴一张图（像卡片），所以必须是两个 mesh 两个材质 ——
+      // USD 的 doubleSided 只能让同一张图两面都看得见，做不到正反不同。
+      const innerMat = new THREE.MeshStandardMaterial({
+        map: store.textures[innerSlot(i)],
+        roughness: 0.9,
+        metalness: 0.0,
+      });
+      innerMat.name = `face_${i}_inner`;
+      const innerMesh = new THREE.Mesh(new THREE.BufferGeometry(), innerMat);
+      innerMesh.name = `face_${i}_inner`;
+      innerMesh.userData.faceIndex = innerSlot(i);
+      this.innerMaterials[i] = innerMat;
+      this.innerMeshes[i] = innerMesh;
+      this.prism.add(innerMesh);
       mesh.visible = false;
       this.sideMaterials.push(mat);
       this.sideMeshes.push(mesh);
@@ -242,7 +260,7 @@ export class PrismViewer {
     // faces 复制一份：拖拽时视口会就地改自己这份，不去动 React 的状态对象
     this.state = { ...next, faces: next.faces.slice() };
     const { params } = next;
-    const sig = `${params.sides}|${params.radius}|${params.length}`;
+    const sig = `${params.sides}|${params.radius}|${params.length}|${params.capMode}`;
     if (sig !== this.geomSig) {
       this.geomSig = sig;
       this.rebuildGeometry();
@@ -263,6 +281,15 @@ export class PrismViewer {
       }
       m.emissive.setRGB(lift, lift, lift);
       m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+
+      const im = this.innerMaterials[i];
+      const wantInnerEmissive = lift > 0 ? this.store.textures[innerSlot(i)] : null;
+      if (im.emissiveMap !== wantInnerEmissive) {
+        im.emissiveMap = wantInnerEmissive;
+        im.needsUpdate = true;
+      }
+      im.emissive.setRGB(lift, lift, lift);
+      im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
     }
     // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
     const showCaps = params.capMode !== 'none';
@@ -275,7 +302,18 @@ export class PrismViewer {
 
   private rebuildGeometry() {
     const { sides, radius, length } = this.state!.params;
+    // 「没有端面」时才需要内面：封了口本来就看不到里面
+    const showInner = this.state!.params.capMode === 'none';
     for (let i = 0; i < MAX_SIDES; i++) {
+      const inner = this.innerMeshes[i];
+      inner.geometry.dispose();
+      if (i < sides && showInner) {
+        inner.geometry = sideGeometry(i, sides, radius, length, 'inner');
+        inner.visible = true;
+      } else {
+        inner.geometry = new THREE.BufferGeometry();
+        inner.visible = false;
+      }
       const mesh = this.sideMeshes[i];
       mesh.geometry.dispose();
       if (i < sides) {
@@ -370,6 +408,15 @@ export class PrismViewer {
       }
       m.emissive.setRGB(lift, lift, lift);
       m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+
+      const im = this.innerMaterials[i];
+      const wantInner = lift > 0 ? im.map ?? this.store.textures[innerSlot(i)] : null;
+      if (im.emissiveMap !== wantInner) {
+        im.emissiveMap = wantInner;
+        im.needsUpdate = true;
+      }
+      im.emissive.setRGB(lift, lift, lift);
+      im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
     }
   }
 

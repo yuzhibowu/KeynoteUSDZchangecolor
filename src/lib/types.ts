@@ -1,6 +1,17 @@
 import { DEFAULT_COMP, type ColorComp } from './color';
 
 export const MAX_SIDES = 12;
+
+/**
+ * 一个面有正反两张贴图，所以贴图槽位是面数的两倍：
+ * 槽位 i 是第 i 个面的**外面**，槽位 MAX_SIDES + i 是同一个面的**内面**。
+ *
+ * 内面只在「没有端面」时看得见 —— 封了口就看不到里面，也就没必要贴。
+ */
+export const MAX_SLOTS = MAX_SIDES * 2;
+export const innerSlot = (face: number) => MAX_SIDES + face;
+export const isInner = (slot: number) => slot >= MAX_SIDES;
+export const faceOfSlot = (slot: number) => slot % MAX_SIDES;
 export const MIN_SIDES = 3;
 
 /** 单个侧面的贴图状态。所有用户调整只影响烘焙参数，永远不改 UV。 */
@@ -99,7 +110,7 @@ export const DEFAULT_PARAMS: Params = {
 };
 
 export function createFaces(): FaceState[] {
-  return Array.from({ length: MAX_SIDES }, () => ({
+  return Array.from({ length: MAX_SLOTS }, () => ({
     ...DEFAULT_TRANSFORM,
     source: null,
     sourceKey: 0,

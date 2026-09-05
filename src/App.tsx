@@ -13,6 +13,9 @@ import {
   DEFAULT_PARAMS,
   DEFAULT_TRANSFORM,
   MAX_SIDES,
+  MAX_SLOTS,
+  faceOfSlot,
+  isInner,
   createFaces,
   faceAspect,
   type FaceState,
@@ -95,7 +98,7 @@ export default function App() {
       setFaces((prev) => {
         const next = prev.slice();
         for (const d of decoded) {
-          if (d.index < 0 || d.index >= MAX_SIDES) continue;
+          if (d.index < 0 || d.index >= MAX_SLOTS) continue;
           next[d.index] = { ...next[d.index], source: d.bmp, sourceKey: sourceKey.current++, sourceName: d.name };
         }
         return next;
@@ -138,7 +141,7 @@ export default function App() {
       comp: params.color,
       compensate: false,
     };
-    for (let i = 0; i < MAX_SIDES; i++) store.bake(i, next[i], opts);
+    for (let i = 0; i < MAX_SLOTS; i++) store.bake(i, next[i], opts);
     if (changed) setFaces(next);
   }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.color, store]);
 
@@ -230,9 +233,11 @@ export default function App() {
     if (loaded.length === 0) return;
     setFaces((prev) => {
       const next = prev.slice();
+      // 多张图依次往后排时，只在同一侧（正面或反面）里排，不跨到另一侧去
+      const limit = isInner(startIndex) ? MAX_SLOTS : MAX_SIDES;
       loaded.forEach((it, k) => {
         const idx = startIndex + k;
-        if (idx >= MAX_SIDES) return;
+        if (idx >= limit) return;
         void saveFace(idx, it.file, it.name);
         next[idx] = {
           ...next[idx],
@@ -244,9 +249,10 @@ export default function App() {
       });
       return next;
     });
-    setSelected(Math.min(startIndex, MAX_SIDES - 1));
-    const overflow = startIndex + loaded.length - MAX_SIDES;
-    setStatus(overflow > 0 ? `有 ${overflow} 张图超出 12 个面，已忽略` : null);
+    const limit = isInner(startIndex) ? MAX_SLOTS : MAX_SIDES;
+    setSelected(Math.min(startIndex, limit - 1));
+    const overflow = startIndex + loaded.length - limit;
+    setStatus(overflow > 0 ? `有 ${overflow} 张图没地方放，已忽略` : null);
   }, []);
 
   const fillTestBlocks = useCallback(async () => {
@@ -314,6 +320,7 @@ export default function App() {
   }, [faces, params, store]);
 
   const face = selected === null ? null : faces[selected];
+  void faceOfSlot;
 
   return (
     <div className="app">
@@ -338,6 +345,7 @@ export default function App() {
           sides={params.sides}
           selected={selected}
           tick={tick}
+          showInner={params.capMode === 'none'}
           onSelect={(i) => {
             setSelected(i);
             // 从底部选面就顺手转到正对着它 —— 否则改缩放、旋转在预览里根本看不见

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
-import { MAX_SIDES, type FaceState, type FaceTransform, type Resolution } from './types';
+import { MAX_SLOTS, faceOfSlot, innerSlot, type FaceState, type FaceTransform, type Resolution } from './types';
 
 export type BakeOptions = {
   aspect: number;
@@ -10,6 +10,8 @@ export type BakeOptions = {
   bgTransparent?: boolean;
   /** 当前边数 —— 没贴图的面按它算占位色的色相 */
   sides: number;
+  /** 有没有内面（「没有端面」时才有） */
+  withInner?: boolean;
   comp: ColorComp;
   /** true = 把颜色预补偿烘进去（只有导出时才开） */
   compensate: boolean;
@@ -137,7 +139,7 @@ export class FaceTextureStore {
   private listeners = new Set<(index: number) => void>();
 
   constructor() {
-    for (let i = 0; i < MAX_SIDES; i++) {
+    for (let i = 0; i < MAX_SLOTS; i++) {
       const canvas = document.createElement('canvas');
       canvas.width = 1024;
       canvas.height = 1024;
@@ -218,7 +220,7 @@ export class FaceTextureStore {
     // 那样整张贴图会变黑，所以这里先校验。
     if (!face.source) {
       // 还没贴图：整面铺占位色，一眼能分清哪个面是哪个
-      const c = placeholderColor(index, opts.sides);
+      const c = placeholderColor(faceOfSlot(index), opts.sides);
       ctx.fillStyle = useComp ? applyToHex(c, opts.comp) : c;
       ctx.fillRect(0, 0, w, h);
     } else if (!opts.bgTransparent) {
@@ -284,7 +286,7 @@ export class FaceTextureStore {
    */
   bakeAll(faces: FaceState[], opts: BakeOptions, force = false): number {
     let n = 0;
-    for (let i = 0; i < MAX_SIDES; i++) {
+    for (let i = 0; i < MAX_SLOTS; i++) {
       if (this.bake(i, faces[i], opts, force)) n++;
     }
     return n;
@@ -306,8 +308,13 @@ export class FaceTextureStore {
     // 实测是漂亮的线性：4 面时 21028 字节、12 面时 54958 字节 —— 每多一个面约 4.2 KB
     // （每个面各有一份材质定义和一个几何文件），基础约 4 KB。
     // 原来这里拍了个 4096 的常数，12 面时会少估 50 KB。
-    let total = USDA_BASE_BYTES + sides * USDA_PER_FACE_BYTES;
-    for (let i = 0; i < sides; i++) {
+    // 没有端面时每个面有正反两张贴图，都要算进去
+    const slots: number[] = [];
+    for (let i = 0; i < sides; i++) slots.push(i);
+    if (opts.withInner) for (let i = 0; i < sides; i++) slots.push(innerSlot(i));
+
+    let total = USDA_BASE_BYTES + slots.length * USDA_PER_FACE_BYTES;
+    for (const i of slots) {
       this.paint(probe, i, faces[i], opts, w, h, useComp);
       total += await new Promise<number>((resolve) => {
         probe.toBlob((b) => resolve(b ? b.size : 0), 'image/png', 1);

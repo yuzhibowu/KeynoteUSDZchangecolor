@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import { MAX_SIDES, type FaceState } from '../lib/types';
+import { innerSlot, MAX_SIDES, type FaceState } from '../lib/types';
 
 function Thumb({ store, index, tick }: { store: FaceTextureStore; index: number; tick: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -30,6 +30,8 @@ type Props = {
   sides: number;
   selected: number | null;
   tick: number;
+  /** 没有端面时才有内面可贴 —— 封了口本来就看不到里面 */
+  showInner: boolean;
   onSelect: (i: number) => void;
   onFiles: (files: File[], faceIndex: number) => void;
 };
@@ -40,18 +42,15 @@ type Props = {
  * 每一格既是「选中这个面」，也是「给这个面导入图片」—— 右下角那个加号点了就开文件框，
  * 从访达直接拖图片到格子上也行。所以不需要再单独放一个「导入图片」按钮。
  */
-export function FaceDock({ store, faces, sides, selected, tick, onSelect, onFiles }: Props) {
+export function FaceDock({ store, faces, sides, selected, tick, showInner, onSelect, onFiles }: Props) {
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const hidden: number[] = [];
   for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
 
-  return (
-    <div className="dock-wrap">
-      <div className="dock">
-        {Array.from({ length: sides }, (_, i) => (
+  const cell = (slot: number, faceIndex: number) => (
           <div
-            key={i}
-            className={`face-cell${selected === i ? ' on' : ''}`}
+            key={slot}
+            className={`face-cell${selected === slot ? ' on' : ''}`}
             onDragOver={(e) => {
               if (!e.dataTransfer.types.includes('Files')) return;
               e.preventDefault();
@@ -65,31 +64,33 @@ export function FaceDock({ store, faces, sides, selected, tick, onSelect, onFile
               if (files.length === 0) return;
               e.preventDefault();
               e.stopPropagation();
-              onFiles(files, i);
+              onFiles(files, slot);
             }}
           >
             <button
               type="button"
               className="face-pick"
-              aria-pressed={selected === i}
-              aria-label={`第 ${i} 个面${faces[i].sourceName ? '：' + faces[i].sourceName : ''}`}
-              onClick={() => onSelect(i)}
-              title={faces[i].sourceName ?? `第 ${i} 个面`}
+              aria-pressed={selected === slot}
+              aria-label={`第 ${faceIndex} 个面的${slot === faceIndex ? '正面' : '反面'}${
+                faces[slot].sourceName ? '：' + faces[slot].sourceName : ''
+              }`}
+              onClick={() => onSelect(slot)}
+              title={faces[slot].sourceName ?? `第 ${faceIndex} 个面`}
             >
-              <Thumb store={store} index={i} tick={tick} />
+              <Thumb store={store} index={slot} tick={tick} />
             </button>
             <button
               type="button"
               className="face-add"
-              aria-label={`给第 ${i} 个面导入图片`}
+              aria-label={`给第 ${faceIndex} 个面导入图片`}
               title="导入图片"
-              onClick={() => inputs.current[i]?.click()}
+              onClick={() => inputs.current[slot]?.click()}
             >
               +
             </button>
             <input
               ref={(el) => {
-                inputs.current[i] = el;
+                inputs.current[slot] = el;
               }}
               type="file"
               accept="image/*"
@@ -98,13 +99,25 @@ export function FaceDock({ store, faces, sides, selected, tick, onSelect, onFile
               onChange={(e) => {
                 const files = [...(e.target.files ?? [])];
                 e.target.value = '';
-                if (files.length) onFiles(files, i);
+                if (files.length) onFiles(files, slot);
               }}
             />
-            <i>{i}</i>
+            <i>{faceIndex}</i>
           </div>
-        ))}
+  );
+
+  return (
+    <div className="dock-wrap">
+      <div className="dock-row">
+        {showInner && <span className="dock-label">正面</span>}
+        <div className="dock">{Array.from({ length: sides }, (_, i) => cell(i, i))}</div>
       </div>
+      {showInner && (
+        <div className="dock-row">
+          <span className="dock-label">反面</span>
+          <div className="dock">{Array.from({ length: sides }, (_, i) => cell(innerSlot(i), i))}</div>
+        </div>
+      )}
       {hidden.length > 0 && (
         <p className="dock-note">第 {hidden.join('、')} 个面的贴图还在内存里，把边数加回去就会回来</p>
       )}
