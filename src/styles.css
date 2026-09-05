@@ -398,3 +398,20 @@ button.drag-over,
 
 .verify { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .verify .chart-drop { margin-bottom: 6px; }
+
+/* 校准档存取 */
+.profile-io {
+  margin: 14px 0 10px;
+  padding: 12px;
+  border: 1px solid var(--line, #2a2a2e);
+  border-radius: 6px;
+}
+.profile-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.profile-btns > * {
+  flex: 1;
+  margin: 0;
+}

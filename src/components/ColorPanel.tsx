@@ -4,6 +4,7 @@ import { applyToHex, applyToImageData, DEFAULT_COMP, type ColorComp } from '../l
 /** 累积的实测样本上限 —— 局部修正建表是 n³ 的，攒太多会拖慢导出 */
 const MAX_SAMPLES = 400;
 import { COLS, fitChart, sampleChart, type Sample } from '../lib/chart';
+import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
 
 type Props = {
@@ -172,8 +173,25 @@ function colorClusters(bmp: ImageBitmap): { c: [number, number, number]; n: numb
 const dist = (a: number[], b: number[]) =>
   Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
 
-function ChartDrop({ onPick, label }: { onPick: (f: File) => void; label: string }) {
+/**
+ * 可以点、也可以把文件拖上去的按钮。
+ * `accept` 既给文件选择框用，也用来筛拖进来的文件 —— 拖错类型的文件应当直接忽略，
+ * 而不是交给下游去报一个看不懂的错。
+ */
+function ChartDrop({
+  onPick,
+  label,
+  accept = 'image/*',
+}: {
+  onPick: (f: File) => void;
+  label: string;
+  accept?: string;
+}) {
   const input = useRef<HTMLInputElement>(null);
+  const wanted = (f: File) =>
+    accept === 'image/*'
+      ? f.type.startsWith('image/')
+      : f.type === 'application/json' || f.name.toLowerCase().endsWith('.json');
   return (
     <button
       className="chart-drop"
@@ -187,13 +205,24 @@ function ChartDrop({ onPick, label }: { onPick: (f: File) => void; label: string
       onDragLeave={(e) => e.currentTarget.classList.remove('drag-over')}
       onDrop={(e) => {
         e.currentTarget.classList.remove('drag-over');
-        const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/'));
+        const f = [...e.dataTransfer.files].find(wanted);
         if (!f) return;
         e.preventDefault();
         onPick(f);
       }}
     >
       {label}
+      <input
+        ref={input}
+        type="file"
+        accept={accept}
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) onPick(f);
+        }}
+      />
     </button>
   );
 }
@@ -284,6 +313,45 @@ export function ColorPanel({
     } catch (e) {
       setMsg(`识别失败：${e instanceof Error ? e.message : String(e)}`);
     }
+  };
+
+  /** 把当前校准档存成文件 —— 标定是有成本的，成果不该锁在一个浏览器里 */
+  const onExportProfile = () => {
+    if (!comp.matrix) return setMsg('现在没有校准数据可以导出');
+    const blob = new Blob([JSON.stringify(serializeProfile(comp), null, 1)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = profileFileName(comp);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setMsg(`已导出校准档 · ${(comp.samples ?? []).length} 个实测点`);
+  };
+
+  /** 装回一份校准档。补光 / 灯光开关跟着档走 —— 它们和校准数据是绑定的 */
+  const onImportProfile = async (file: File) => {
+    const res = parseProfile(await file.text());
+    if (!res.ok) return setMsg(`导入失败：${res.reason}`);
+    patch(res.comp);
+    const notes: string[] = [];
+    if (res.unlit !== null && res.unlit !== unlit) {
+      setUnlit(res.unlit);
+      notes.push(`灯光开关已跟着改成「${res.unlit ? '关掉' : '开着'}」`);
+    }
+    if (res.lift !== null && Math.abs(res.lift - lift) > 0.001) {
+      setLift(res.lift);
+      notes.push(`补光已跟着调到 ${Math.round(res.lift * 100)}%`);
+    }
+    setSamples(null);
+    setMsg(
+      `已导入校准档 · ${res.sampleCount} 个实测点` +
+        (res.comp.calibratedAt ? ` · 标定于 ${res.comp.calibratedAt}` : '') +
+        (notes.length ? ` · ${notes.join('，')}` : ''),
+    );
   };
 
   /**
@@ -419,6 +487,18 @@ export function ColorPanel({
 
         {msg && <p className={`hint tight${comp.matrix ? '' : ' warn'}`}>{msg}</p>}
         {samples && <Swatches samples={samples} />}
+        <div className="profile-io">
+          <span className="hint tight">
+            <b>校准档存取。</b>标定结果只存在这个浏览器里 —— 换电脑、换浏览器、清一次数据就没了。
+            存成文件就能带走，也能发给别人直接用。
+          </span>
+          <div className="profile-btns">
+            <button className="ghost" onClick={onExportProfile}>
+              导出校准档
+            </button>
+            <ChartDrop onPick={onImportProfile} label="导入校准档" accept="application/json,.json" />
+          </div>
+        </div>
         <button className="ghost" onClick={() => patch(DEFAULT_COMP)}>
           恢复内置校准
         </button>
