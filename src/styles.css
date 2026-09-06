@@ -94,6 +94,9 @@ button, input, select { font: inherit; color: inherit; }
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 16px 18px;
+  /* 参数不多的时候下面会空一大片，把导出那一节顶到底部去 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ================= 分组 ================= */
@@ -345,6 +348,8 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .check input { width: 15px; height: 15px; accent-color: var(--ink); }
 .check span { font-size: 13px; font-weight: 680; color: var(--label); }
 .check.switch span { font-weight: 780; color: var(--ink); }
+/* 紧跟在目标 App 那排按钮下面的勾选项，要留出明显的空 —— 贴着按钮很挤 */
+.check.after-opts { margin-top: 15px; }
 
 details.tweaks { margin-top: 12px; }
 details.tweaks > summary {
@@ -407,7 +412,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   width: 34px;
   height: 26px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: none; /* 不要灰框，色块自己就是边界 */
   background: none;
   cursor: pointer;
 }
@@ -415,7 +420,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 
 /* ================= 导出区 ================= */
 
-.export-block { display: flex; flex-direction: column; gap: 9px; }
+.export-block { display: flex; flex-direction: column; gap: 9px; margin-top: auto; }
 .export-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 .export-meta b { font-weight: 650; color: var(--label); font-variant-numeric: tabular-nums; }
 

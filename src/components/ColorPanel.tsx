@@ -435,20 +435,15 @@ export function ColorPanel({
         ))}
       </div>
 
-      <label className="check switch">
+      <label className="check switch after-opts">
         <input type="checkbox" checked={comp.on} onChange={(e) => patch({ on: e.target.checked })} />
-        <span>{label} 颜色优化</span>
+        <span>{label} 偏色抵消</span>
       </label>
-      {comp.matrix ? (
-        <p className="hint tight">导出时自动抵消 {label} 的偏色{builtIn ? '，已经内置好了，不用管。' : '。'}</p>
-      ) : (
-        <p className="hint tight">
-          {label} 还没校准过，导出的就是原图。要做的话：展开下面「重新校准」，导出色卡棱柱 →
-          拖进 {label} → 正对着截一张图 → 传回来。
+      {/* 勾选项下面不再解释 —— 怎么校准展开「校准」那一栏里说 */}
+      {comp.on && !comp.matrix && (
+        <p className="hint warn tight">
+          {builtIn ? '没有校准数据，现在开着也不起作用 —— 展开下面点「恢复内置校准」。' : `还没校准过 ${label}，导出的就是原图。`}
         </p>
-      )}
-      {comp.on && !comp.matrix && builtIn && (
-        <p className="hint warn tight">没有校准数据，现在开着也不起作用 —— 展开下面点「恢复内置校准」。</p>
       )}
 
       <details className="tweaks">
