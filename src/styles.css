@@ -712,6 +712,21 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 /* 选中态：只把这一格的边线变深。不画角点、不加粗框 —— 点了哪个面，
    模型已经转到正对它了，dock 这边只要能看出「当前是这一格」就够。 */
 .face-cell.on { border-color: var(--ink); }
+/* 设成「不显示」的面：压暗，再打一道斜杠，一眼看得出这一格是关着的 */
+.face-cell.off canvas { opacity: 0.3; }
+.face-cell.off::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 1px),
+    var(--muted) calc(50% - 1px),
+    var(--muted) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+  pointer-events: none;
+}
 
 /* dock 分正反两行 */
 .dock-row { display: flex; align-items: center; gap: 10px; justify-content: center; }

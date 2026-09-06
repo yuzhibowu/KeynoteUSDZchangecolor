@@ -292,7 +292,13 @@ export default function App() {
     const id = setTimeout(() => {
       save(
         params,
-        faces.map((f) => ({ offsetX: f.offsetX, offsetY: f.offsetY, scale: f.scale, rotation: f.rotation })),
+        faces.map((f) => ({
+          offsetX: f.offsetX,
+          offsetY: f.offsetY,
+          scale: f.scale,
+          rotation: f.rotation,
+          hidden: !!f.hidden,
+        })),
       );
     }, 400);
     return () => clearTimeout(id);

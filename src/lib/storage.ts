@@ -8,7 +8,7 @@ import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, TARGETS, defaultProfiles,
  */
 const KEY = 'prism-usdz-exporter/v5';
 
-type Persisted = { params: Params; transforms: FaceTransform[] };
+type Persisted = { params: Params; transforms: (FaceTransform & { hidden?: boolean })[] };
 
 /**
  * 把存档里的一份校准档补全。
@@ -28,7 +28,7 @@ function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorCom
 }
 
 /** 只存参数和 face transform，图片本体不存（太大） */
-export function save(params: Params, transforms: FaceTransform[]) {
+export function save(params: Params, transforms: (FaceTransform & { hidden?: boolean })[]) {
   try {
     localStorage.setItem(KEY, JSON.stringify({ params, transforms } satisfies Persisted));
   } catch {

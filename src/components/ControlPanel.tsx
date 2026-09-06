@@ -95,6 +95,22 @@ export function ControlPanel({
       </div>
 
       <div className="side-body">
+        {/* 逐面的「不显示」。USD 是单面渲染的，藏掉之后从这一侧看过去是空的、
+            能看穿到里面，转过去又出现 —— 不是透明，是那个面真的不存在。
+            导出的 usdz 里也一样不会有这个面。 */}
+        {face && (
+          <section className="bare">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={!!face.hidden}
+                onChange={(e) => patchFace({ hidden: e.target.checked })}
+              />
+              <span>这一面不显示</span>
+            </label>
+          </section>
+        )}
+
         {/* 没选中带图的面就整段不显示 —— 重置/移除/填充测试色块那三个按钮
             已经挪到预览区右下角，这里只留跟「这张图怎么摆」有关的东西 */}
         {face && hasImage && (

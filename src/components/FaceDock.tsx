@@ -67,7 +67,7 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
   const cell = (slot: number, faceIndex: number) => (
           <div
             key={slot}
-            className={`face-cell${selected === slot ? ' on' : ''}`}
+            className={`face-cell${selected === slot ? ' on' : ''}${faces[slot].hidden ? ' off' : ''}`}
             onDragOver={(e) => {
               if (!e.dataTransfer.types.includes('Files')) return;
               e.preventDefault();
@@ -92,7 +92,7 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
                 faces[slot].sourceName ? '：' + faces[slot].sourceName : ''
               }`}
               onClick={() => onSelect(slot)}
-              title={faces[slot].sourceName ?? nameOf(slot, faceIndex)}
+              title={`${faces[slot].sourceName ?? nameOf(slot, faceIndex)}${faces[slot].hidden ? '（不显示）' : ''}`}
             >
               <Thumb store={store} index={slot} tick={tick} />
             </button>

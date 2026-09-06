@@ -329,12 +329,32 @@ export class PrismViewer {
       im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
     }
     // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
+    // （导出器走的是 traverseVisible，visible = false 的 mesh 根本不会被遍历到）
     const showCaps = params.modelType === 'prism' && params.capMode !== 'none';
-    this.capRight.visible = showCaps;
-    this.capLeft.visible = showCaps;
+    this.capRight.visible = showCaps && !next.faces[CAP_RIGHT]?.hidden;
+    this.capLeft.visible = showCaps && !next.faces[CAP_LEFT]?.hidden;
+    this.applyHidden();
     this.applyCapColors(false);
 
     this.refreshOutline();
+  }
+
+  /**
+   * 逐面的「不显示」开关。
+   *
+   * 藏掉一个面之后，从那一侧看过去就是空的、能看穿到里面 —— 这是 USD 单面渲染的
+   * 自然结果，不是透明。导出时同样有效：USDZExporter 走 traverseVisible，
+   * visible = false 的 mesh 连写都不会写进文件。
+   *
+   * 只在几何本来就该出现的面上生效：几何重建那边已经把不该有的面藏好了，
+   * 这里只做「再藏一层」，绝不会把藏好的又打开。
+   */
+  private applyHidden() {
+    const st = this.state!;
+    for (let i = 0; i < MAX_SIDES; i++) {
+      if (st.faces[i]?.hidden) this.sideMeshes[i].visible = false;
+      if (st.faces[innerSlot(i)]?.hidden) this.innerMeshes[i].visible = false;
+    }
   }
 
   private rebuildGeometry() {

@@ -50,6 +50,8 @@ export type FaceTransform = {
 };
 
 export type FaceState = FaceTransform & {
+  /** 这一面不渲染。USD 是单面渲染的，藏掉之后从这一侧看过去就是空的、能看穿 */
+  hidden?: boolean;
   source: ImageBitmap | null;
   sourceKey: number; // 图片身份标识，用于烘焙缓存判定
   sourceName: string | null;
