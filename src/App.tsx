@@ -326,11 +326,13 @@ export default function App() {
         setLastFile(null);
         setStatus(`已保存 ${name} · ${formatBytes(blob.size)}${note}`);
       } else {
-        // 没有保存对话框的浏览器：退回下载。浏览器有时会静默拦掉连续下载，
-        // 所以把这一份留着，用户点「再存一次」就是一次全新的手势，通常就放行了。
+        // 没有保存对话框的浏览器（Safari 就没有）：退回下载。
+        // 一定要说清楚文件去哪了 —— 只说「已导出」，用户会以为能自己选位置，
+        // 结果满世界找不到文件。浏览器有时还会静默拦掉连续下载，
+        // 所以把这一份留着，点「再存一次」就是一次全新的手势，通常就放行了。
         download(blob, name);
         setLastFile({ blob, name });
-        setStatus(`已导出 ${name} · ${formatBytes(blob.size)}${note}`);
+        setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)}${note}`);
       }
       // 烘回不带补偿的版本，视口继续显示「Keynote 里应有的样子」
       store.bakeAll(faces, { ...base, compensate: false });
