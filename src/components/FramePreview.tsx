@@ -26,13 +26,16 @@ export function FramePreview({
     const el = ref.current;
     if (!el) return;
     const src = store.canvases[index];
-    const box = el.clientWidth || 260;
-    const k = Math.min(box / src.width, (box * 0.75) / src.height);
+    // 按原比例摆，别拉成方的：宽高都显式写死。
+    // CSS 里如果留着 width:100%，画布会被横向撑满，画进去的内容就变形了。
+    const box = el.parentElement?.clientWidth || 260;
+    const k = Math.min(box / src.width, 300 / src.height);
     const w = Math.max(1, Math.round(src.width * k));
     const h = Math.max(1, Math.round(src.height * k));
     const dpr = Math.min(2, window.devicePixelRatio);
     el.width = w * dpr;
     el.height = h * dpr;
+    el.style.width = `${w}px`;
     el.style.height = `${h}px`;
     const ctx = el.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -42,6 +45,7 @@ export function FramePreview({
   }, [store, index, tick]);
 
   return (
+    <div className="frame-wrap">
     <canvas
       ref={ref}
       className="frame-preview"
@@ -67,5 +71,6 @@ export function FramePreview({
         drag.current = null;
       }}
     />
+    </div>
   );
 }

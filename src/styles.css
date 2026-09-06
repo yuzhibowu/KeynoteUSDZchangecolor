@@ -396,9 +396,11 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .hint.warn { color: var(--danger); }
 .hint.tight { margin: 0; }
 /* 侧栏取景框：唯一能用鼠标挪图的地方 */
+/* 外层负责给宽度，画布自己按原比例定尺寸 —— 不能给画布 width:100%，会拉变形 */
+.frame-wrap { display: block; width: 100%; }
 .frame-preview {
   display: block;
-  width: 100%;
+  margin: 0 auto;
   background: var(--track);
   border: 1px solid var(--line);
   cursor: grab;

@@ -127,19 +127,21 @@ export const MATERIALS = [
   { id: 'matte', label: '哑光', roughness: 0.85, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
   { id: 'plastic', label: '亮面塑料', roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, ior: 1.5 },
   // 亮面金属：不带色，就是一块镜面金属。饼饼说这个质感好，删了又加回来
-  { id: 'metal', label: '亮面金属', roughness: 0.18, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 1.3 },
-  { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 1.1 },
+  { id: 'metal', label: '亮面金属', roughness: 0.18, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 0.85 },
+  { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 0.7 },
 
   // 四种金属。粗糙度刻意留在 0.3 上下 —— 再低高光就是一个又硬又正的亮斑，很刺眼；
-  // 散开一点才像真金属。env 是预览里的环境反射强度，太高也会刺眼。
+  // 散开一点才像真金属。
+  // env 只影响**预览**的环境反射强度。它调低了不是为了好看，是为了别骗人 ——
+  // Keynote 的环境光比我们预览里这套暗得多，预览开太亮会让人以为导出去也这么强。
   // tint 是金属的基础反射色，会**乘在贴图上** ——
   // 金属的颜色本来就来自它自己的反射率，这是唯一会碰颜色的预设，
   // 也因此这几档下面那套偏色抵消不再准（金属的颜色主要来自环境反射，不是漫反射）。
   // env 只影响预览的亮度，不会写进 usdz。
-  { id: 'gold', label: '金', roughness: 0.34, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#ffc356', env: 1.15 },
-  { id: 'silver', label: '银', roughness: 0.3, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f8f5ea', env: 1.15 },
-  { id: 'copper', label: '铜', roughness: 0.36, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f4a38a', env: 1.15 },
-  { id: 'platinum', label: '铂', roughness: 0.32, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#dcd8d0', env: 1.15 },
+  { id: 'gold', label: '金', roughness: 0.34, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#ffc356', env: 0.75 },
+  { id: 'silver', label: '银', roughness: 0.3, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f8f5ea', env: 0.75 },
+  { id: 'copper', label: '铜', roughness: 0.36, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f4a38a', env: 0.75 },
+  { id: 'platinum', label: '铂', roughness: 0.32, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#dcd8d0', env: 0.75 },
 ] as const;
 export type MaterialId = (typeof MATERIALS)[number]['id'];
 export type MaterialSpec = {
