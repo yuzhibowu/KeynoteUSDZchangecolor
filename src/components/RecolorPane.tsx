@@ -72,11 +72,15 @@ export function RecolorPane({
               />
             </div>
           )}
+          {/* 模型渲染不出来的时候，才退回逐张贴图的对比 —— 正常情况下
+              两个模型视口就够了，贴图那一堆图反而喧宾夺主 */}
           {modelError && (
             <p className="hint warn">
-              这个文件渲染不了（{modelError}），下面只能给逐张贴图的对比。
+              这个文件渲染不了（{modelError}），只能给逐张贴图的对比。
             </p>
           )}
+          {modelError && (
+            <>
           {/* 比的是「放进去之后长什么样」，不是文件本身的样子 —— 文件里那张
               补偿过的图又暗又怪，本来就不是给人看的 */}
           {report.previews.map((p) => (
@@ -113,11 +117,29 @@ export function RecolorPane({
             </div>
           )}
 
+            </>
+          )}
+
+          <div className="derived">
+            <div>
+              <span>补偿的贴图</span>
+              <b>{report.textures} 张</b>
+            </div>
+            <div>
+              <span>补偿的纯色</span>
+              <b>{report.colors} 处</b>
+            </div>
+            <div>
+              <span>补上的自发光</span>
+              <b>{report.emissive} 处</b>
+            </div>
+          </div>
+
           <p className="hint">
-            这三张比的是「放进{targetName}之后长什么样」，不是文件本身的样子。
-            中间那张就是你现在遇到的偏色；右边那张应该和左边的原图基本一致 ——
-            那就是校正做到的事。（新文件里的贴图本身看着会更暗更闷，
-            那是算好了要被{targetName}提亮一道的半成品，不用管它。）
+            两边比的是「放进{targetName}之后长什么样」，不是文件本身的样子。
+            左边是你现在遇到的偏色，右边应该回到你原图的颜色 —— 那就是校正做到的事。
+            （新文件里的贴图本身看着会更暗更闷，那是算好了要被{targetName}
+            提亮一道的半成品，不用管它。）
           </p>
 
           {report.binary.length > 0 && (

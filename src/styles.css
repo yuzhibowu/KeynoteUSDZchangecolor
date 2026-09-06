@@ -202,6 +202,9 @@ button, input, select { font: inherit; color: inherit; }
 }
 .brand {
   display: inline-block;
+  /* 永远靠右。别指望 space-between —— 左边那个下拉在颜色校正模式下是隐藏的，
+     只剩品牌一个孩子时它就滑到左边去了 */
+  margin-left: auto;
   font-size: clamp(12.75px, 1.05vw, 18px);
   font-weight: 850;
   line-height: 1.1;
