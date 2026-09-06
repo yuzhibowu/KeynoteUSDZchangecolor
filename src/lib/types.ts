@@ -121,8 +121,8 @@ export const MATERIALS = [
   { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, opacity: 1, ior: 1.5 },
   { id: 'metal', label: '亮面金属', roughness: 0.15, metalness: 1, clearcoat: 0, opacity: 1, ior: 1.5 },
   { id: 'translucent', label: '半透明', roughness: 0.4, metalness: 0, clearcoat: 0, opacity: 0.6, ior: 1.45 },
-  { id: 'glass', label: '玻璃（近似）', roughness: 0.02, metalness: 0, clearcoat: 1, opacity: 0.25, ior: 1.5 },
-  { id: 'frosted', label: '磨砂玻璃（近似）', roughness: 0.55, metalness: 0, clearcoat: 0, opacity: 0.45, ior: 1.5 },
+  // 玻璃和磨砂玻璃拿掉了：USDZ 没有透射通道，做出来只是「半透明 + 折射率」，
+  // 不会有真正的折射，反而容易让人以为是玻璃。要半透明就用上面那档。
 ] as const;
 export type MaterialId = (typeof MATERIALS)[number]['id'];
 export const materialOf = (id: MaterialId) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];

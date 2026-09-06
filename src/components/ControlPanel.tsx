@@ -218,11 +218,6 @@ export function ControlPanel({
                   </button>
                 )}
               </div>
-              {(params.material === 'glass' || params.material === 'frosted') && (
-                <p className="hint tight">
-                  USDZ 没有透射通道，玻璃只能用「半透明 + 折射率」近似 —— 不会有真正的折射。
-                </p>
-              )}
             </div>
           </section>
         )}

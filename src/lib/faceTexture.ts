@@ -300,6 +300,10 @@ export class FaceTextureStore {
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // 每次都先擦干净。改画布尺寸会顺带清空，但尺寸没变时不会 ——
+    // 而「底色留透明」这一路不铺底色，图又可能盖不满（转过角度、换了比例），
+    // 上一次的像素就留在那儿，怎么调都去不掉。
+    ctx.clearRect(0, 0, w, h);
     // 不留透明：Keynote 对带 alpha 的贴图渲染行为不好预测。
     // fillStyle 赋一个非法字符串时浏览器会「静默忽略」，保留上一次的值（默认是黑）——
     // 那样整张贴图会变黑，所以这里先校验。
