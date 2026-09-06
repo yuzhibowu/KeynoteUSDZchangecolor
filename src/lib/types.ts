@@ -32,9 +32,9 @@ export type Resolution = 1280 | 1920 | 2560 | 3840;
 
 /** 分辨率按视频档位给，比 512/1024/2048 好懂 */
 export const RESOLUTIONS: { value: Resolution; label: string }[] = [
-  { value: 1920, label: '1080P' },
-  { value: 1280, label: '720P' },
   { value: 2560, label: '2K' },
+  { value: 1280, label: '720P' },
+  { value: 1920, label: '1080P' },
   { value: 3840, label: '4K' },
 ];
 
@@ -49,20 +49,32 @@ export const fromPx = (px: number) => px / PX_PER_METER;
 /** 端面：实心色板，或者干脆不要（镂空成一根管子） */
 export type CapMode = 'solid' | 'none';
 
-/** 常见画面比例，长度滑块拖到附近会吸附过去 */
-export const ASPECT_SNAPS: { ratio: number; label: string }[] = [
-  { ratio: 9 / 16, label: '9:16' },
-  { ratio: 3 / 4, label: '3:4' },
-  { ratio: 1, label: '1:1' },
-  { ratio: 4 / 3, label: '4:3' },
+/** 面的宽高比，直接从菜单里选。默认 16:9 排第一 */
+export const ASPECTS: { ratio: number; label: string }[] = [
   { ratio: 16 / 9, label: '16:9' },
+  { ratio: 4 / 3, label: '4:3' },
+  { ratio: 1, label: '1:1' },
+  { ratio: 3 / 4, label: '3:4' },
+  { ratio: 9 / 16, label: '9:16' },
   { ratio: 2, label: '2:1' },
 ];
 
+/**
+ * 由「面有多宽」和「什么比例」反推外接圆半径。
+ *
+ * 原来让用户直接调「粗细（外接圆半径）」，那是几何量，跟他手上的图对不上号 ——
+ * 做图的人想的是「这个面多宽、什么比例」。所以现在宽度和比例是主控，半径是算出来的。
+ */
+export function radiusFor(width: number, aspect: number, sides: number): number {
+  const chord = width / aspect;
+  return chord / (2 * Math.sin(Math.PI / sides));
+}
+
 export type Params = {
   sides: number;
-  radius: number; // 外接圆半径，米
-  length: number; // 棱柱长度（沿 X 轴），米
+  radius: number; // 外接圆半径，米。由 width 和 aspect 算出来，不直接调
+  length: number; // 面的宽度 = 棱柱沿 X 轴的长度，米
+  aspect: number; // 面的宽高比，从菜单里选
   capMode: CapMode; // 端面：实心 or 镂空
   capColorRight: string; // +X 端面
   capColorLeft: string; // -X 端面
@@ -95,13 +107,14 @@ export const DEFAULT_TRANSFORM: FaceTransform = {
 
 export const DEFAULT_PARAMS: Params = {
   sides: 4,
-  radius: 0.05,
+  aspect: 16 / 9,
+  radius: radiusFor(0.1, 16 / 9, 4),
   length: 0.1,
   capMode: 'solid',
   capColorRight: '#d9d9de',
   capColorLeft: '#d9d9de',
   separateCaps: false,
-  resolution: 1920,
+  resolution: 2560,
   bgColor: '#ffffff',
   bgTransparent: false,
   emissiveExport: false, // 内置校准档是在灯光开着的状态下测的，默认保持一致

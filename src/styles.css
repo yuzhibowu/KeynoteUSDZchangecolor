@@ -483,31 +483,6 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   pointer-events: none;
 }
 
-/* 滑块上的吸附点：轨道下方一排小竖线，吸上去时变黑变长 */
-.slider-track { position: relative; display: block; }
-.snap-marks { position: absolute; left: 0; right: 0; top: 14px; height: 10px; pointer-events: none; }
-.snap-marks i {
-  position: absolute;
-  width: 1px;
-  height: 5px;
-  margin-left: -0.5px;
-  background: var(--line);
-  font-style: normal;
-}
-.snap-marks i.on { height: 8px; width: 2px; margin-left: -1px; background: var(--ink); }
-.snap-marks i.on::after {
-  content: attr(data-label);
-  position: absolute;
-  left: 50%;
-  top: 9px;
-  transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 650;
-  color: var(--ink);
-  white-space: nowrap;
-}
-.slider:has(.snap-marks) { padding-bottom: 14px; }
-
 /* dock 里每格右下角的加号 */
 .face-cell { position: relative; }
 .face-pick {

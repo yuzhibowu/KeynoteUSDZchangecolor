@@ -3,9 +3,10 @@ import { Slider } from './Slider';
 import { canvasSizeFor } from '../lib/faceTexture';
 import type { FaceTextureStore } from '../lib/faceTexture';
 import {
-  ASPECT_SNAPS,
+  ASPECTS,
   faceChord,
   fromPx,
+  radiusFor,
   MAX_SIDES,
   MIN_SIDES,
   RESOLUTIONS,
@@ -55,12 +56,12 @@ export function ControlPanel({
   const chord = faceChord(params.radius, params.sides);
   const aspect = params.length / chord;
   const canvas = canvasSizeFor(aspect, params.resolution);
-  // 长度滑块上的比例吸附点：宽高比 = 长度 / 弦长，所以每个比例对应一个长度
-  const lengthSnaps = ASPECT_SNAPS.map((s) => ({ value: toPx(s.ratio * chord), label: s.label })).filter(
-    (s) => s.value >= 100 && s.value <= 10000,
-  );
-  const hitSnap = lengthSnaps.find((s) => Math.abs(s.value - toPx(params.length)) <= 1);
-  const snapNote = hitSnap ? hitSnap.label : undefined;
+
+  /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
+  const patchGeom = (p: Partial<Params>) => {
+    const next = { ...params, ...p };
+    patch({ ...p, radius: radiusFor(next.length, next.aspect, next.sides) });
+  };
   const hasImage = !!face?.source;
 
   return (
@@ -137,28 +138,35 @@ export function ControlPanel({
               value={params.sides}
               min={MIN_SIDES}
               max={MAX_SIDES}
-              onChange={(v) => patch({ sides: v })}
+              onChange={(v) => patchGeom({ sides: v })}
             />
             <Slider
-              label="粗细（外接圆半径）"
-              value={toPx(params.radius)}
-              min={100}
-              max={5000}
-              step={10}
-              suffix=" px"
-              onChange={(v) => patch({ radius: fromPx(v) })}
-            />
-            <Slider
-              label="长度（左右方向）"
+              label="宽度"
               value={toPx(params.length)}
               min={100}
               max={10000}
               step={10}
               suffix=" px"
-              note={snapNote}
-              snaps={lengthSnaps}
-              onChange={(v) => patch({ length: fromPx(v) })}
+              onChange={(v) => patchGeom({ length: fromPx(v) })}
             />
+            <div>
+              <span className="slider-head">
+                <span>画面比例</span>
+              </span>
+              <div className="opts four">
+                {ASPECTS.map((a) => (
+                  <button
+                    key={a.label}
+                    type="button"
+                    className="opt"
+                    aria-pressed={Math.abs(params.aspect - a.ratio) < 1e-4}
+                    onClick={() => patchGeom({ aspect: a.ratio })}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="derived">
               <div>
                 <span>侧面尺寸</span>
@@ -166,9 +174,9 @@ export function ControlPanel({
                   {(params.length * 100).toFixed(2)} × {(chord * 100).toFixed(2)} cm
                 </b>
               </div>
-              <div className="hero">
-                <span>侧面宽高比</span>
-                <b>{aspect >= 1 ? `${aspect.toFixed(2)} : 1` : `1 : ${(1 / aspect).toFixed(2)}`}</b>
+              <div>
+                <span>粗细（外接圆半径）</span>
+                <b>{toPx(params.radius)} px</b>
               </div>
               <div>
                 <span>贴图画布</span>

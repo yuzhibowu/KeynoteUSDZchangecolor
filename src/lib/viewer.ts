@@ -44,7 +44,9 @@ function shortestTo(current: number, target: number): number {
   return current + d;
 }
 
-const DEFAULT_YAW = -0.32;
+// 默认就正对第 0 面 —— 和导出时归零的姿态一致，
+// 免得视口里是斜的、进了 Keynote 又是正的，两头对不上。
+const DEFAULT_YAW = 0;
 const DEFAULT_SPIN = 0.22;
 
 export class PrismViewer {
