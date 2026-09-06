@@ -149,6 +149,18 @@ button, input, select { font: inherit; color: inherit; }
   margin-bottom: 7px;
 }
 .slider-head span { font-size: 13px; font-weight: 680; color: var(--label); }
+/* 标签点一下回默认值。样式跟普通标签一模一样，只是鼠标移上去有下划线 */
+.slider-reset {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 680;
+  color: var(--label);
+  cursor: pointer;
+}
+.slider-reset:hover:not(:disabled) { text-decoration: underline; }
+.slider-reset:disabled { cursor: default; }
 .slider-head b { font-size: 12px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 input[type='range'] {

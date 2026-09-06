@@ -453,6 +453,7 @@ export function ColorPanel({
         )}
       <Slider
           label="补光（换取更亮的颜色上限）"
+          reset={1}
           value={Math.round(lift * 100)}
           min={0}
           max={100}

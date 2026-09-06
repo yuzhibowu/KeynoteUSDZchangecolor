@@ -1,5 +1,6 @@
 import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
 import { cardSection, prismSection, type Section } from './geometry';
+import type { GrainKind } from './paperGrain';
 
 export const MAX_SIDES = 12;
 
@@ -118,10 +119,10 @@ export type ModelType = (typeof MODEL_TYPES)[number]['id'];
 export const MATERIALS = [
   // 纸：几乎全靠粗糙度区分。纸真正的区别在颜色和纹理，
   // 而颜色是你自己那张图的事，纹理要法线贴图才做得出来 —— 这里只做「反光有多散」。
-  { id: 'a4', label: 'A4 纸', roughness: 0.92, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
-  { id: 'kraft', label: '牛皮纸', roughness: 1, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
-  { id: 'cardstock', label: '卡纸', roughness: 0.75, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
-  { id: 'coated', label: '铜版纸', roughness: 0.38, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.25, ior: 1.5 },
+  { id: 'a4', label: 'A4 纸', roughness: 0.92, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, grain: 'fine', grainCm: 2.5 },
+  { id: 'kraft', label: '牛皮纸', roughness: 1, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, grain: 'coarse', grainCm: 3.5 },
+  { id: 'cardstock', label: '卡纸', roughness: 0.75, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, grain: 'medium', grainCm: 3 },
+  { id: 'coated', label: '铜版纸', roughness: 0.38, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.25, ior: 1.5, grain: 'subtle', grainCm: 2 },
 
   { id: 'matte', label: '哑光', roughness: 0.85, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
   { id: 'plastic', label: '亮面塑料', roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, ior: 1.5 },
@@ -147,6 +148,10 @@ export type MaterialSpec = {
   tint?: string;
   /** 预览里的环境反射强度，不导出。金属不加会偏暗 */
   env?: number;
+  /** 纸纹的法线贴图类型 */
+  grain?: GrainKind;
+  /** 一块纸纹在现实里多大（厘米）—— 决定贴图重复多少次 */
+  grainCm?: number;
 };
 export const materialOf = (id: MaterialId): MaterialSpec =>
   (MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]) as MaterialSpec;

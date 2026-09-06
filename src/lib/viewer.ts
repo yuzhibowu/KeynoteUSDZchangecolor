@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { paperGrain } from './paperGrain';
 import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
 
@@ -98,6 +99,8 @@ export class PrismViewer {
   private raf = 0;
   private paused = false;
   private envMap: THREE.Texture | null = null;
+  /** 视口缩放：双指上下推拉远拉近，1 = 刚好占满 */
+  private zoom = 1;
   private ro: ResizeObserver;
 
   constructor(container: HTMLElement, store: FaceTextureStore, cb: ViewerCallbacks) {
@@ -433,11 +436,15 @@ export class PrismViewer {
 
   /** 相机方向永远固定在 +Z，只按包围球调距离，保证物体始终占满画面 */
   fitCamera() {
-    const { radius, length } = this.state!.params;
-    const r = Math.hypot(length / 2, radius);
+    const p = this.state!.params;
+    // 卡片的外接半径按它自己的宽高厚算，别拿棱柱那个外接圆半径
+    const r =
+      p.modelType === 'card'
+        ? Math.hypot(p.length / 2, p.length / p.aspect / 2, p.thickness / 2)
+        : Math.hypot(p.length / 2, p.radius);
     const vHalf = (this.camera.fov * Math.PI) / 360;
     const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
-    const dist = (r / Math.sin(Math.min(vHalf, hHalf))) * 1.22;
+    const dist = (r / Math.sin(Math.min(vHalf, hHalf))) * 1.22 * this.zoom;
     this.camera.position.set(0, 0, dist);
     this.camera.lookAt(0, 0, 0);
     this.camera.near = Math.max(0.001, dist - r * 2);
@@ -448,6 +455,8 @@ export class PrismViewer {
   resetRotation() {
     this.yaw = shortestTo(this.yaw, DEFAULT_YAW);
     this.spin = shortestTo(this.spin, DEFAULT_SPIN);
+    this.zoom = 1;
+    this.fitCamera();
   }
 
   /** 把某个侧面转到正对相机，贴图定位时最好用 */
@@ -585,6 +594,20 @@ export class PrismViewer {
     // 金属没有漫反射，全靠环境反射，预览里不给它加强度就是一块暗铁。
     // envMapIntensity 只影响预览，USDZExporter 不写这个。
     m.envMapIntensity = q.env ?? 1;
+    // 纸纹：法线贴图按现实尺寸重复，卡片越大重复得越多，纹理颗粒才不会跟着放大
+    const wantGrain = q.grain ? paperGrain(q.grain) : null;
+    if (m.normalMap !== wantGrain) {
+      m.normalMap = wantGrain;
+      m.needsUpdate = true;
+    }
+    if (wantGrain) {
+      const p = this.state!.params;
+      const cm = q.grainCm ?? 3;
+      const wCm = (p.length * 100) / cm;
+      const hCm = ((p.length / p.aspect) * 100) / cm;
+      wantGrain.repeat.set(Math.max(1, Math.round(wCm)), Math.max(1, Math.round(hCm)));
+      wantGrain.needsUpdate = true;
+    }
     const wantEnv = q.metalness > 0 ? this.environment() : null;
     if (m.envMap !== wantEnv) {
       m.envMap = wantEnv;
@@ -915,32 +938,19 @@ export class PrismViewer {
     }
   };
 
+  /**
+   * 双指上下推 = 把模型拉近拉远。
+   *
+   * 从前这里是「缩放选中面上的贴图」—— 但贴图缩放右边有滑块，
+   * 而视口里没有别的办法拉近看细节，滚轮给视口更合理。
+   */
   private onWheel = (e: WheelEvent) => {
-    const st = this.state;
-    if (!st || st.selected === null) return;
-    const sel = st.selected;
-    if (st.faces[sel].source === null) return;
-    const hit = this.faceAtClient(e.clientX, e.clientY);
-    if (hit !== sel) return; // 相机是固定的，不在选中面上滚就什么都不做
-
+    if (!this.state) return;
     e.preventDefault();
     e.stopPropagation();
-
-    const frame = this.worldFrame(sel);
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(frame.normal, frame.center);
-    const local = this.localOnFace(frame, plane);
-    if (!local) return;
-    const t = this.currentTransform(sel);
-    const scale = Math.min(8, Math.max(1, t.scale * Math.exp(-e.deltaY * 0.0016)));
-    const k = scale / t.scale;
-    // 以光标所在位置为锚点缩放（Figma / 地图那套肌肉记忆），不是以面心
-    const au = local.u / frame.width;
-    const av = local.v / frame.height;
-    this.applyTransform(
-      sel,
-      { ...t, scale, offsetX: au - (au - t.offsetX) * k, offsetY: av - (av - t.offsetY) * k },
-      true,
-    );
+    // 触控板给的 deltaY 很碎，用指数缩放才跟手；夹在 0.35~4 倍之间
+    this.zoom = Math.min(4, Math.max(0.35, this.zoom * Math.exp(e.deltaY * 0.0016)));
+    this.fitCamera();
   };
 }
 

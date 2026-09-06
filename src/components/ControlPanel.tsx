@@ -5,6 +5,7 @@ import {
   ASPECTS,
   fromPx,
   radiusFor,
+  DEFAULT_PARAMS,
   MATERIALS,
   CARD_FRONT,
   MODEL_TYPES,
@@ -97,6 +98,7 @@ export function ControlPanel({
                 </div>
                 <Slider
                   label="缩放"
+                  reset={1}
                   value={face.scale}
                   min={1}
                   max={8}
@@ -107,6 +109,7 @@ export function ControlPanel({
                 />
                 <Slider
                   label="旋转"
+                  reset={0}
                   value={(face.rotation * 180) / Math.PI}
                   min={-180}
                   max={180}
@@ -133,6 +136,7 @@ export function ControlPanel({
             {isPrism && (
               <Slider
                 label="边数"
+                reset={DEFAULT_PARAMS.sides}
                 value={params.sides}
                 min={MIN_SIDES}
                 max={MAX_SIDES}
@@ -141,6 +145,7 @@ export function ControlPanel({
             )}
             <Slider
               label="宽度"
+              reset={toPx(DEFAULT_PARAMS.length)}
               value={toPx(params.length)}
               min={100}
               max={10000}
@@ -175,6 +180,7 @@ export function ControlPanel({
             <div className="stack">
               <Slider
                 label="厚度"
+                reset={toPx(DEFAULT_PARAMS.thickness)}
                 value={toPx(params.thickness)}
                 min={2}
                 max={600}
@@ -184,6 +190,7 @@ export function ControlPanel({
               />
               <Slider
                 label="圆角"
+                reset={toPx(DEFAULT_PARAMS.corner)}
                 value={toPx(params.corner)}
                 min={0}
                 max={Math.round(toPx(Math.min(params.length, params.length / params.aspect)) / 2)}

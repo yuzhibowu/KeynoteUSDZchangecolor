@@ -18,6 +18,8 @@ type Props = {
   disabled?: boolean;
   /** 数值旁边额外显示的说明 */
   note?: string;
+  /** 给了就把标签变成按钮：点一下回到这个默认值 */
+  reset?: number;
   onChange: (v: number) => void;
 };
 
@@ -33,6 +35,7 @@ export function Slider({
   suffix = '',
   disabled,
   note,
+  reset,
   onChange,
 }: Props) {
   const p = max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 0;
@@ -40,7 +43,20 @@ export function Slider({
   return (
     <label className="slider">
       <span className="slider-head">
-        <span>{label}</span>
+        {/* 点标签 = 回到默认值。是个 button 而不是 span，键盘也能用 */}
+        {reset === undefined ? (
+          <span>{label}</span>
+        ) : (
+          <button
+            type="button"
+            className="slider-reset"
+            title={`点一下回到默认值 ${reset}`}
+            disabled={disabled}
+            onClick={() => onChange(reset)}
+          >
+            {label}
+          </button>
+        )}
         <b>
           {value.toFixed(digits)}
           {suffix}
