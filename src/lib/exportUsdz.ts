@@ -75,41 +75,18 @@ export async function exportUsdz(
   return { blob, name: usdzFileName(params.sides) };
 }
 
-type SavePicker = (opts: {
-  suggestedName?: string;
-  types?: { description: string; accept: Record<string, string[]> }[];
-}) => Promise<FileSystemFileHandle>;
-
 /**
- * 先问用户存哪儿（在点击的同一个手势里问，否则浏览器会拒绝）。
+ * 触发浏览器下载。
  *
- * 为什么不直接用 `<a download>`：连续导出几次之后，浏览器会**静默拦掉**后续下载 ——
- * 界面上提示「已导出」，可下载文件夹里什么都没有，人完全不知道发生了什么。
- * 保存对话框是用户自己点的，存没存下、存到哪，一目了然。
+ * 试过用 showSaveFilePicker 弹保存对话框，走不通：`createWritable()` 要求用户手势，
+ * 而文件要烘焙、打包好几秒才生成得出来，那时手势早过期了，直接报
+ * 「not allowed by the user agent in the current context」。
+ * File System Access 那条路只适合「先生成、再在新手势里保存」，不适合这里。
  *
- * Safari 还不支持这个 API，那边回退到 `<a download>`。
+ * 所以还是用 `<a download>`。它的毛病是连着导出几次之后浏览器可能静默拦截 ——
+ * 调用方应该把 blob 留着，让用户能在一次新的点击里重存（新手势通常就放行了）。
  */
-export async function askWhereToSave(name: string): Promise<FileSystemFileHandle | null> {
-  const picker = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
-  if (typeof picker !== 'function') return null;
-  try {
-    return await picker({
-      suggestedName: name,
-      types: [{ description: 'USDZ 模型', accept: { 'model/vnd.usdz+zip': ['.usdz'] } }],
-    });
-  } catch {
-    return null; // 用户取消，或者这个环境不让用
-  }
-}
-
-/** 把文件写到用户选好的位置；没有 handle 就退回浏览器下载 */
-export async function save(blob: Blob, name: string, handle: FileSystemFileHandle | null) {
-  if (handle) {
-    const w = await handle.createWritable();
-    await w.write(blob);
-    await w.close();
-    return;
-  }
+export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -118,10 +95,6 @@ export async function save(blob: Blob, name: string, handle: FileSystemFileHandl
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export function download(blob: Blob, name: string) {
-  void save(blob, name, null);
 }
 
 export function formatBytes(n: number): string {
