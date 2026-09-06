@@ -75,7 +75,41 @@ export async function exportUsdz(
   return { blob, name: usdzFileName(params.sides) };
 }
 
-export function download(blob: Blob, name: string) {
+type SavePicker = (opts: {
+  suggestedName?: string;
+  types?: { description: string; accept: Record<string, string[]> }[];
+}) => Promise<FileSystemFileHandle>;
+
+/**
+ * 先问用户存哪儿（在点击的同一个手势里问，否则浏览器会拒绝）。
+ *
+ * 为什么不直接用 `<a download>`：连续导出几次之后，浏览器会**静默拦掉**后续下载 ——
+ * 界面上提示「已导出」，可下载文件夹里什么都没有，人完全不知道发生了什么。
+ * 保存对话框是用户自己点的，存没存下、存到哪，一目了然。
+ *
+ * Safari 还不支持这个 API，那边回退到 `<a download>`。
+ */
+export async function askWhereToSave(name: string): Promise<FileSystemFileHandle | null> {
+  const picker = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
+  if (typeof picker !== 'function') return null;
+  try {
+    return await picker({
+      suggestedName: name,
+      types: [{ description: 'USDZ 模型', accept: { 'model/vnd.usdz+zip': ['.usdz'] } }],
+    });
+  } catch {
+    return null; // 用户取消，或者这个环境不让用
+  }
+}
+
+/** 把文件写到用户选好的位置；没有 handle 就退回浏览器下载 */
+export async function save(blob: Blob, name: string, handle: FileSystemFileHandle | null) {
+  if (handle) {
+    const w = await handle.createWritable();
+    await w.write(blob);
+    await w.close();
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -84,6 +118,10 @@ export function download(blob: Blob, name: string) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function download(blob: Blob, name: string) {
+  void save(blob, name, null);
 }
 
 export function formatBytes(n: number): string {

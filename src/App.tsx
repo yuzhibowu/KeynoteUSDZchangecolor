@@ -3,7 +3,14 @@ import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
-import { download, exportUsdz, formatBytes } from './lib/exportUsdz';
+import {
+  askWhereToSave,
+  download,
+  exportUsdz,
+  formatBytes,
+  save as saveUsdz,
+  usdzFileName,
+} from './lib/exportUsdz';
 import { exportChartCard } from './lib/exportCard';
 import { isIdentity, type ColorComp } from './lib/color';
 import { load, save } from './lib/storage';
@@ -74,6 +81,15 @@ export default function App() {
   const [sizeText, setSizeText] = useState('—');
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+
+  // 状态提示自己退场 —— 停在那儿挡着画面，还得手动点掉，很烦。
+  // 失败信息留久一点，够看清出了什么事。
+  useEffect(() => {
+    if (!status) return;
+    const fail = /失败|错误|没|不/.test(status);
+    const id = setTimeout(() => setStatus(null), fail ? 9000 : 4000);
+    return () => clearTimeout(id);
+  }, [status]);
 
   const patch = useCallback((p: Partial<Params>) => setParams((prev) => ({ ...prev, ...p })), []);
   const patchColor = useCallback(
@@ -291,6 +307,10 @@ export default function App() {
   const handleExport = useCallback(async () => {
     const viewer = viewerRef.current;
     if (!viewer) return;
+    // 先在点击的手势里问「存哪儿」—— 隔了几秒再问，浏览器就不认这个手势了。
+    // 用保存对话框而不是直接下载：连着导出几次之后浏览器会静默拦掉下载，
+    // 界面说「已导出」而文件夹里什么都没有，人根本不知道出了什么事。
+    const handle = await askWhereToSave(usdzFileName(params.sides));
     setBusy('导出中…');
     setStatus(null);
     try {
@@ -305,11 +325,10 @@ export default function App() {
       };
       store.bakeAll(faces, { ...base, compensate: true });
       const { blob, name } = await exportUsdz(viewer, store, params);
-      download(blob, name);
-      const note = isIdentity(params.color)
-        ? ''
-        : ' · 已套用颜色补偿';
-      setStatus(`已导出 ${name} · ${formatBytes(blob.size)}${note}`);
+      await saveUsdz(blob, name, handle);
+      const note = isIdentity(params.color) ? '' : ' · 已套用颜色补偿';
+      const where = handle ? '' : ' · 在下载文件夹里';
+      setStatus(`已导出 ${name} · ${formatBytes(blob.size)}${note}${where}`);
       // 烘回不带补偿的版本，视口继续显示「Keynote 里应有的样子」
       store.bakeAll(faces, { ...base, compensate: false });
     } catch (err) {
