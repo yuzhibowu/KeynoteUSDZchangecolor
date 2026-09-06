@@ -637,9 +637,9 @@ export class PrismViewer {
       this.drag.lastX = e.clientX;
       this.drag.lastY = e.clientY;
       this.yaw += dx * 0.0075;
-      // 往下拖，正对着你的那一面就该跟着往下走（新的面从上面转出来）。
-      // 长轴是 X，绕 +X 转会把 +Z（正面）带向 -Y（下方），所以这里是加不是减。
-      this.spin += dy * 0.0075;
+      // 方向以饼饼的手感为准：往下拖，正面往上走、新的面从下面转上来。
+      // 别再按「面跟着手指走」的直觉翻回 += —— 那个版本试过两次，都被判定是反的。
+      this.spin -= dy * 0.0075;
       return;
     }
 
