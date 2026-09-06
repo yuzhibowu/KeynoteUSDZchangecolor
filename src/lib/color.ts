@@ -479,14 +479,20 @@ export function applyToImageData(data: Uint8ClampedArray, c: ColorComp) {
   const lut = buildInverseLUT3D(c);
   const total = data.length / 4;
 
+  // 直方图是用来找「占面积大的几种颜色」的，那种颜色不可能只出现在零星几个像素上，
+  // 所以大图隔几个像素采一次就够。逐个像素建表的话，一张 840 万像素的照片
+  // 会撑出上百万条记录 —— 又慢又占内存，实测是整条校正链路里最大的一块开销。
+  const stride = total > 400_000 ? 8 : 1;
+  const step = stride * 4;
+  const sampled = Math.max(1, Math.floor(total / stride));
   const hist = new Map<number, number>();
-  for (let i = 0; i < data.length; i += 4) {
+  for (let i = 0; i < data.length; i += step) {
     const k = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
     hist.set(k, (hist.get(k) ?? 0) + 1);
   }
   const exact = new Map<number, Triple>();
   const hot = [...hist.entries()]
-    .filter(([, n]) => n >= total * 0.004)
+    .filter(([, n]) => n >= sampled * 0.004)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 48);
   if (hot.length > 0) {

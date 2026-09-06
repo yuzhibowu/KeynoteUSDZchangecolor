@@ -420,7 +420,9 @@ export default function App() {
     setRecolorBusy('正在校正…');
     (async () => {
       try {
-        const r = await recolorUsdz(recolorSrc.buf, params.color);
+        const r = await recolorUsdz(recolorSrc.buf, params.color, (n, all) =>
+          setRecolorBusy(`正在校正贴图 ${n}/${all}…`),
+        );
         if (alive) setRecolorOut(r);
       } catch (e) {
         if (alive) setRecolorError(e instanceof Error ? e.message : String(e));

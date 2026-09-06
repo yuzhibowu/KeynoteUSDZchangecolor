@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
-import { applyToImageData, compensateToLinear, forwardOf, isIdentity, linearToSrgb, type ColorComp } from './color';
+import { applyForwardToImageData, applyToImageData, compensateToLinear, isIdentity, linearToSrgb, type ColorComp } from './color';
 import { packUsdz } from './usdzExtent';
+import { yieldToBrowser } from './yieldToBrowser';
 import { normalizeUsda } from './usdaNormalize';
 
 /**
@@ -67,13 +68,9 @@ function predictOnThumb(dataUrl: string, comp: ColorComp): Promise<string> {
       const ctx = c.getContext('2d', { willReadFrequently: true })!;
       ctx.drawImage(im, 0, 0);
       const d = ctx.getImageData(0, 0, c.width, c.height);
-      const px = d.data;
-      for (let i = 0; i < px.length; i += 4) {
-        const [r, g, b] = forwardOf(px[i], px[i + 1], px[i + 2], comp);
-        px[i] = r;
-        px[i + 1] = g;
-        px[i + 2] = b;
-      }
+      // 走 LUT，别逐像素跑 RBF —— 一张缩略图五万多像素，
+      // 每个都过一遍 70 个高斯基的话要一两秒，四张图来回八次就是十几秒
+      applyForwardToImageData(d.data, comp);
       ctx.putImageData(d, 0, 0);
       resolve(c.toDataURL('image/png'));
     };
@@ -207,6 +204,7 @@ export function normalizeUsdzForLoader(buf: ArrayBuffer): ArrayBuffer {
 export async function recolorUsdz(
   buf: ArrayBuffer,
   comp: ColorComp,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<{ bytes: Uint8Array; report: RecolorReport }> {
   const src = new Uint8Array(buf);
   const report: RecolorReport = {
@@ -225,6 +223,8 @@ export async function recolorUsdz(
   const dec = new TextDecoder();
   const enc = new TextEncoder();
 
+  const images = Object.keys(entries).filter((n) => IMAGE.test(n));
+  let done = 0;
   for (const name of Object.keys(entries)) {
     const data = entries[name];
     if (IMAGE.test(name)) {
@@ -232,6 +232,9 @@ export async function recolorUsdz(
       out[name] = r.bytes;
       report.previews.push(r.preview);
       report.textures++;
+      onProgress?.(++done, images.length);
+      // 4K 贴图一张要好几秒，中间把主线程让出去，界面才不会像死了一样
+      await yieldToBrowser();
       continue;
     }
     if (/\.usda$/i.test(name)) {

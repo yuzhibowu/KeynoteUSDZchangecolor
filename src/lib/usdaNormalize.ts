@@ -18,9 +18,16 @@
 export function normalizeUsda(text: string): string {
   let s = text;
 
-  // 文件头的元数据块：开括号和闭括号都单独成行
-  s = s.replace(/^(#usda[^\n]*\n)\(/, '$1(\n');
-  s = s.replace(/^([^\n]*[^\s)])\)[ \t]*$/m, '$1\n)');
+  // 文件头的元数据块：开括号和闭括号都单独成行。
+  // **只在文件头那一段里动**：这条规则如果放开到全文，会匹配到
+  // timeSamples 里最后一个 `240: (0, 0, 0)`，把坐标值从中间切断。
+  const firstDef = s.search(/^[ \t]*(def|over|class)\s/m);
+  const cut = firstDef > 0 ? firstDef : s.length;
+  let head = s.slice(0, cut);
+  const rest = s.slice(cut);
+  head = head.replace(/^(#usda[^\n]*\n)\(/, '$1(\n');
+  head = head.replace(/^([^\n]*[^\s)])\)[ \t]*$/m, '$1\n)');
+  s = head + rest;
 
   // def / over / class 的头部：把 `(...)` 摊开，`{` 另起一行
   s = s.replace(

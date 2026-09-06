@@ -26,3 +26,25 @@ describe('USDA 排版规范化', () => {
     expect(normalizeUsda(src)).toBe(src);
   });
 });
+
+describe('别碰动画数据', () => {
+  // 真实文件里踩到的：timeSamples 的最后一行以 `)` 结尾，
+  // 如果把「行尾的 ) 拆到下一行」这条规则放开到全文，坐标值会被从中间切断
+  it('timeSamples 里以 ) 结尾的行不能被拆开', () => {
+    const src = `#usda 1.0
+(
+    defaultPrim = "M"
+)
+
+def Xform "M"
+{
+    double3 xformOp:translate.timeSamples = {
+        0: (0, 0, 0),
+        240: (0, 0, 0)
+    }
+}`;
+    const out = normalizeUsda(src);
+    expect(out).toContain('240: (0, 0, 0)\n');
+    expect(out).not.toMatch(/240: \(0, 0, 0\n/);
+  });
+});

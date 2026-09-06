@@ -20,6 +20,37 @@ import { normalizeUsdzForLoader } from '../lib/recolor';
 /** 预览用的贴图最长边。原图可能是 4K，逐像素跑一遍没必要 */
 const PREVIEW_TEX = 1024;
 
+/**
+ * 等模型上所有贴图真正解码完。
+ *
+ * 加载器是**异步**建贴图的（Blob → Image），刚 parse 完那一刻
+ * `image.width` 很可能还是 0。这时候去读像素会得到一张 1×1 的空图，
+ * 材质又是 transparent 的，渲染出来就是全黑 —— 10 MB 的大贴图必踩。
+ */
+async function waitTextures(root: THREE.Object3D) {
+  const jobs: Promise<unknown>[] = [];
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      const img = (m as THREE.MeshStandardMaterial).map?.image as HTMLImageElement | undefined;
+      if (!img || typeof img.decode !== 'function') continue;
+      if (img.complete && img.naturalWidth > 0) continue;
+      jobs.push(
+        img.decode().catch(
+          () =>
+            new Promise<void>((r) => {
+              img.onload = () => r();
+              img.onerror = () => r();
+            }),
+        ),
+      );
+    }
+  });
+  await Promise.all(jobs);
+}
+
 /** 把模型上每张贴图换成「Keynote 里会显示成的样子」 */
 function simulate(root: THREE.Object3D, comp: ColorComp) {
   const done = new Map<THREE.Texture, THREE.Texture>();
@@ -36,8 +67,10 @@ function simulate(root: THREE.Object3D, comp: ColorComp) {
         continue;
       }
       const src = mat.map.image as HTMLImageElement | ImageBitmap;
-      const w = (src as HTMLImageElement).width;
-      const h = (src as HTMLImageElement).height;
+      const w = (src as HTMLImageElement).naturalWidth || (src as HTMLImageElement).width;
+      const h = (src as HTMLImageElement).naturalHeight || (src as HTMLImageElement).height;
+      // 还没解码好就别动它 —— 宁可显示原色，也不能换成一张 1×1 的空图
+      if (!w || !h) continue;
       const k = Math.min(1, PREVIEW_TEX / Math.max(w, h));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(w * k));
@@ -121,6 +154,10 @@ export function ModelCompare({
         onUnsupported(e instanceof Error ? e.message : String(e));
         return;
       }
+      if (!alive) return;
+
+      // 贴图解码完才能读像素，否则读到的是空的
+      await Promise.all([waitTextures(a), waitTextures(b)]);
       if (!alive) return;
 
       // 左边：不校正，直接拿原模型去显示 → 就是现在的偏色
