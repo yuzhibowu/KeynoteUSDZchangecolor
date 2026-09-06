@@ -86,14 +86,14 @@ button, input, select { font: inherit; color: inherit; }
   line-height: 1.1;
   white-space: nowrap;
   /* 黄线跟着字一起缩，字和线是一个整体 */
-  border-bottom: 3px solid var(--brand);
+  border-bottom: 4.5px solid var(--brand);
   padding-bottom: 1px;
 }
 
 .side-body {
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 16px 18px;
+  padding: 0 16px; /* 不留下边距，导出按钮的底边才能和 dock 对齐 */
   /* 参数不多的时候下面会空一大片，把导出那一节顶到底部去 */
   display: flex;
   flex-direction: column;
@@ -420,7 +420,15 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 
 /* ================= 导出区 ================= */
 
-.export-block { display: flex; flex-direction: column; gap: 9px; margin-top: auto; }
+/* 钉在侧栏最底下，底边和左边 dock 的底边齐平 —— 所以这一节不留下边距 */
+.side-body section.export-block {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: auto;
+  border-top: 0;
+  padding-bottom: 0;
+}
 .export-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 .export-meta b { font-weight: 650; color: var(--label); font-variant-numeric: tabular-nums; }
 

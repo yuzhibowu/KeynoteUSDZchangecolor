@@ -273,8 +273,8 @@ export function ControlPanel({
           setLift={(v) => patch({ emissiveLift: v })}
         />
 
+        {/* 不要标题、不要上面那条分隔线 —— 到这儿已经是面板最底下了 */}
         <section className="export-block">
-          <h2>导出</h2>
           <div className="export-meta">
             <span>预估大小</span>
             <b>{sizeText}</b>
