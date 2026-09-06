@@ -257,11 +257,13 @@ function faceOfOutline(
 ): THREE.BufferGeometry {
   const n = pts.length;
   const position: number[] = [0, 0, z];
-  // 背面的朝向：我们的旋转手势是绕水平轴翻（上下拖 = 把卡片上下翻过来），
-  // 所以背面要按「上下翻」来贴 —— u 跟着 +X，v 反过来。
-  // 按「左右翻」贴（u 镜像、v 不变）的话，翻过来看到的图是倒的。
-  const uOf = (x: number) => 0.5 + x / (2 * hw);
-  const vOf = (y: number) => (front ? 0.5 + y / (2 * hh) : 0.5 - y / (2 * hh));
+  // 背面按「左右翻」贴：u 镜像、v 不变。
+  // 也就是说，把卡片像翻书一样左右翻过来，背面的图是正的、头朝上。
+  // 配套的是 faceOn(CARD_BACK) 也走左右翻（绕 Y 转半圈）——
+  // 两边必须是同一种翻法，否则点一下「背」看到的图就是倒的。
+  // （物理上本来就这样：把一张真卡片上下颠着翻，背面当然是倒的。）
+  const uOf = (x: number) => (front ? 0.5 + x / (2 * hw) : 0.5 - x / (2 * hw));
+  const vOf = (y: number) => 0.5 + y / (2 * hh);
   const uv: number[] = [0.5, 0.5];
   for (const [x, y] of pts) {
     position.push(x, y, z);

@@ -463,6 +463,12 @@ export class PrismViewer {
   faceOn(index: number) {
     const st = this.state;
     if (!st) return;
+    if (st.params.modelType === 'card') {
+      // 卡片像翻书一样左右翻，不是上下翻 —— 背面的贴图就是按这个方向贴的
+      this.yaw = shortestTo(this.yaw, index === CARD_BACK ? Math.PI : 0);
+      this.spin = shortestTo(this.spin, 0);
+      return;
+    }
     if (isCap(index)) {
       // 端面朝 ±X，把棱柱绕 Y 转四分之一圈才正对相机
       this.yaw = shortestTo(this.yaw, index === CAP_RIGHT ? -Math.PI / 2 : Math.PI / 2);

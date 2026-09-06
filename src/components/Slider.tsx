@@ -20,6 +20,10 @@ type Props = {
   note?: string;
   /** 给了就把标签变成按钮：点一下回到这个默认值 */
   reset?: number;
+  /** 吸附点：拖到附近会咬住这些值 */
+  snaps?: number[];
+  /** 吸附范围（值的单位），默认是全程的 1.5% */
+  snapRange?: number;
   onChange: (v: number) => void;
 };
 
@@ -36,9 +40,27 @@ export function Slider({
   disabled,
   note,
   reset,
+  snaps,
+  snapRange,
   onChange,
 }: Props) {
   const p = max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 0;
+  // 靠近吸附点就咬住它。没有触觉反馈这回事 —— 网页拿不到触控板的震动，
+  // 能做的只有「拖过去会顿一下」这个手感。
+  const snapped = (v: number) => {
+    if (!snaps || snaps.length === 0) return v;
+    const range = snapRange ?? (max - min) * 0.015;
+    let best = v;
+    let bestD = range;
+    for (const s of snaps) {
+      const d = Math.abs(v - s);
+      if (d <= bestD) {
+        bestD = d;
+        best = s;
+      }
+    }
+    return best;
+  };
   const split = `calc(${(p * 100).toFixed(4)}% + ${(THUMB / 2 - THUMB * p).toFixed(4)}px)`;
   return (
     <label className="slider">
@@ -72,7 +94,7 @@ export function Slider({
         disabled={disabled}
         aria-label={label}
         style={{ '--split': split } as React.CSSProperties}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => onChange(snapped(Number(e.target.value)))}
       />
     </label>
   );

@@ -143,9 +143,36 @@ export function ControlPanel({
                 onChange={(v) => patchGeom({ sides: v })}
               />
             )}
+            {/* 卡片：厚度、圆角排在宽度前面 —— 都是「这张卡长什么样」，归在一起 */}
+            {!isPrism && (
+              <>
+                <Slider
+                  label="厚度"
+                  reset={toPx(DEFAULT_PARAMS.thickness)}
+                  value={toPx(params.thickness)}
+                  min={2}
+                  max={600}
+                  step={1}
+                  suffix=" px"
+                  onChange={(v) => patch({ thickness: fromPx(v) })}
+                />
+                <Slider
+                  label="圆角"
+                  reset={toPx(DEFAULT_PARAMS.corner)}
+                  value={toPx(params.corner)}
+                  min={0}
+                  max={Math.round(toPx(Math.min(params.length, params.length / params.aspect)) / 2)}
+                  step={1}
+                  suffix=" px"
+                  onChange={(v) => patch({ corner: fromPx(v) })}
+                />
+              </>
+            )}
             <Slider
               label="宽度"
               reset={toPx(DEFAULT_PARAMS.length)}
+              // 四档分辨率对应的宽度各设一个吸附点，拖到附近会咬住
+              snaps={RESOLUTIONS.map((r) => r.value)}
               value={toPx(params.length)}
               min={100}
               max={10000}
@@ -178,26 +205,6 @@ export function ControlPanel({
           <section>
             <h2>材质</h2>
             <div className="stack">
-              <Slider
-                label="厚度"
-                reset={toPx(DEFAULT_PARAMS.thickness)}
-                value={toPx(params.thickness)}
-                min={2}
-                max={600}
-                step={1}
-                suffix=" px"
-                onChange={(v) => patch({ thickness: fromPx(v) })}
-              />
-              <Slider
-                label="圆角"
-                reset={toPx(DEFAULT_PARAMS.corner)}
-                value={toPx(params.corner)}
-                min={0}
-                max={Math.round(toPx(Math.min(params.length, params.length / params.aspect)) / 2)}
-                step={1}
-                suffix=" px"
-                onChange={(v) => patch({ corner: fromPx(v) })}
-              />
               <div className="opts four">
                 {MATERIALS.map((m) => (
                   <button
