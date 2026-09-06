@@ -257,12 +257,15 @@ function faceOfOutline(
 ): THREE.BufferGeometry {
   const n = pts.length;
   const position: number[] = [0, 0, z];
-  // 背面从后面看，左右是反的，u 要镜像，否则贴上去的图是反的
-  const uOf = (x: number) => (front ? 0.5 + x / (2 * hw) : 0.5 - x / (2 * hw));
-  const uv: number[] = [front ? 0.5 : 0.5, 0.5];
+  // 背面的朝向：我们的旋转手势是绕水平轴翻（上下拖 = 把卡片上下翻过来），
+  // 所以背面要按「上下翻」来贴 —— u 跟着 +X，v 反过来。
+  // 按「左右翻」贴（u 镜像、v 不变）的话，翻过来看到的图是倒的。
+  const uOf = (x: number) => 0.5 + x / (2 * hw);
+  const vOf = (y: number) => (front ? 0.5 + y / (2 * hh) : 0.5 - y / (2 * hh));
+  const uv: number[] = [0.5, 0.5];
   for (const [x, y] of pts) {
     position.push(x, y, z);
-    uv.push(uOf(x), 0.5 + y / (2 * hh));
+    uv.push(uOf(x), vOf(y));
   }
   const index: number[] = [];
   for (let i = 0; i < n; i++) {

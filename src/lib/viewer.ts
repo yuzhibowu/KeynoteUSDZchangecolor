@@ -10,7 +10,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import { clampTransform, type FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, textureAspect, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, type MaterialSpec, textureAspect, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -321,8 +321,9 @@ export class PrismViewer {
           m.emissiveMap = wantEmissiveMap;
           m.needsUpdate = true;
         }
-        m.emissive.setRGB(lift, lift, lift);
-        m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+        const [tr, tg, tb] = this.tintRGB();
+        m.emissive.setRGB(lift * tr, lift * tg, lift * tb);
+        m.color.setRGB(unlit ? 0 : tr, unlit ? 0 : tg, unlit ? 0 : tb);
       }
       this.applyMaterial(m);
 
@@ -496,7 +497,9 @@ export class PrismViewer {
       mat.needsUpdate = true;
     }
     const lin = compensate ? compensateToLinear(hex, p.color) : null;
-    const base: [number, number, number] = lin ?? hexToLinear(hex);
+    const raw: [number, number, number] = lin ?? hexToLinear(hex);
+    const t = this.tintRGB();
+    const base: [number, number, number] = [raw[0] * t[0], raw[1] * t[1], raw[2] * t[2]];
     mat.color.setRGB(unlit ? 0 : base[0], unlit ? 0 : base[1], unlit ? 0 : base[2]);
     mat.emissive.setRGB(lift * base[0], lift * base[1], lift * base[2]);
   }
@@ -544,10 +547,10 @@ export class PrismViewer {
    * 当前的材质质感。棱柱维持原来那套（高粗糙度压高光，别干扰贴图颜色）；
    * 卡片才走用户选的预设。
    */
-  private materialNow() {
+  private materialNow(): MaterialSpec {
     const p = this.state!.params;
     if (p.modelType !== 'card') {
-      return { roughness: 0.9, metalness: 0, clearcoat: 0, opacity: 1, ior: 1.5 };
+      return { roughness: 0.9, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 };
     }
     return materialOf(p.material);
   }
@@ -577,18 +580,22 @@ export class PrismViewer {
     m.roughness = q.roughness;
     m.metalness = q.metalness;
     m.clearcoat = q.clearcoat;
+    m.clearcoatRoughness = q.clearcoatRoughness;
     m.ior = q.ior;
-    m.opacity = q.opacity;
-    const wantTransparent = q.opacity < 1;
-    if (m.transparent !== wantTransparent) {
-      m.transparent = wantTransparent;
-      m.needsUpdate = true;
-    }
-    const wantEnv = q.metalness > 0 || q.opacity < 1 ? this.environment() : null;
+    // 金属没有漫反射，全靠环境反射，预览里不给它加强度就是一块暗铁。
+    // envMapIntensity 只影响预览，USDZExporter 不写这个。
+    m.envMapIntensity = q.env ?? 1;
+    const wantEnv = q.metalness > 0 ? this.environment() : null;
     if (m.envMap !== wantEnv) {
       m.envMap = wantEnv;
       m.needsUpdate = true;
     }
+  }
+
+  /** 材质的基础色（金属的反射色）。没有 tint 的档就是白，等于不改颜色 */
+  private tintRGB(): [number, number, number] {
+    const t = this.materialNow().tint;
+    return t ? hexToLinear(t) : [1, 1, 1];
   }
 
   syncSideMaterials() {

@@ -116,16 +116,40 @@ export type ModelType = (typeof MODEL_TYPES)[number]['id'];
  * 只能用低不透明度 + 折射率去凑，不会有真正的折射，背后的东西也不会变形。
  */
 export const MATERIALS = [
-  { id: 'matte', label: '哑光', roughness: 0.85, metalness: 0, clearcoat: 0, opacity: 1, ior: 1.5 },
-  { id: 'plastic', label: '亮面塑料', roughness: 0.35, metalness: 0, clearcoat: 1, opacity: 1, ior: 1.5 },
-  { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, opacity: 1, ior: 1.5 },
-  { id: 'metal', label: '亮面金属', roughness: 0.15, metalness: 1, clearcoat: 0, opacity: 1, ior: 1.5 },
-  { id: 'translucent', label: '半透明', roughness: 0.4, metalness: 0, clearcoat: 0, opacity: 0.6, ior: 1.45 },
-  // 玻璃和磨砂玻璃拿掉了：USDZ 没有透射通道，做出来只是「半透明 + 折射率」，
-  // 不会有真正的折射，反而容易让人以为是玻璃。要半透明就用上面那档。
+  // 纸：几乎全靠粗糙度区分。纸真正的区别在颜色和纹理，
+  // 而颜色是你自己那张图的事，纹理要法线贴图才做得出来 —— 这里只做「反光有多散」。
+  { id: 'a4', label: 'A4 纸', roughness: 0.92, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
+  { id: 'kraft', label: '牛皮纸', roughness: 1, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
+  { id: 'cardstock', label: '卡纸', roughness: 0.75, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
+  { id: 'coated', label: '铜版纸', roughness: 0.38, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.25, ior: 1.5 },
+
+  { id: 'matte', label: '哑光', roughness: 0.85, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
+  { id: 'plastic', label: '亮面塑料', roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, ior: 1.5 },
+  { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 1.6 },
+
+  // 四种金属。tint 是金属的基础反射色，会**乘在贴图上** ——
+  // 金属的颜色本来就来自它自己的反射率，这是唯一会碰颜色的预设，
+  // 也因此这几档下面那套偏色抵消不再准（金属的颜色主要来自环境反射，不是漫反射）。
+  // env 只影响预览的亮度，不会写进 usdz。
+  { id: 'gold', label: '金', roughness: 0.18, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#ffc356', env: 2.2 },
+  { id: 'silver', label: '银', roughness: 0.14, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f8f5ea', env: 2.2 },
+  { id: 'copper', label: '铜', roughness: 0.2, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f4a38a', env: 2.2 },
+  { id: 'platinum', label: '铂', roughness: 0.16, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#dcd8d0', env: 2.2 },
 ] as const;
 export type MaterialId = (typeof MATERIALS)[number]['id'];
-export const materialOf = (id: MaterialId) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
+export type MaterialSpec = {
+  roughness: number;
+  metalness: number;
+  clearcoat: number;
+  clearcoatRoughness: number;
+  ior: number;
+  /** 金属的基础反射色，乘在贴图上。只有金属档有 */
+  tint?: string;
+  /** 预览里的环境反射强度，不导出。金属不加会偏暗 */
+  env?: number;
+};
+export const materialOf = (id: MaterialId): MaterialSpec =>
+  (MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]) as MaterialSpec;
 
 export type Params = {
   modelType: ModelType;
@@ -199,7 +223,7 @@ export const DEFAULT_PARAMS: Params = {
   modelType: 'prism',
   thickness: 0.006, // 6 mm，差不多一张厚卡片
   corner: 0,
-  material: 'matte',
+  material: 'a4',
   sides: 4,
   aspect: 16 / 9,
   radius: radiusFor(0.1, 16 / 9, 4),
