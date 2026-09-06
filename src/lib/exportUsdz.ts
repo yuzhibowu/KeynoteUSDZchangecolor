@@ -75,16 +75,50 @@ export async function exportUsdz(
   return { blob, name: usdzFileName(params.sides) };
 }
 
+type SavePicker = (opts: {
+  suggestedName?: string;
+  types?: { description: string; accept: Record<string, string[]> }[];
+}) => Promise<FileSystemFileHandle>;
+
+/** 用户在保存对话框里点了取消 */
+export const CANCELLED = Symbol('cancelled');
+
 /**
- * 触发浏览器下载。
+ * 在点击的手势里问「存哪儿」，并**立刻**把可写句柄拿到手。
  *
- * 试过用 showSaveFilePicker 弹保存对话框，走不通：`createWritable()` 要求用户手势，
- * 而文件要烘焙、打包好几秒才生成得出来，那时手势早过期了，直接报
- * 「not allowed by the user agent in the current context」。
- * File System Access 那条路只适合「先生成、再在新手势里保存」，不适合这里。
+ * 这两步必须挨着做。上一版栽在这里：先弹对话框，等模型烘焙打包好几秒之后才调
+ * `createWritable()`，那时手势早过期，直接报「not allowed by the user agent
+ * in the current context」，导出整个失败。现在拿完句柄再去干耗时的活。
  *
- * 所以还是用 `<a download>`。它的毛病是连着导出几次之后浏览器可能静默拦截 ——
- * 调用方应该把 blob 留着，让用户能在一次新的点击里重存（新手势通常就放行了）。
+ * 返回 null 表示这个浏览器没有这个 API（Safari 就没有），调用方回退到 <a download>；
+ * 返回 CANCELLED 表示用户自己取消了，那就什么都别做。
+ */
+export async function openSaveTarget(
+  name: string,
+): Promise<FileSystemWritableFileStream | null | typeof CANCELLED> {
+  const picker = (window as unknown as { showSaveFilePicker?: SavePicker }).showSaveFilePicker;
+  if (typeof picker !== 'function') return null;
+  let handle: FileSystemFileHandle;
+  try {
+    handle = await picker({
+      suggestedName: name,
+      types: [{ description: 'USDZ 模型', accept: { 'model/vnd.usdz+zip': ['.usdz'] } }],
+    });
+  } catch {
+    return CANCELLED; // 用户取消
+  }
+  try {
+    return await handle.createWritable();
+  } catch {
+    return null; // 拿不到写权限就退回下载，别把导出堵死
+  }
+}
+
+/**
+ * 触发浏览器下载（没有保存对话框时的退路）。
+ *
+ * 它的毛病是连着导出几次之后浏览器可能静默拦截，界面说「已导出」而文件夹里没有东西。
+ * 所以调用方要把 blob 留着，让用户能在一次新的点击里重存。
  */
 export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
