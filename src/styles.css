@@ -20,7 +20,62 @@
   /* dock 的上下内边距。导出按钮的底边要和 dock 里缩略图格子的底边齐平，
      所以这个值两边共用一个变量，改一处就同步。 */
   --dock-pad: 10px;
+  --titlebar: #000000;
+  --titlebar-ink: #ffffff;
+  /* 选中态的「反转」底色和字色。暗色下要整对翻过来，
+     直接用 --ink 当底色的话，暗色里就是白底白字，什么都看不见 */
+  --on: #1d1d1f;
+  --on-ink: #ffffff;
   color-scheme: light;
+}
+
+/**
+ * 暗色模式。
+ *
+ * 只换这一组变量，别处一行都不用改 —— 整套界面本来就是靠这些变量画的。
+ * 三种状态：跟随系统（没有 data-theme）、手动亮、手动暗。
+ * `:root:not([data-theme='light'])` 这个写法保证「手动选了亮色」能压过系统的暗色。
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --page: #000000;
+    --surface: #1c1c1e;
+    --ink: #f5f5f7;
+    --ink-strong: #ffffff;
+    --label: #d1d1d6;
+    --muted: #98989d;
+    --faint: #7c7c80;
+    --line: #3a3a3c;
+    --track: #3a3a3c;
+    --disabled: #5a5a5e;
+    --danger: #ff453a;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    --titlebar: #2c2c2e;
+    --titlebar-ink: #f5f5f7;
+    --on: #f5f5f7;
+    --on-ink: #1c1c1e;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --page: #000000;
+  --surface: #1c1c1e;
+  --ink: #f5f5f7;
+  --ink-strong: #ffffff;
+  --label: #d1d1d6;
+  --muted: #98989d;
+  --faint: #7c7c80;
+  --line: #3a3a3c;
+  --track: #3a3a3c;
+  --disabled: #5a5a5e;
+  --danger: #ff453a;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --titlebar: #2c2c2e;
+  --titlebar-ink: #f5f5f7;
+  --on: #f5f5f7;
+  --on-ink: #1c1c1e;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -56,8 +111,10 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .titlebar {
-  background: var(--ink-strong);
-  color: #fff;
+  /* 亮色下是黑条白字；暗色下 --ink-strong 变成白色，条会变成白的、非常刺眼，
+     所以标题条单独用一个变量，暗色下保持深色 */
+  background: var(--titlebar);
+  color: var(--titlebar-ink);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -68,9 +125,27 @@ button, input, select { font: inherit; color: inherit; }
 .tool-en {
   font-size: clamp(8.5px, 0.7vw, 12px);
   font-weight: 650;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--titlebar-ink);
+  opacity: 0.7;
   text-align: right;
 }
+
+.titlebar-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.theme-toggle {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  flex: none;
+  background: none;
+  border: 1px solid var(--titlebar-ink);
+  border-radius: 0;
+  color: var(--titlebar-ink);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.75;
+  cursor: pointer;
+}
+.theme-toggle:hover { opacity: 1; }
 
 .side {
   background: var(--surface);
@@ -282,7 +357,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 }
 .opts.four .opt { min-height: 32px; }
 .opt:hover { border-color: var(--ink); }
-.opt[aria-pressed='true'] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.opt[aria-pressed='true'] { background: var(--on); color: var(--on-ink); border-color: var(--on); }
 .opt:disabled { color: var(--disabled); border-color: var(--line); cursor: default; }
 
 /* ================= 按钮 ================= */
@@ -305,17 +380,17 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
   width: 100%;
   min-height: 40px;
   padding: 0 12px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--on);
+  color: var(--on-ink);
   border: none;
   border-radius: 0;
   font-size: 13px;
   font-weight: 720;
   cursor: pointer;
 }
-.btn-primary:hover:not(:disabled) { background: var(--ink-strong); }
+.btn-primary:hover:not(:disabled) { background: var(--ink); }
 .btn-primary:disabled { background: var(--disabled); cursor: default; }
-.btn-primary.drag-over { background: var(--ink-strong); outline: 2px dashed #fff; outline-offset: -6px; }
+.btn-primary.drag-over { background: var(--ink); outline: 2px dashed var(--on-ink); outline-offset: -6px; }
 
 /* ================= 面缩略图 ================= */
 
@@ -382,7 +457,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 }
 
 .stage-tools.right { left: auto; right: 12px; }
-.stage-tools .btn { min-height: 32px; background: rgba(255, 255, 255, 0.92); }
+.stage-tools .btn { min-height: 32px; background: var(--surface); opacity: 0.94; }
 
 /* ================= 派生信息 ================= */
 
@@ -517,8 +592,8 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   transform: translateX(-50%);
   max-width: min(680px, calc(100vw - 48px));
   padding: 10px 16px;
-  background: var(--ink-strong);
-  color: #fff;
+  background: var(--titlebar);
+  color: var(--titlebar-ink);
   font-size: 12px;
   font-weight: 650;
   cursor: pointer;
@@ -604,7 +679,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   padding: 0;
   line-height: 16px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 0;
@@ -612,7 +687,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   font-weight: 700;
   cursor: pointer;
 }
-.face-add:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+.face-add:hover { background: var(--on); color: var(--on-ink); border-color: var(--on); }
 
 /* 缩略图上的转 90°，压在上面两个角，只有这一格有图时才出现 */
 .face-rot {
@@ -624,7 +699,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   line-height: 16px;
   text-align: center;
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
   border-radius: 0;
@@ -632,7 +707,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 }
 .face-rot.left { left: 0; }
 .face-rot.right { right: 0; }
-.face-rot:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+.face-rot:hover { background: var(--on); color: var(--on-ink); border-color: var(--on); }
 
 /* 选中态：只把这一格的边线变深。不画角点、不加粗框 —— 点了哪个面，
    模型已经转到正对它了，dock 这边只要能看出「当前是这一格」就够。 */
@@ -655,19 +730,21 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   flex: none;
   padding: 4px 10px;
   background: none;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: var(--titlebar-ink);
+  border: 1px solid var(--titlebar-ink);
+  opacity: 0.75;
   border-radius: 0;
   font-size: 11px;
   font-weight: 650;
   cursor: pointer;
 }
-.status-act:hover { background: #fff; color: var(--ink); }
+.status-act:hover { background: var(--titlebar-ink); color: var(--titlebar); opacity: 1; }
 .status-x {
   flex: none;
   padding: 0 2px;
   background: none;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--titlebar-ink);
+  opacity: 0.6;
   border: 0;
   font-size: 15px;
   line-height: 1;

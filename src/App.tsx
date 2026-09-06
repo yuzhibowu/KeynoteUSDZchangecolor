@@ -5,6 +5,7 @@ import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
 import { CANCELLED, download, exportUsdz, formatBytes, openSaveTarget, usdzFileName } from './lib/exportUsdz';
 import { yieldToBrowser } from './lib/yieldToBrowser';
+import { applyTheme, isDark, loadTheme, type Theme } from './lib/theme';
 import { exportChartCard } from './lib/exportCard';
 import { isIdentity, type ColorComp } from './lib/color';
 import { load, save } from './lib/storage';
@@ -88,6 +89,7 @@ export default function App() {
   const [sizeText, setSizeText] = useState('—');
   const [busy, setBusy] = useState<string | null>(null);
   const [frozen, setFrozen] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(loadTheme);
   const [status, setStatus] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<{ blob: Blob; name: string } | null>(null);
 
@@ -202,6 +204,19 @@ export default function App() {
     store.bakeAll(next, opts);
     if (changed) setFaces(next);
   }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.bgTransparent, params.capMode, params.separateCaps, params.capColorRight, params.capColorLeft, params.color, store]);
+
+  // 主题：写到 <html> 上，顺便把视口底色也换掉（它是 WebGL 画的，管不到 CSS）
+  useEffect(() => {
+    applyTheme(theme);
+    viewerRef.current?.syncBackground();
+    if (theme !== 'auto') return;
+    // 跟随系统时，系统切换也要跟着动
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!mq) return;
+    const onChange = () => viewerRef.current?.syncBackground();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [theme]);
 
   // 开发时把内部状态挂到 window 上，方便在控制台里量各段耗时
   useEffect(() => {
@@ -482,8 +497,17 @@ export default function App() {
       <main className="stage">
         <div className="titlebar">
           <span className="tool-name">棱柱 USDZ 导出器</span>
-          <span className="tool-en">
-            Prism to USDZ · color-matched · build {__BUILD_ID__}
+          <span className="titlebar-right">
+            <span className="tool-en">Prism to USDZ · color-matched · build {__BUILD_ID__}</span>
+            <button
+              type="button"
+              className="theme-toggle"
+              title={theme === 'auto' ? '跟随系统' : theme === 'dark' ? '暗色' : '亮色'}
+              aria-label="切换深浅"
+              onClick={() => setTheme(isDark(theme) ? 'light' : 'dark')}
+            >
+              {isDark(theme) ? '☾' : '☀'}
+            </button>
           </span>
         </div>
         <Viewport

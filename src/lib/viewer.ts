@@ -65,7 +65,6 @@ export class PrismViewer {
   private capLeftMat: THREE.MeshPhysicalMaterial;
   private outline: THREE.Mesh;
   private hoverline: THREE.Mesh;
-  private grid: THREE.GridHelper;
 
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
@@ -104,6 +103,7 @@ export class PrismViewer {
     this.renderer.toneMapping = THREE.NoToneMapping;
     // 范式：工作区是白底。视口只是「看」的地方，导出的模型不含背景。
     this.renderer.setClearColor(0xffffff, 1);
+    this.syncBackground();
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.style.display = 'block';
     this.renderer.domElement.style.touchAction = 'none';
@@ -124,11 +124,6 @@ export class PrismViewer {
     const bottom = new THREE.DirectionalLight(0xffffff, 0.35);
     bottom.position.set(0, -2, 0.5);
     this.scene.add(bottom);
-
-    this.grid = new THREE.GridHelper(1, 20, 0xd2d2d7, 0xe5e5e7);
-    (this.grid.material as THREE.Material).transparent = true;
-    (this.grid.material as THREE.Material).opacity = 0.9;
-    this.scene.add(this.grid);
 
     this.scene.add(this.pivot);
     this.pivot.add(this.prism);
@@ -237,6 +232,20 @@ export class PrismViewer {
    * 一边烘一边渲染，预览就会先整个变暗、导完再变回来，看着像卡死了。
    * 停掉渲染，画布会一直停在最后那一帧，用户完全看不到中间态。
    */
+  /**
+   * 视口底色跟着界面主题走。
+   * 从 CSS 变量读，不在这里再写一份颜色 —— 两处各写一份迟早会走散。
+   */
+  syncBackground() {
+    const css = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim();
+    if (!css) return;
+    try {
+      this.renderer.setClearColor(new THREE.Color(css), 1);
+    } catch {
+      /* 变量还没就位就先不管，下一次主题切换会再来一遍 */
+    }
+  }
+
   setPaused(v: boolean) {
     this.paused = v;
   }
@@ -371,9 +380,6 @@ export class PrismViewer {
     this.capLeft.geometry.dispose();
     this.capRight.geometry = capGeometry(sec, length, true);
     this.capLeft.geometry = capGeometry(sec, length, false);
-    const span = Math.max(sec.ry, sec.rz);
-    this.grid.scale.setScalar(Math.max(span * 10, length * 2.5));
-    this.grid.position.y = -span * 1.9;
   }
 
   /**
@@ -408,9 +414,6 @@ export class PrismViewer {
     // 卡片是一整块，没有端面这回事
     this.capRight.visible = false;
     this.capLeft.visible = false;
-    const span = Math.max(p.length, height) / 2;
-    this.grid.scale.setScalar(Math.max(span * 5, p.length * 2.5));
-    this.grid.position.y = -height * 0.95;
   }
 
   /** 相机方向永远固定在 +Z，只按包围球调距离，保证物体始终占满画面 */
