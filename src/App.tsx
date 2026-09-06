@@ -16,6 +16,7 @@ import {
   MAX_SIDES,
   MAX_SLOTS,
   faceOfSlot,
+  innerSlot,
   isCap,
   isInner,
   CAP_RIGHT,
@@ -57,7 +58,7 @@ async function makeTestImages(count: number): Promise<{ bmp: ImageBitmap; blob: 
     ctx.font = 'bold 260px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(i), 256, 268);
+    ctx.fillText(String(i + 1), 256, 268); // 编号和 dock 上一致，从 1 起
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
     ctx.lineWidth = 16;
     ctx.strokeRect(8, 8, 496, 496);
@@ -145,10 +146,25 @@ export default function App() {
     };
   }, []);
 
-  // 选中的面被边数砍掉时，把选中挪回来
+  // 选中的面消失了（边数砍掉了它、或者它所在的那一类被关掉了），把选中挪回来。
+  //
+  // 原来这里只写了 `selected >= params.sides`，那是把槽位当成面序号了 ——
+  // 反面（MAX_SIDES 起）和端面（CAP_RIGHT 起）一律 ≥ sides，
+  // 结果点一下反面或端面，立刻被弹回正面，根本选不中。
   useEffect(() => {
-    if (selected !== null && selected >= params.sides) setSelected(params.sides - 1);
-  }, [params.sides, selected]);
+    if (selected === null) return;
+    if (isCap(selected)) {
+      if (params.capMode === 'none' || !params.separateCaps) setSelected(0);
+      return;
+    }
+    const face = faceOfSlot(selected);
+    if (face >= params.sides) {
+      setSelected(isInner(selected) ? innerSlot(params.sides - 1) : params.sides - 1);
+      return;
+    }
+    // 内面只有「没有端面」时才存在
+    if (isInner(selected) && params.capMode !== 'none') setSelected(face);
+  }, [params.sides, params.capMode, params.separateCaps, selected]);
 
   // 烘焙：面的宽高比一变，画布尺寸跟着变，旧的 offset 可能已经盖不满，先重新夹一遍
   useEffect(() => {
@@ -350,6 +366,19 @@ export default function App() {
     setStatus('已填入测试色块：导出后核对每个面的颜色和编号是否对得上');
   }, [fillTestBlocks]);
 
+  /** dock 缩略图上的转 90° —— 转的是那一格，不需要先选中它 */
+  const rotateFace = useCallback((slot: number, dir: 1 | -1) => {
+    setFaces((prev) => {
+      const next = prev.slice();
+      const step = (dir * Math.PI) / 2;
+      // 归一化到 (-π, π]，否则一直转下去会累成很大的数，滑块也拉不回来
+      let r = next[slot].rotation + step;
+      r = Math.atan2(Math.sin(r), Math.cos(r));
+      next[slot] = { ...next[slot], rotation: r };
+      return next;
+    });
+  }, []);
+
   const handleResetFace = useCallback(() => patchFace(DEFAULT_TRANSFORM), [patchFace]);
   const handleClearFace = useCallback(() => {
     if (selected !== null) void clearFace(selected);
@@ -472,6 +501,7 @@ export default function App() {
             viewerRef.current?.faceOn(i);
           }}
           onFiles={(files, i) => assignFiles(files, i)}
+          onRotate={rotateFace}
         />
       </main>
 

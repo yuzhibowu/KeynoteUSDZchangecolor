@@ -124,12 +124,17 @@ export function capGeometry(
   const half = Math.PI / sides;
   const positions: number[] = [x, 0, 0];
   const uvs: number[] = [0.5, 0.5];
+  // 贴图朝向：图片的「上」对着模型的 +Y，也就是默认正视时端面的下边缘 = 图片的下边缘。
+  // 原来写的是 u 跟着 y、v 跟着 z，等于把整张图转了 90°。
+  // 横轴要跟着从外面看这个端面时的「右手边」：从 +X 往里看，右手边是 -Z；
+  // 从 -X 往里看，右手边是 +Z。搞反了图就是镜像的。
+  const uSign = right ? -1 : 1;
   for (let i = 0; i < sides; i++) {
     const ang = faceCenterAngle(i, sides) - half;
     const y = radius * Math.sin(ang);
     const z = radius * Math.cos(ang);
     positions.push(x, y, z);
-    uvs.push(0.5 + (y / radius) * 0.5, 0.5 + (z / radius) * 0.5);
+    uvs.push(0.5 + uSign * (z / radius) * 0.5, 0.5 + (y / radius) * 0.5);
   }
   const index: number[] = [];
   for (let i = 0; i < sides; i++) {

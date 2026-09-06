@@ -36,6 +36,8 @@ type Props = {
   showCaps: boolean;
   onSelect: (i: number) => void;
   onFiles: (files: File[], faceIndex: number) => void;
+  /** 把某一格的图旋转 90°，dir = 1 顺时针、-1 逆时针 */
+  onRotate: (slot: number, dir: 1 | -1) => void;
 };
 
 /**
@@ -44,13 +46,13 @@ type Props = {
  * 每一格既是「选中这个面」，也是「给这个面导入图片」—— 右下角那个加号点了就开文件框，
  * 从访达直接拖图片到格子上也行。所以不需要再单独放一个「导入图片」按钮。
  */
-export function FaceDock({ store, faces, sides, selected, tick, showInner, showCaps, onSelect, onFiles }: Props) {
+export function FaceDock({ store, faces, sides, selected, tick, showInner, showCaps, onSelect, onFiles, onRotate }: Props) {
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const hidden: number[] = [];
   for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
 
   const nameOf = (slot: number, faceIndex: number) =>
-    isCap(slot) ? (slot === CAP_RIGHT ? '右端面' : '左端面') : `第 ${faceIndex} 个面的${slot === faceIndex ? '正面' : '反面'}`;
+    isCap(slot) ? (slot === CAP_RIGHT ? '右端面' : '左端面') : `第 ${faceIndex + 1} 个面的${slot === faceIndex ? '正面' : '反面'}`;
 
   const cell = (slot: number, faceIndex: number) => (
           <div
@@ -93,6 +95,28 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
             >
               +
             </button>
+            {faces[slot].source && (
+              <>
+                <button
+                  type="button"
+                  className="face-rot left"
+                  aria-label={`${nameOf(slot, faceIndex)}逆时针转 90°`}
+                  title="逆时针转 90°"
+                  onClick={() => onRotate(slot, -1)}
+                >
+                  ↺
+                </button>
+                <button
+                  type="button"
+                  className="face-rot right"
+                  aria-label={`${nameOf(slot, faceIndex)}顺时针转 90°`}
+                  title="顺时针转 90°"
+                  onClick={() => onRotate(slot, 1)}
+                >
+                  ↻
+                </button>
+              </>
+            )}
             <input
               ref={(el) => {
                 inputs.current[slot] = el;
@@ -107,7 +131,8 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
                 if (files.length) onFiles(files, slot);
               }}
             />
-            <i>{isCap(slot) ? (slot === CAP_RIGHT ? '右' : '左') : faceIndex}</i>
+            {/* 给人看的编号从 1 起，内部索引还是 0 起 */}
+            <i>{isCap(slot) ? (slot === CAP_RIGHT ? '右' : '左') : faceIndex + 1}</i>
           </div>
   );
 
@@ -115,7 +140,12 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
     <div className="dock-wrap">
       <div className="dock-row">
         {showInner && <span className="dock-label">正面</span>}
-        <div className="dock">{Array.from({ length: sides }, (_, i) => cell(i, i))}</div>
+        <div className="dock">
+          {/* 端面排在最左边，左端在左、右端在右 —— 和默认视角下模型上看到的一致 */}
+          {showCaps && cell(CAP_LEFT, CAP_LEFT)}
+          {showCaps && cell(CAP_RIGHT, CAP_RIGHT)}
+          {Array.from({ length: sides }, (_, i) => cell(i, i))}
+        </div>
       </div>
       {showInner && (
         <div className="dock-row">
@@ -123,17 +153,10 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
           <div className="dock">{Array.from({ length: sides }, (_, i) => cell(innerSlot(i), i))}</div>
         </div>
       )}
-      {showCaps && (
-        <div className="dock-row">
-          <span className="dock-label">端面</span>
-          <div className="dock">
-            {cell(CAP_RIGHT, CAP_RIGHT)}
-            {cell(CAP_LEFT, CAP_LEFT)}
-          </div>
-        </div>
-      )}
       {hidden.length > 0 && (
-        <p className="dock-note">第 {hidden.join('、')} 个面的贴图还在内存里，把边数加回去就会回来</p>
+        <p className="dock-note">
+          第 {hidden.map((i) => i + 1).join('、')} 个面的贴图还在内存里，把边数加回去就会回来
+        </p>
       )}
     </div>
   );

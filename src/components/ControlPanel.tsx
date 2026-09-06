@@ -163,13 +163,7 @@ export function ControlPanel({
             </div>
             {params.capMode === 'solid' && (
             <div className="color-row">
-              <input
-                type="color"
-                aria-label="两端颜色"
-                value={params.capColorRight}
-                onChange={(e) => patch({ capColorRight: e.target.value })}
-              />
-              <span>{params.separateCaps ? '右端' : '两端'}</span>
+              {/* 左端排在左边、右端排在右边，和默认视角下模型上看到的一致 */}
               {params.separateCaps && (
                 <>
                   <input
@@ -181,6 +175,13 @@ export function ControlPanel({
                   <span>左端</span>
                 </>
               )}
+              <input
+                type="color"
+                aria-label="两端颜色"
+                value={params.capColorRight}
+                onChange={(e) => patch({ capColorRight: e.target.value })}
+              />
+              <span>{params.separateCaps ? '右端' : '两端'}</span>
             </div>
             )}
             {params.capMode === 'solid' && (

@@ -543,6 +543,26 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 }
 .face-add:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
 
+/* 缩略图上的转 90°，压在上面两个角，只有这一格有图时才出现 */
+.face-rot {
+  position: absolute;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 16px;
+  text-align: center;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  cursor: pointer;
+}
+.face-rot.left { left: 0; }
+.face-rot.right { right: 0; }
+.face-rot:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+
 /* 选中态：只把这一格的边线变深。不画角点、不加粗框 —— 点了哪个面，
    模型已经转到正对它了，dock 这边只要能看出「当前是这一格」就够。 */
 .face-cell.on { border-color: var(--ink); }

@@ -85,7 +85,7 @@ export function Viewport({
       {frozen && <img className="viewport-freeze" src={frozen} alt="" />}
       {dropping && (
         <div className="drop-hint">
-          {dropFace === null ? '松手 → 从第 0 个面开始依次分配' : `松手 → 贴到第 ${dropFace} 个面`}
+          {dropFace === null ? '松手 → 从第 1 个面开始依次分配' : `松手 → 贴到第 ${dropFace + 1} 个面`}
         </div>
       )}
       {/* 范式：恢复视角这类辅助操作贴近预览边角 */}
