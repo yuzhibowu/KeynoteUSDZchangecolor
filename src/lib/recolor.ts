@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
 import { applyForwardToImageData, applyToImageData, compensateToLinear, isIdentity, linearToSrgb, type ColorComp } from './color';
-import { packUsdz } from './usdzExtent';
+import { addExtents, packUsdz } from './usdzExtent';
+import { fixXformOpNamespaces } from './usdaCompat';
 import { yieldToBrowser } from './yieldToBrowser';
 import { normalizeUsda } from './usdaNormalize';
 
@@ -44,6 +45,8 @@ export type RecolorReport = {
   binary: string[];
   /** 认不出、原样带过的文件 */
   skipped: string[];
+  /** 顺手修掉的兼容性问题 */
+  fixes: { what: string; count: number }[];
 };
 
 const IMAGE = /\.(png|jpe?g)$/i;
@@ -215,7 +218,10 @@ export async function recolorUsdz(
     emissive: 0,
     binary: [],
     skipped: [],
+    fixes: [],
   };
+  let namespacedOps = 0;
+  let extents = 0;
   if (isIdentity(comp)) throw new Error('当前目标还没有校准档，先在「颜色」里选一个校准过的目标');
 
   const entries = unzipSync(src);
@@ -238,7 +244,14 @@ export async function recolorUsdz(
       continue;
     }
     if (/\.usda$/i.test(name)) {
-      const r = recolorUsda(dec.decode(data), comp);
+      // 顺手把已知会让苹果渲染器出问题的写法修掉。都是实测验证过的，见 usdaCompat.ts
+      const ns = fixXformOpNamespaces(dec.decode(data));
+      namespacedOps += ns.count;
+      const before = ns.text;
+      const withExtent = addExtents(before);
+      extents += (withExtent.match(/float3\[\] extent/g) ?? []).length -
+        (before.match(/float3\[\] extent/g) ?? []).length;
+      const r = recolorUsda(withExtent, comp);
       out[name] = enc.encode(r.text);
       report.colors += r.colors;
       report.emissive += r.emissive;
@@ -255,6 +268,11 @@ export async function recolorUsdz(
     else report.skipped.push(name);
     out[name] = data;
   }
+
+  if (namespacedOps > 0) {
+    report.fixes.push({ what: '带命名空间后缀的 xformOp（苹果会整层放弃）', count: namespacedOps });
+  }
+  if (extents > 0) report.fixes.push({ what: '缺少的包围盒 extent', count: extents });
 
   return { bytes: packUsdz(out), report };
 }

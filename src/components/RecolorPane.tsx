@@ -118,6 +118,16 @@ export function RecolorPane({
             </>
           )}
 
+          {/* 顺手修掉的兼容性问题。这一条要说 —— 它解释了为什么校正后的文件
+              能在 Keynote 里显示，而原文件不能 */}
+          {report.fixes.length > 0 && (
+            <p className="hint">
+              顺手修了：
+              {report.fixes.map((f) => `${f.what} ${f.count} 处`).join('；')}。
+              这些写法会让苹果的渲染器显示不出模型。
+            </p>
+          )}
+
           {report.binary.length > 0 && (
             <p className="hint warn">
               这个文件的场景是二进制的（{report.binary.join('、')}）。贴图已经补偿了，
