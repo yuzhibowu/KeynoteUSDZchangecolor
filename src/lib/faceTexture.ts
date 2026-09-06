@@ -42,7 +42,32 @@ export type CanvasSize = { w: number; h: number };
  * 没有图 = 彩色块，永远成立。
  */
 export function placeholderColor(index: number, sides: number): string {
-  return `hsl(${(index * 360) / Math.max(1, sides)}, 72%, 56%)`;
+  // 必须返回 #rrggbb：颜色补偿那一路（applyToHex）只认十六进制，
+  // 给它一个 hsl(...) 会被原样退回、整块颜色绕过补偿 ——
+  // 结果就是别的面都补过了，占位块没补，进 Keynote 一看色差很扎眼。
+  const h = ((index * 360) / Math.max(1, sides)) % 360;
+  return hslToHex(h, 0.72, 0.56);
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const seg = Math.floor(h / 60) % 6;
+  const rgb = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x],
+  ][seg];
+  return (
+    '#' +
+    rgb
+      .map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0'))
+      .join('')
+  );
 }
 
 export function canvasSizeFor(aspect: number, resolution: Resolution): CanvasSize {
