@@ -568,7 +568,8 @@ export default function App() {
             ))}
           </select>
           <span className="titlebar-right">
-            <span className="tool-en">Prism to USDZ · color-matched · build {__BUILD_ID__}</span>
+            {/* 只留构建号 —— 那句英文没人看，构建号是用来核对版本的 */}
+            <span className="tool-en">build {__BUILD_ID__}</span>
             <button
               type="button"
               className="theme-toggle"

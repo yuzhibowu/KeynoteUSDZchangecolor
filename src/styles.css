@@ -156,10 +156,9 @@ button, input, select { font: inherit; color: inherit; }
   padding: 0;
   flex: none;
   background: none;
-  border: 1px solid var(--titlebar-ink);
-  border-radius: 0;
+  border: 0;
   color: var(--titlebar-ink);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
   opacity: 0.75;
   cursor: pointer;
