@@ -9,6 +9,48 @@
 
 ---
 
+## 如果你也是网页项目（TypeScript / JavaScript）
+
+那不用移植，**直接拿走两个文件就能跑**。它们不依赖任何第三方库，
+也不依赖本项目的其他代码：
+
+```
+color.ts   ← 颜色模型、反解、内置校准档。只 import 了 chart.ts
+chart.ts   ← 色卡采样与拟合（只有要重新标定才用得上）
+```
+
+接进去只有两处：
+
+**1）贴图逐像素补偿。**在你把画布交给导出器之前，插一步：
+
+```ts
+import { applyToImageData, DEFAULT_COMP } from './color';
+
+const img = ctx.getImageData(0, 0, w, h);
+applyToImageData(img.data, DEFAULT_COMP);   // 就地改写，内部有 3D LUT，2K 图几十毫秒
+ctx.putImageData(img, 0, 0);
+```
+
+纯色（端面、描边这类不走贴图的）用 `applyToHex(hex, DEFAULT_COMP)`。
+
+**2）自发光。**只做第 1 步的话，亮色会顶到 8 位的天花板出不来 ——
+乘法项的上限小于 1，贴图再白也到不了纯白。所以导出时还要把材质设成：
+
+```ts
+material.emissive.setRGB(lift, lift, lift);   // lift = 1
+material.emissiveMap = material.map;          // 和 diffuse 同一个 texture 对象！
+```
+
+**`emissiveMap` 必须复用 `map` 那个对象**，不能另建一个 —— three 的 USDZExporter
+按 `texture.source.id` 建表，两个不同对象会让同一批像素在 usdz 里存两份，文件白白翻倍。
+
+做完这两步就有本项目 95% 的效果了。剩下的（重新标定、闭环微调）看下面的正文。
+
+⚠️ 一个和材质冲突的点，别踩：**自发光的面不受光**，所以一旦 lift > 0，
+金属度、粗糙度、法线贴图这些全都不会显示。质感和颜色精度只能二选一。
+
+---
+
 ## 为什么这份数据跨机器有效
 
 一个容易搞错的点，先说清楚，否则你会白白重做一遍标定。
