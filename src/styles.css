@@ -17,6 +17,9 @@
   --disabled: #a1a1a6;
   --danger: #ff3b30;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+  /* dock 的上下内边距。导出按钮的底边要和 dock 里缩略图格子的底边齐平，
+     所以这个值两边共用一个变量，改一处就同步。 */
+  --dock-pad: 10px;
   color-scheme: light;
 }
 
@@ -259,7 +262,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 /* ================= 面缩略图 ================= */
 
 /* 预览下方的一排面缩略图，水平居中，像一条 dock */
-.dock-wrap { border-top: 1px solid var(--line); padding: 10px 12px; }
+.dock-wrap { border-top: 1px solid var(--line); padding: var(--dock-pad) 12px; }
 .dock {
   display: flex;
   flex-wrap: wrap;
@@ -427,7 +430,9 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   gap: 9px;
   margin-top: auto;
   border-top: 0;
-  padding-bottom: 0;
+  /* 对齐的基准是 dock 里缩略图格子的底边，不是 dock 容器的底边 —— 
+     容器下面还有一圈内边距，所以这里要留出同样一圈 */
+  padding-bottom: var(--dock-pad);
 }
 .export-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 .export-meta b { font-weight: 650; color: var(--label); font-variant-numeric: tabular-nums; }
@@ -462,7 +467,7 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   .titlebar { height: 30px; }
   .stage { grid-template-rows: 30px 1fr; }
   .side-head { padding: 10px; }
-  .side-body { padding: 0 10px 12px; }
+  .side-body { padding: 0 10px; }
   .side-body section { padding: 14px 0; }
   .btn-primary { min-height: 26px; font-size: 12px; }
   .btn, .opt, .chart-drop, details.tweaks > summary { min-height: 26px; }
