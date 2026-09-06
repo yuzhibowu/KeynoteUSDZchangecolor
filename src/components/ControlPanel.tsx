@@ -13,6 +13,7 @@ import {
   type FaceState,
   type Params,
   type Resolution,
+  type TargetId,
 } from '../lib/types';
 import type { ColorComp } from '../lib/color';
 
@@ -23,6 +24,7 @@ type Props = {
   face: FaceState | null;
   patchFace: (t: Partial<FaceState>) => void;
   patchColor: (c: Partial<ColorComp>) => void;
+  setTarget: (t: TargetId) => void;
   store: FaceTextureStore;
   tick: number;
   onExportChart: () => void;
@@ -38,6 +40,7 @@ export function ControlPanel({
   face,
   patchFace,
   patchColor,
+  setTarget,
   store,
   tick,
   onExportChart,
@@ -257,6 +260,8 @@ export function ControlPanel({
         <ColorPanel
           comp={params.color}
           patch={patchColor}
+          target={params.target}
+          setTarget={setTarget}
           store={store}
           selected={selected}
           hasImage={hasImage}

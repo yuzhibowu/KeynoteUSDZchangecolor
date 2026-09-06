@@ -1,4 +1,4 @@
-import { DEFAULT_COMP, type ColorComp } from './color';
+import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
 
 export const MAX_SIDES = 12;
 
@@ -108,6 +108,10 @@ export type Params = {
    * 所以叠自发光能把上限抬起来。代价是自发光不随角度变化，加得越多明暗对比越平。
    */
   emissiveLift: number;
+  /** 导出给哪个 App 用 —— 决定套哪份校准档 */
+  target: TargetId;
+  /** 每个目标 App 各一份校准档；color 是当前生效的那一份 */
+  profiles: Record<TargetId, ColorComp>;
   color: ColorComp; // 导出时烘进贴图的颜色预补偿
 };
 
@@ -117,6 +121,27 @@ export const DEFAULT_TRANSFORM: FaceTransform = {
   scale: 1,
   rotation: 0,
 };
+
+/**
+ * 导出的模型要拿去哪个 App 里显示。
+ *
+ * 每个 App 对贴图的颜色处理都不一样，所以每个目标各存一份校准档 ——
+ * 给无边记标定一次，不该把 Keynote 那份冲掉。
+ */
+export const TARGETS = [
+  { id: 'keynote', label: 'Keynote' },
+  { id: 'freeform', label: '无边记' },
+] as const;
+export type TargetId = (typeof TARGETS)[number]['id'];
+
+export function targetLabel(id: TargetId): string {
+  return TARGETS.find((t) => t.id === id)?.label ?? id;
+}
+
+export function defaultProfiles(): Record<TargetId, ColorComp> {
+  // Keynote 有实测好的内置档；别的目标是空的，等用户自己校准
+  return { keynote: DEFAULT_COMP, freeform: BLANK_COMP };
+}
 
 export const DEFAULT_PARAMS: Params = {
   sides: 4,
@@ -132,6 +157,8 @@ export const DEFAULT_PARAMS: Params = {
   bgTransparent: false,
   emissiveExport: false, // 内置校准档是在灯光开着的状态下测的，默认保持一致
   emissiveLift: 1, // 实测：拉满时颜色才对得上，内置校准也是按这个配的
+  target: 'keynote',
+  profiles: defaultProfiles(),
   color: DEFAULT_COMP,
 };
 

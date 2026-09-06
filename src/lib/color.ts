@@ -96,6 +96,21 @@ export const DEFAULT_COMP: ColorComp = {
   calibratedLift: 1,
 };
 
+/**
+ * 还没校准过的空档 —— 给 Keynote 以外的目标 App 用。
+ * matrix 为 null 时 isIdentity 成立，等于不做任何补偿，导出的就是原图。
+ */
+export const BLANK_COMP: ColorComp = {
+  on: true,
+  matrix: null,
+  offset: null,
+  curve: null,
+  calibratedAt: null,
+  samples: null,
+  calibratedUnlit: null,
+  calibratedLift: null,
+};
+
 export function isIdentity(c: ColorComp): boolean {
   return !c.on || !c.matrix;
 }

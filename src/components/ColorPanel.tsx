@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { applyToHex, applyToImageData, DEFAULT_COMP, type ColorComp } from '../lib/color';
+import { applyToHex, applyToImageData, BLANK_COMP, DEFAULT_COMP, type ColorComp } from '../lib/color';
 
 /** 累积的实测样本上限 —— 局部修正建表是 n³ 的，攒太多会拖慢导出 */
 const MAX_SAMPLES = 400;
@@ -7,10 +7,14 @@ import { COLS, fitChart, sampleChart, type Sample } from '../lib/chart';
 import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
+import { TARGETS, targetLabel, type TargetId } from '../lib/types';
 
 type Props = {
   comp: ColorComp;
   patch: (c: Partial<ColorComp>) => void;
+  /** 导出给哪个 App 用 —— 每个目标各有一份校准档 */
+  target: TargetId;
+  setTarget: (t: TargetId) => void;
   store: FaceTextureStore;
   selected: number | null;
   hasImage: boolean;
@@ -231,6 +235,8 @@ function ChartDrop({
 export function ColorPanel({
   comp,
   patch,
+  target,
+  setTarget,
   store,
   selected,
   hasImage,
@@ -407,21 +413,46 @@ export function ColorPanel({
     (comp.calibratedUnlit !== null && comp.calibratedUnlit !== unlit) ||
     (comp.calibratedLift !== null && Math.abs(comp.calibratedLift - lift) > 0.02);
 
+  const label = targetLabel(target);
+  const builtIn = target === 'keynote'; // 只有 Keynote 带出厂校准档
+
   return (
     <section>
       <h2>颜色</h2>
 
+      {/* 每个 App 对贴图的颜色处理都不一样，各存各的校准档 */}
+      <div className="opts" role="group" aria-label="导出给哪个 App 用">
+        {TARGETS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className="opt"
+            aria-pressed={target === t.id}
+            onClick={() => setTarget(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <label className="check switch">
         <input type="checkbox" checked={comp.on} onChange={(e) => patch({ on: e.target.checked })} />
-        <span>Keynote 颜色优化</span>
+        <span>{label} 颜色优化</span>
       </label>
-      <p className="hint tight">导出时自动抵消 Keynote 的偏色，已经内置好了，不用管。</p>
-      {comp.on && !comp.matrix && (
+      {comp.matrix ? (
+        <p className="hint tight">导出时自动抵消 {label} 的偏色{builtIn ? '，已经内置好了，不用管。' : '。'}</p>
+      ) : (
+        <p className="hint tight">
+          {label} 还没校准过，导出的就是原图。要做的话：展开下面「重新校准」，导出色卡棱柱 →
+          拖进 {label} → 正对着截一张图 → 传回来。
+        </p>
+      )}
+      {comp.on && !comp.matrix && builtIn && (
         <p className="hint warn tight">没有校准数据，现在开着也不起作用 —— 展开下面点「恢复内置校准」。</p>
       )}
 
       <details className="tweaks">
-        <summary>重新校准（一般不用）</summary>
+        <summary>{comp.matrix ? '重新校准（一般不用）' : `校准 ${label}`}</summary>
         {selected !== null && hasImage && (
           <BeforeAfter store={store} index={selected} tick={tick} comp={comp} />
         )}
@@ -436,7 +467,7 @@ export function ColorPanel({
           onChange={(v) => setLift(v / 100)}
         />
       <p className="hint tight">
-        Keynote 算像素是「贴图 × 灯光 + 自发光」。乘法那项有天花板（灯光系数小于 1，贴图再白也到不了纯白），
+        {label} 算像素是「贴图 × 灯光 + 自发光」。乘法那项有天花板（灯光系数小于 1，贴图再白也到不了纯白），
         加法那项没有。往上加自发光能把上限抬起来，代价是自发光不随角度变化，加得越多明暗越平。
         <b>改了这个必须重新校准。</b>
       </p>
@@ -455,7 +486,7 @@ export function ColorPanel({
 
 
         <p className="hint tight">
-          当前：{comp.matrix ? comp.calibratedAt ?? '已校准' : '无'}。换了 Keynote 版本、换了显示器，
+          当前：{comp.matrix ? comp.calibratedAt ?? '已校准' : '无'}。换了 {label} 版本、换了显示器，
           或者上面那个灯光开关改了，才需要重测。
         </p>
         <ol className="steps">
@@ -464,7 +495,7 @@ export function ColorPanel({
               导出色卡棱柱
             </button>
             <span>
-              和你实际用的同款棱柱，只是贴了色卡。拖进 Keynote，转到正对着你的那个面截图，
+              和你实际用的同款棱柱，只是贴了色卡。拖进 {label}，转到正对着你的那个面截图，
               要能看到完整的粉色边框。
             </span>
           </li>
@@ -476,7 +507,7 @@ export function ColorPanel({
         <div className="verify">
           <ChartDrop onPick={onVerifyShot} label="上传成品截图微调" />
           <span className="hint tight">
-            微调：把<b>成品</b>在 Keynote 里的截图拖进来（不是色卡），工具会量出实际颜色，
+            微调：把<b>成品</b>在 {label} 里的截图拖进来（不是色卡），工具会量出实际颜色，
             把这个实测点锚死进校准。再导一次就精确命中。任何颜色都能这么修。
           </span>
         </div>
@@ -495,8 +526,9 @@ export function ColorPanel({
             <ChartDrop onPick={onImportProfile} label="导入校准档" accept="application/json,.json" />
           </div>
         </div>
-        <button className="btn" onClick={() => patch(DEFAULT_COMP)}>
-          恢复内置校准
+        {/* 只有 Keynote 有出厂档可恢复；别的目标只能清空重来 */}
+        <button className="btn" onClick={() => patch(builtIn ? DEFAULT_COMP : BLANK_COMP)}>
+          {builtIn ? '恢复内置校准' : `清空 ${label} 的校准`}
         </button>
       </details>
     </section>

@@ -22,6 +22,8 @@ import {
   type FaceState,
   type FaceTransform,
   type Params,
+  targetLabel,
+  type TargetId,
 } from './lib/types';
 
 async function decode(file: File): Promise<ImageBitmap> {
@@ -88,10 +90,23 @@ export default function App() {
   }, [status]);
 
   const patch = useCallback((p: Partial<Params>) => setParams((prev) => ({ ...prev, ...p })), []);
+  // 改校准要同时写进「当前生效的那份」和「当前目标的存档」，两边不能走散
   const patchColor = useCallback(
-    (c: Partial<ColorComp>) => setParams((prev) => ({ ...prev, color: { ...prev.color, ...c } })),
+    (c: Partial<ColorComp>) =>
+      setParams((prev) => {
+        const color = { ...prev.color, ...c };
+        return { ...prev, color, profiles: { ...prev.profiles, [prev.target]: color } };
+      }),
     [],
   );
+  // 换目标 App：把当前这份收好，把那份取出来生效
+  const setTarget = useCallback((target: TargetId) => {
+    setParams((prev) => {
+      if (prev.target === target) return prev;
+      const profiles = { ...prev.profiles, [prev.target]: prev.color };
+      return { ...prev, target, profiles, color: profiles[target] };
+    });
+  }, []);
 
   // 刷新之后把上次的贴图捞回来（图片存在 IndexedDB 里，localStorage 塞不下）
   useEffect(() => {
@@ -310,7 +325,7 @@ export default function App() {
 
   const onTestFill = useCallback(async () => {
     await fillTestBlocks();
-    setStatus('已填入测试色块：导出后在 Keynote 里核对每个面的颜色和编号是否对得上');
+    setStatus('已填入测试色块：导出后核对每个面的颜色和编号是否对得上');
   }, [fillTestBlocks]);
 
   const handleResetFace = useCallback(() => patchFace(DEFAULT_TRANSFORM), [patchFace]);
@@ -323,7 +338,7 @@ export default function App() {
     try {
       const { blob, name } = await exportChartCard(params, store.canvases);
       download(blob, name);
-      setStatus('色卡已导出：拖进 Keynote，正对着截一张图，再回来上传');
+      setStatus(`色卡已导出：拖进${targetLabel(params.target)}，正对着截一张图，再回来上传`);
     } catch (err) {
       setStatus(`色卡导出失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -401,7 +416,7 @@ export default function App() {
         <div className="titlebar">
           <span className="tool-name">棱柱 USDZ 导出器</span>
           <span className="tool-en">
-            Prism to USDZ · Keynote color-matched · build {__BUILD_ID__}
+            Prism to USDZ · color-matched · build {__BUILD_ID__}
           </span>
         </div>
         <Viewport
@@ -441,6 +456,7 @@ export default function App() {
         face={face}
         patchFace={patchFace}
         patchColor={patchColor}
+        setTarget={setTarget}
         store={store}
         tick={tick}
         onExportChart={handleExportChart}
