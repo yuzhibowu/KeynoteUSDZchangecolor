@@ -17,6 +17,8 @@ export function RecolorPane({
   source,
   corrected,
   comp,
+  spin,
+  onReady,
   onFile,
 }: {
   fileName: string | null;
@@ -27,6 +29,9 @@ export function RecolorPane({
   busy: string | null;
   error: string | null;
   report: RecolorReport | null;
+  /** 自动旋转开关。由侧栏那个按钮控制 —— 拖动不该顺手把它关掉 */
+  spin: boolean;
+  onReady: (ready: boolean) => void;
   onFile: (f: File) => void;
 }) {
   // 模型渲染不了就退回图片对比，并且说清楚为什么 —— 不假装成功
@@ -66,6 +71,8 @@ export function RecolorPane({
                 original={source}
                 corrected={corrected}
                 comp={comp}
+                spin={spin}
+                onReady={onReady}
                 onUnsupported={setModelError}
               />
             </div>

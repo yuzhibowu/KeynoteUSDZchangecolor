@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 // @ts-expect-error 从 three r185 搬过来的加载器，没有类型声明
 import { USDLoader } from '../vendor/USDLoader.js';
@@ -119,17 +119,21 @@ export function ModelCompare({
   original,
   corrected,
   comp,
+  spin,
+  onReady,
   onUnsupported,
 }: {
   original: ArrayBuffer;
   corrected: Uint8Array;
   comp: ColorComp;
+  /** 自动旋转开关。由外面那个按钮控制 —— 拖动不该顺手把它关掉 */
+  spin: boolean;
+  onReady: (ready: boolean) => void;
   onUnsupported: (why: string) => void;
 }) {
   const leftRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
-  const [spin, setSpin] = useState(true);
-  const [ready, setReady] = useState(false);
+
 
   useEffect(() => {
     const l = leftRef.current;
@@ -200,7 +204,7 @@ export function ModelCompare({
       resize();
       const ro = new ResizeObserver(resize);
       ro.observe(l);
-      setReady(true);
+      onReady(true);
 
       let yaw = 0.35;
       let pitch = 0.18;
@@ -226,8 +230,8 @@ export function ModelCompare({
         dragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
-        spinRef.current = false;
-        setSpin(false);
+        // **别在这里关掉自动旋转。**拖一下就停，是把两件事绑在了一起；
+        // 想停就按那个按钮，拖动只管加角度。
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       };
       const move = (e: PointerEvent) => {
@@ -286,10 +290,6 @@ export function ModelCompare({
           <figcaption>校正后</figcaption>
         </figure>
       </div>
-      {/* 小按钮就够了，这不是主角 */}
-      <button className="btn mc-spin" onClick={() => setSpin((v) => !v)} disabled={!ready}>
-        {spin ? '暂停' : '旋转'}
-      </button>
     </div>
   );
 }

@@ -102,6 +102,9 @@ export default function App() {
   const [recolorOut, setRecolorOut] = useState<{ bytes: Uint8Array; report: RecolorReport } | null>(null);
   const [recolorBusy, setRecolorBusy] = useState<string | null>(null);
   const [recolorError, setRecolorError] = useState<string | null>(null);
+  // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
+  const [spin, setSpin] = useState(true);
+  const [compareReady, setCompareReady] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<{ blob: Blob; name: string } | null>(null);
 
@@ -436,6 +439,7 @@ export default function App() {
   }, [recolorSrc, params.color]);
 
   const pickRecolorFile = useCallback(async (f: File) => {
+    setCompareReady(false);
     setRecolorSrc({ name: f.name, buf: await f.arrayBuffer() });
   }, []);
 
@@ -586,6 +590,8 @@ export default function App() {
             source={recolorSrc?.buf ?? null}
             corrected={recolorOut?.bytes ?? null}
             comp={params.color}
+            spin={spin}
+            onReady={setCompareReady}
             onFile={pickRecolorFile}
           />
         ) : (
@@ -634,6 +640,9 @@ export default function App() {
         recolorBusy={recolorBusy}
         onPickRecolor={pickRecolorFile}
         onExportRecolor={exportRecolor}
+        spin={spin}
+        onToggleSpin={() => setSpin((v) => !v)}
+        canSpin={mode === 'recolor' && compareReady}
         selected={selected}
         face={face}
         patchFace={patchFace}

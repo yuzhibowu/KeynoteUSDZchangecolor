@@ -33,6 +33,9 @@ type Props = {
   recolorBusy: string | null;
   onPickRecolor: (f: File) => void;
   onExportRecolor: () => void;
+  spin: boolean;
+  onToggleSpin: () => void;
+  canSpin: boolean;
   selected: number | null;
   face: FaceState | null;
   patchFace: (t: Partial<FaceState>) => void;
@@ -57,6 +60,9 @@ export function ControlPanel({
   recolorBusy,
   onPickRecolor,
   onExportRecolor,
+  spin,
+  onToggleSpin,
+  canSpin,
   selected,
   face,
   patchFace,
@@ -107,6 +113,12 @@ export function ControlPanel({
               </option>
             ))}
           </select>
+        )}
+        {/* 暂停旋转放在品牌这一行的左边 */}
+        {canSpin && (
+          <button className="btn spin-toggle" onClick={onToggleSpin}>
+            {spin ? '暂停旋转' : '继续旋转'}
+          </button>
         )}
         <span className="brand">饼饼SHOW</span>
       </div>

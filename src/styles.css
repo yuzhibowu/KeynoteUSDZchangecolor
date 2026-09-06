@@ -416,7 +416,10 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 
 /* ================= 颜色校正模式 ================= */
 
-.recolor { overflow-y: auto; padding: 20px; }
+/* 内容垂直居中，上下都留白。用 margin:auto 而不是 justify-content:center ——
+   后者在内容超高时会把顶部裁掉、滚不上去 */
+.recolor { display: flex; flex-direction: column; overflow-y: auto; padding: 20px; }
+.recolor-body { margin: auto 0; }
 .recolor.drag-over { outline: 2px dashed var(--ink); outline-offset: -12px; }
 .recolor-empty {
   height: 100%;
@@ -428,7 +431,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
   text-align: center;
 }
 .recolor-empty h2 { font-size: 15px; font-weight: 780; margin: 0; }
-.recolor-body { display: flex; flex-direction: column; gap: 20px; }
+.recolor-body { display: flex; flex-direction: column; gap: 20px; margin: auto 0; }
 
 .compare { display: flex; flex-direction: column; gap: 8px; }
 .compare-name { font-size: 12px; font-weight: 680; color: var(--label); }
@@ -437,7 +440,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 
 /* 模型前后对比：两个视口并排，一起转 */
 .model-compare { display: flex; flex-direction: column; gap: 8px; }
-.mc-spin { align-self: flex-start; min-height: 26px; padding: 0 10px; font-size: 11px; }
+.spin-toggle { min-height: 26px; padding: 0 10px; font-size: 11px; flex: none; }
 .mc-view {
   aspect-ratio: 4 / 3;
   background: var(--track);
