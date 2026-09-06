@@ -532,24 +532,9 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 }
 .face-add:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
 
-/* 选中态：四个角的黑点，不是一圈黑框 */
-.face-cell.on::before,
-.face-cell.on::after,
-.face-pick[aria-pressed='true']::before,
-.face-pick[aria-pressed='true']::after {
-  content: '';
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink);
-  pointer-events: none;
-  z-index: 2;
-}
-.face-cell.on::before { left: -3px; top: -3px; box-shadow: 62px 0 0 var(--ink); }
-.face-cell.on::after { left: -3px; bottom: -3px; box-shadow: 62px 0 0 var(--ink); }
-.face-pick[aria-pressed='true']::before,
-.face-pick[aria-pressed='true']::after { display: none; }
+/* 选中态：只把这一格的边线变深。不画角点、不加粗框 —— 点了哪个面，
+   模型已经转到正对它了，dock 这边只要能看出「当前是这一格」就够。 */
+.face-cell.on { border-color: var(--ink); }
 
 /* dock 分正反两行 */
 .dock-row { display: flex; align-items: center; gap: 10px; justify-content: center; }
