@@ -1,5 +1,5 @@
 import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
-import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SIDES, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
+import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
 
 /**
  * 存档键带版本号。参数结构变了（长度/粗细改成像素、分辨率换档位、端面多了镂空、
@@ -53,7 +53,7 @@ export function load(): Persisted | null {
       ? (parsed.params!.target as TargetId)
       : 'keynote';
     params.color = profiles[params.target];
-    const transforms = Array.from({ length: MAX_SIDES }, (_, i) => ({
+    const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),
     }));

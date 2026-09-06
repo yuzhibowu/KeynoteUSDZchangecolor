@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import { innerSlot, MAX_SIDES, type FaceState } from '../lib/types';
+import { CAP_LEFT, CAP_RIGHT, innerSlot, isCap, MAX_SIDES, type FaceState } from '../lib/types';
 
 function Thumb({ store, index, tick }: { store: FaceTextureStore; index: number; tick: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -32,6 +32,8 @@ type Props = {
   tick: number;
   /** 没有端面时才有内面可贴 —— 封了口本来就看不到里面 */
   showInner: boolean;
+  /** 勾了「两端分别设置」才给两个端面各开一个贴图入口 */
+  showCaps: boolean;
   onSelect: (i: number) => void;
   onFiles: (files: File[], faceIndex: number) => void;
 };
@@ -42,10 +44,13 @@ type Props = {
  * 每一格既是「选中这个面」，也是「给这个面导入图片」—— 右下角那个加号点了就开文件框，
  * 从访达直接拖图片到格子上也行。所以不需要再单独放一个「导入图片」按钮。
  */
-export function FaceDock({ store, faces, sides, selected, tick, showInner, onSelect, onFiles }: Props) {
+export function FaceDock({ store, faces, sides, selected, tick, showInner, showCaps, onSelect, onFiles }: Props) {
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const hidden: number[] = [];
   for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
+
+  const nameOf = (slot: number, faceIndex: number) =>
+    isCap(slot) ? (slot === CAP_RIGHT ? '右端面' : '左端面') : `第 ${faceIndex} 个面的${slot === faceIndex ? '正面' : '反面'}`;
 
   const cell = (slot: number, faceIndex: number) => (
           <div
@@ -71,18 +76,18 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, onSel
               type="button"
               className="face-pick"
               aria-pressed={selected === slot}
-              aria-label={`第 ${faceIndex} 个面的${slot === faceIndex ? '正面' : '反面'}${
+              aria-label={`${nameOf(slot, faceIndex)}${
                 faces[slot].sourceName ? '：' + faces[slot].sourceName : ''
               }`}
               onClick={() => onSelect(slot)}
-              title={faces[slot].sourceName ?? `第 ${faceIndex} 个面`}
+              title={faces[slot].sourceName ?? nameOf(slot, faceIndex)}
             >
               <Thumb store={store} index={slot} tick={tick} />
             </button>
             <button
               type="button"
               className="face-add"
-              aria-label={`给第 ${faceIndex} 个面导入图片`}
+              aria-label={`给${nameOf(slot, faceIndex)}导入图片`}
               title="导入图片"
               onClick={() => inputs.current[slot]?.click()}
             >
@@ -102,7 +107,7 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, onSel
                 if (files.length) onFiles(files, slot);
               }}
             />
-            <i>{faceIndex}</i>
+            <i>{isCap(slot) ? (slot === CAP_RIGHT ? '右' : '左') : faceIndex}</i>
           </div>
   );
 
@@ -116,6 +121,15 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, onSel
         <div className="dock-row">
           <span className="dock-label">反面</span>
           <div className="dock">{Array.from({ length: sides }, (_, i) => cell(innerSlot(i), i))}</div>
+        </div>
+      )}
+      {showCaps && (
+        <div className="dock-row">
+          <span className="dock-label">端面</span>
+          <div className="dock">
+            {cell(CAP_RIGHT, CAP_RIGHT)}
+            {cell(CAP_LEFT, CAP_LEFT)}
+          </div>
         </div>
       )}
       {hidden.length > 0 && (

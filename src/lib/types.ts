@@ -8,10 +8,22 @@ export const MAX_SIDES = 12;
  *
  * 内面只在「没有端面」时看得见 —— 封了口就看不到里面，也就没必要贴。
  */
-export const MAX_SLOTS = MAX_SIDES * 2;
+/**
+ * 槽位排布：
+ *   0 .. MAX_SIDES-1        侧面外面
+ *   MAX_SIDES .. 2N-1       侧面内面（反面）
+ *   CAP_RIGHT / CAP_LEFT    两个端面
+ * 端面单独排在最后，别让 isInner / faceOfSlot 这种「按侧面算」的函数误伤它们。
+ */
+export const CAP_RIGHT = MAX_SIDES * 2;
+export const CAP_LEFT = MAX_SIDES * 2 + 1;
+export const MAX_SLOTS = MAX_SIDES * 2 + 2;
 export const innerSlot = (face: number) => MAX_SIDES + face;
-export const isInner = (slot: number) => slot >= MAX_SIDES;
+export const isCap = (slot: number) => slot >= CAP_RIGHT;
+export const isInner = (slot: number) => slot >= MAX_SIDES && slot < CAP_RIGHT;
 export const faceOfSlot = (slot: number) => slot % MAX_SIDES;
+export const slotLabel = (slot: number) =>
+  slot === CAP_RIGHT ? '右端' : slot === CAP_LEFT ? '左端' : String(faceOfSlot(slot));
 
 /**
  * 当前真正会被渲染／导出的贴图槽位。
@@ -19,10 +31,11 @@ export const faceOfSlot = (slot: number) => slot % MAX_SIDES;
  * 别拿 MAX_SLOTS 当循环上界 —— 那是 24 个槽，画 4 个面的时候会白白烘 20 张
  * 2K 画布（每张 ~9 MB），既拖慢每一次滑块拖动，也把显存顶爆，标签页直接黑掉。
  */
-export function activeSlots(sides: number, withInner?: boolean): number[] {
+export function activeSlots(sides: number, withInner?: boolean, withCaps?: boolean): number[] {
   const out: number[] = [];
   for (let i = 0; i < sides; i++) out.push(i);
   if (withInner) for (let i = 0; i < sides; i++) out.push(innerSlot(i));
+  if (withCaps) out.push(CAP_RIGHT, CAP_LEFT);
   return out;
 }
 export const MIN_SIDES = 3;

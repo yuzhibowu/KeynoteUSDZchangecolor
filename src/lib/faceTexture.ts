@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
 import { yieldToBrowser } from './yieldToBrowser';
-import { MAX_SLOTS, activeSlots, faceOfSlot, innerSlot, type FaceState, type FaceTransform, type Resolution } from './types';
+import { CAP_LEFT, MAX_SLOTS, activeSlots, faceOfSlot, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
 
 export type BakeOptions = {
   aspect: number;
@@ -13,6 +13,11 @@ export type BakeOptions = {
   sides: number;
   /** 有没有内面（「没有端面」时才有） */
   withInner?: boolean;
+  /** 端面要不要各自的贴图（勾了「两端分别设置」才有） */
+  withCaps?: boolean;
+  /** 端面还没贴图时铺的底色 */
+  capColorRight?: string;
+  capColorLeft?: string;
   comp: ColorComp;
   /** true = 把颜色预补偿烘进去（只有导出时才开） */
   compensate: boolean;
@@ -69,6 +74,11 @@ function hslToHex(h: number, s: number, l: number): string {
       .map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0'))
       .join('')
   );
+}
+
+/** fillStyle 收到非法字符串会静默沿用上一次的值（默认黑），所以先校验 */
+function safeHex(v: string | undefined): string {
+  return v && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim() : '#d9d9de';
 }
 
 export function canvasSizeFor(aspect: number, resolution: Resolution): CanvasSize {
@@ -245,8 +255,11 @@ export class FaceTextureStore {
     // fillStyle 赋一个非法字符串时浏览器会「静默忽略」，保留上一次的值（默认是黑）——
     // 那样整张贴图会变黑，所以这里先校验。
     if (!face.source) {
-      // 还没贴图：整面铺占位色，一眼能分清哪个面是哪个
-      const c = placeholderColor(faceOfSlot(index), opts.sides);
+      // 还没贴图：整面铺占位色，一眼能分清哪个面是哪个。
+      // 端面铺的是它自己那个端面色，不是彩虹色 —— 否则一勾「两端分别设置」两头就变花的
+      const c = isCap(index)
+        ? safeHex(index === CAP_LEFT ? opts.capColorLeft : opts.capColorRight)
+        : placeholderColor(faceOfSlot(index), opts.sides);
       ctx.fillStyle = useComp ? applyToHex(c, opts.comp) : c;
       ctx.fillRect(0, 0, w, h);
     } else if (!opts.bgTransparent) {
@@ -279,7 +292,8 @@ export class FaceTextureStore {
 
   /** 返回是否真的重烘焙过 */
   bake(index: number, face: FaceState, opts: BakeOptions, force = false): boolean {
-    const { w, h } = canvasSizeFor(opts.aspect, opts.resolution);
+    // 端面是正多边形，UV 按内接圆铺开，画布必须是正方形；侧面才跟着面的宽高比走
+    const { w, h } = canvasSizeFor(isCap(index) ? 1 : opts.aspect, opts.resolution);
     const useComp = opts.compensate && !isIdentity(opts.comp);
     const compSig = useComp ? compSignature(opts.comp) : 'off';
     const sig = [
@@ -313,7 +327,7 @@ export class FaceTextureStore {
    * 每次拖滑块都白干 20 张，导出时还要来回两遍，标签页卡死甚至黑屏就是这么来的。
    */
   bakeAll(faces: FaceState[], opts: BakeOptions, force = false): number {
-    const slots = activeSlots(opts.sides, opts.withInner);
+    const slots = activeSlots(opts.sides, opts.withInner, opts.withCaps);
     let n = 0;
     for (const i of slots) {
       if (this.bake(i, faces[i], opts, force)) n++;
@@ -333,7 +347,7 @@ export class FaceTextureStore {
     opts: BakeOptions,
     onProgress?: (done: number, total: number) => void,
   ): Promise<number> {
-    const slots = activeSlots(opts.sides, opts.withInner);
+    const slots = activeSlots(opts.sides, opts.withInner, opts.withCaps);
     let n = 0;
     for (let k = 0; k < slots.length; k++) {
       if (this.bake(slots[k], faces[slots[k]], opts)) n++;
@@ -379,7 +393,6 @@ export class FaceTextureStore {
     // 关键：按**导出口径**估，也就是补偿之后的像素。
     // 视口里那张是不带补偿的，颜色被推开之后 PNG 压缩率会变，两者体积对不上。
     const useComp = opts.compensate && !isIdentity(opts.comp);
-    const { w, h } = canvasSizeFor(opts.aspect, opts.resolution);
     const probe = this.estimateCanvas ?? (this.estimateCanvas = document.createElement('canvas'));
 
     // 非贴图开销：usda 文本 + zip 头 + 64 字节对齐。
@@ -387,13 +400,13 @@ export class FaceTextureStore {
     // （每个面各有一份材质定义和一个几何文件），基础约 4 KB。
     // 原来这里拍了个 4096 的常数，12 面时会少估 50 KB。
     // 没有端面时每个面有正反两张贴图，都要算进去
-    const slots: number[] = [];
-    for (let i = 0; i < sides; i++) slots.push(i);
-    if (opts.withInner) for (let i = 0; i < sides; i++) slots.push(innerSlot(i));
+    const slots = activeSlots(sides, opts.withInner, opts.withCaps);
 
     let total = USDA_BASE_BYTES + slots.length * USDA_PER_FACE_BYTES;
     for (const i of slots) {
       if (token?.aborted) return -1;
+      // 端面的画布是正方形，和侧面不是一个尺寸，得分开算
+      const { w, h } = canvasSizeFor(isCap(i) ? 1 : opts.aspect, opts.resolution);
       this.paint(probe, i, faces[i], opts, w, h, useComp);
       total += await new Promise<number>((resolve) => {
         probe.toBlob((b) => resolve(b ? b.size : 0), 'image/png', 1);

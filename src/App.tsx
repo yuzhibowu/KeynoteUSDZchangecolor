@@ -16,7 +16,9 @@ import {
   MAX_SIDES,
   MAX_SLOTS,
   faceOfSlot,
+  isCap,
   isInner,
+  CAP_RIGHT,
   createFaces,
   faceAspect,
   type FaceState,
@@ -25,6 +27,13 @@ import {
   targetLabel,
   type TargetId,
 } from './lib/types';
+
+/** 一次拖进多张图时，最多能排到哪个槽位（正面、反面、端面各是独立的一组） */
+function spreadLimit(startIndex: number): number {
+  if (isCap(startIndex)) return MAX_SLOTS;
+  if (isInner(startIndex)) return CAP_RIGHT;
+  return MAX_SIDES;
+}
 
 async function decode(file: File): Promise<ImageBitmap> {
   try {
@@ -144,10 +153,12 @@ export default function App() {
   // 烘焙：面的宽高比一变，画布尺寸跟着变，旧的 offset 可能已经盖不满，先重新夹一遍
   useEffect(() => {
     const aspect = faceAspect(params.radius, params.sides, params.length);
-    const { w, h } = canvasSizeFor(aspect, params.resolution);
+    const side = canvasSizeFor(aspect, params.resolution);
+    const cap = canvasSizeFor(1, params.resolution); // 端面画布是正方形
     let changed = false;
-    const next = faces.map((f) => {
+    const next = faces.map((f, i) => {
       if (!f.source) return f;
+      const { w, h } = isCap(i) ? cap : side;
       const c = clampTransform(f, w, h, f.source.width, f.source.height);
       if (
         Math.abs(c.offsetX - f.offsetX) > 1e-6 ||
@@ -166,12 +177,15 @@ export default function App() {
       bgTransparent: params.bgTransparent,
       sides: params.sides,
       withInner: params.capMode === 'none',
+      withCaps: params.capMode !== 'none' && params.separateCaps,
+      capColorRight: params.capColorRight,
+      capColorLeft: params.capColorLeft,
       comp: params.color,
       compensate: false,
     };
     store.bakeAll(next, opts);
     if (changed) setFaces(next);
-  }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.bgTransparent, params.capMode, params.color, store]);
+  }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.bgTransparent, params.capMode, params.separateCaps, params.capColorRight, params.capColorLeft, params.color, store]);
 
   // 开发时把内部状态挂到 window 上，方便在控制台里量各段耗时
   useEffect(() => {
@@ -211,6 +225,9 @@ export default function App() {
           bgTransparent: params.bgTransparent,
           sides: params.sides,
           withInner: params.capMode === 'none',
+          withCaps: params.capMode !== 'none' && params.separateCaps,
+          capColorRight: params.capColorRight,
+          capColorLeft: params.capColorLeft,
           comp: params.color,
           compensate: true,
         }, token)
@@ -233,6 +250,9 @@ export default function App() {
     params.bgColor,
     params.bgTransparent,
     params.capMode,
+    params.separateCaps,
+    params.capColorRight,
+    params.capColorLeft,
     params.color,
     store,
   ]);
@@ -283,8 +303,10 @@ export default function App() {
     if (loaded.length === 0) return;
     setFaces((prev) => {
       const next = prev.slice();
-      // 多张图依次往后排时，只在同一侧（正面或反面）里排，不跨到另一侧去
-      const limit = isInner(startIndex) ? MAX_SLOTS : MAX_SIDES;
+      // 多张图依次往后排时，只在同一组里排，不跨组：正面、反面、端面各是一组。
+      // 从前这里写的是 isInner ? MAX_SLOTS : MAX_SIDES，加了端面槽位之后
+      // 往端面上拖图会因为 startIndex >= MAX_SIDES 而**一张都放不进去**。
+      const limit = spreadLimit(startIndex);
       loaded.forEach((it, k) => {
         const idx = startIndex + k;
         if (idx >= limit) return;
@@ -299,7 +321,7 @@ export default function App() {
       });
       return next;
     });
-    const limit = isInner(startIndex) ? MAX_SLOTS : MAX_SIDES;
+    const limit = spreadLimit(startIndex);
     setSelected(Math.min(startIndex, limit - 1));
     const overflow = startIndex + loaded.length - limit;
     setStatus(overflow > 0 ? `有 ${overflow} 张图没地方放，已忽略` : null);
@@ -368,6 +390,9 @@ export default function App() {
         bgTransparent: params.bgTransparent,
         sides: params.sides,
         withInner: params.capMode === 'none',
+        withCaps: params.capMode !== 'none' && params.separateCaps,
+        capColorRight: params.capColorRight,
+        capColorLeft: params.capColorLeft,
         comp: params.color,
       };
       await store.bakeAllAsync(faces, { ...base, compensate: true }, (done, total) =>
@@ -440,6 +465,7 @@ export default function App() {
           selected={selected}
           tick={tick}
           showInner={params.capMode === 'none'}
+          showCaps={params.capMode !== 'none' && params.separateCaps}
           onSelect={(i) => {
             setSelected(i);
             // 从底部选面就顺手转到正对着它 —— 否则改缩放、旋转在预览里根本看不见

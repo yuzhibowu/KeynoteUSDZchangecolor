@@ -9,7 +9,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import { clampTransform, type FaceTextureStore } from './faceTexture';
-import { MAX_SIDES, faceAspect, innerSlot, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, MAX_SIDES, faceAspect, innerSlot, isCap, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -146,6 +146,8 @@ export class PrismViewer {
     this.capLeft = new THREE.Mesh(new THREE.BufferGeometry(), this.capLeftMat);
     this.capRight.name = 'cap_right';
     this.capLeft.name = 'cap_left';
+    this.capRight.userData.faceIndex = CAP_RIGHT;
+    this.capLeft.userData.faceIndex = CAP_LEFT;
     this.prism.add(this.capRight, this.capLeft);
 
     for (let i = 0; i < MAX_SIDES; i++) {
@@ -385,6 +387,12 @@ export class PrismViewer {
   faceOn(index: number) {
     const st = this.state;
     if (!st) return;
+    if (isCap(index)) {
+      // 端面朝 ±X，把棱柱绕 Y 转四分之一圈才正对相机
+      this.yaw = shortestTo(this.yaw, index === CAP_RIGHT ? -Math.PI / 2 : Math.PI / 2);
+      this.spin = shortestTo(this.spin, 0);
+      return;
+    }
     this.yaw = shortestTo(this.yaw, 0);
     this.spin = shortestTo(this.spin, faceCenterAngle(index, st.params.sides));
   }
@@ -399,15 +407,42 @@ export class PrismViewer {
     return this.exportMode ? Math.max(0, Math.min(1, p.emissiveLift ?? 0)) : 0;
   }
 
+  /**
+   * 端面：贴了图就走贴图那一路（和侧面同样的规则），没贴图还是纯色。
+   * 纯色不受 8 位限制，可以直接写 > 1 的线性值，不需要贴图那套增益。
+   */
   private applyCapColors(compensate: boolean) {
     const p = this.state!.params;
-    const raw: [THREE.MeshStandardMaterial, string][] = [
-      [this.capRightMat, p.capColorRight],
-      [this.capLeftMat, p.separateCaps ? p.capColorLeft : p.capColorRight],
+    const st = this.state!;
+    const withCaps = p.capMode !== 'none' && p.separateCaps;
+    const raw: [THREE.MeshStandardMaterial, string, number][] = [
+      [this.capRightMat, p.capColorRight, CAP_RIGHT],
+      [this.capLeftMat, p.separateCaps ? p.capColorLeft : p.capColorRight, CAP_LEFT],
     ];
     const unlit = p.emissiveExport;
     const lift = this.liftNow();
-    for (const [mat, hex] of raw) {
+    for (const [mat, hex, slot] of raw) {
+      const textured = withCaps && !!st.faces[slot]?.source;
+      const wantMap = textured ? this.store.textures[slot] : null;
+      if (mat.map !== wantMap) {
+        mat.map = wantMap;
+        mat.needsUpdate = true;
+      }
+      if (textured) {
+        // 和侧面完全一样：补偿已经烘进贴图里了，材质本身保持中性
+        const want = lift > 0 ? mat.map : null;
+        if (mat.emissiveMap !== want) {
+          mat.emissiveMap = want;
+          mat.needsUpdate = true;
+        }
+        mat.emissive.setRGB(lift, lift, lift);
+        mat.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+        continue;
+      }
+      if (mat.emissiveMap) {
+        mat.emissiveMap = null;
+        mat.needsUpdate = true;
+      }
       const lin = compensate ? compensateToLinear(hex, p.color) : null;
       const base: [number, number, number] = lin ?? hexToLinear(hex);
       mat.color.setRGB(unlit ? 0 : base[0], unlit ? 0 : base[1], unlit ? 0 : base[2]);
