@@ -517,6 +517,46 @@ export function applyToImageData(data: Uint8ClampedArray, c: ColorComp) {
   }
 }
 
+const fwdLutCache = new Map<string, Uint8Array>();
+
+/** 正向模型的 3D LUT。和反解那张是一个结构，只是方向反过来 */
+function buildForwardLUT3D(c: ColorComp): Uint8Array {
+  const key = compSignature(c);
+  const hit = fwdLutCache.get(key);
+  if (hit) return hit;
+  const fwd = forwardModel(c);
+  const lut = new Uint8Array(LUT_N * LUT_N * LUT_N * 3);
+  for (let bi = 0; bi < LUT_N; bi++) {
+    for (let gi = 0; gi < LUT_N; gi++) {
+      for (let ri = 0; ri < LUT_N; ri++) {
+        const y = fwd([ri / (LUT_N - 1), gi / (LUT_N - 1), bi / (LUT_N - 1)]);
+        const o = ((bi * LUT_N + gi) * LUT_N + ri) * 3;
+        for (let k = 0; k < 3; k++) lut[o + k] = Math.max(0, Math.min(255, Math.round(y[k] * 255)));
+      }
+    }
+  }
+  if (fwdLutCache.size > 4) fwdLutCache.clear();
+  fwdLutCache.set(key, lut);
+  return lut;
+}
+
+/**
+ * 就地把一张图变成「它在 Keynote 里会显示成的样子」。
+ *
+ * 逐像素跑 forwardOf 会很慢（每个像素都要过一遍 70 个高斯基），所以走 LUT ——
+ * 和 applyToImageData 用的是同一套结构，只是方向相反。
+ */
+export function applyForwardToImageData(data: Uint8ClampedArray, c: ColorComp) {
+  if (isIdentity(c)) return;
+  const lut = buildForwardLUT3D(c);
+  for (let i = 0; i < data.length; i += 4) {
+    const v = lutSample(lut, data[i], data[i + 1], data[i + 2]);
+    data[i] = Math.round(v[0]);
+    data[i + 1] = Math.round(v[1]);
+    data[i + 2] = Math.round(v[2]);
+  }
+}
+
 export function applyToHex(hex: string, c: ColorComp): string {
   if (isIdentity(c)) return hex;
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());

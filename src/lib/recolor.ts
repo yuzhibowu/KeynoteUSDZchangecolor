@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
 import { applyToImageData, compensateToLinear, forwardOf, isIdentity, linearToSrgb, type ColorComp } from './color';
 import { packUsdz } from './usdzExtent';
+import { normalizeUsda } from './usdaNormalize';
 
 /**
  * 给一个**已有的** usdz 做颜色校正。
@@ -180,6 +181,27 @@ export function recolorUsda(
   });
 
   return { text, colors, emissive, swatches };
+}
+
+/**
+ * 把包里的 usda 排版规范化，好让 three 的 USD 加载器读得进去（用于预览渲染）。
+ * 只动排版不动语义，所以拿它去渲染和拿原包去渲染是同一个东西。
+ */
+export function normalizeUsdzForLoader(buf: ArrayBuffer): ArrayBuffer {
+  try {
+    const entries = unzipSync(new Uint8Array(buf));
+    const out: Record<string, Uint8Array> = {};
+    const dec = new TextDecoder();
+    const enc = new TextEncoder();
+    for (const name of Object.keys(entries)) {
+      out[name] = /\.usda?$/i.test(name)
+        ? enc.encode(normalizeUsda(dec.decode(entries[name])))
+        : entries[name];
+    }
+    return packUsdz(out).slice().buffer as ArrayBuffer;
+  } catch {
+    return buf; // 规范化失败就用原样的，大不了渲染不出来
+  }
 }
 
 export async function recolorUsdz(

@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import type { RecolorReport } from '../lib/recolor';
+import { ModelCompare } from './ModelCompare';
+import type { ColorComp } from '../lib/color';
 
 /**
  * 颜色校正模式的左侧区域：校正前 / 校正后的对照。
@@ -11,15 +14,23 @@ export function RecolorPane({
   error,
   report,
   targetName,
+  source,
+  corrected,
+  comp,
   onFile,
 }: {
   fileName: string | null;
   targetName: string;
+  source: ArrayBuffer | null;
+  corrected: Uint8Array | null;
+  comp: ColorComp;
   busy: string | null;
   error: string | null;
   report: RecolorReport | null;
   onFile: (f: File) => void;
 }) {
+  // 模型渲染不了就退回图片对比，并且说清楚为什么 —— 不假装成功
+  const [modelError, setModelError] = useState<string | null>(null);
   return (
     <div
       className="recolor"
@@ -49,6 +60,23 @@ export function RecolorPane({
 
       {report && !busy && (
         <div className="recolor-body">
+          {source && corrected && !modelError && (
+            <div className="compare">
+              <span className="compare-name">模型（两边一起转，拖动可以自己转）</span>
+              <ModelCompare
+                original={source}
+                corrected={corrected}
+                comp={comp}
+                targetName={targetName}
+                onUnsupported={setModelError}
+              />
+            </div>
+          )}
+          {modelError && (
+            <p className="hint warn">
+              这个文件渲染不了（{modelError}），下面只能给逐张贴图的对比。
+            </p>
+          )}
           {/* 比的是「放进去之后长什么样」，不是文件本身的样子 —— 文件里那张
               补偿过的图又暗又怪，本来就不是给人看的 */}
           {report.previews.map((p) => (

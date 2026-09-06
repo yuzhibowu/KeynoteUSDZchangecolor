@@ -581,6 +581,9 @@ export default function App() {
             error={recolorError}
             report={recolorOut?.report ?? null}
             targetName={targetLabel(params.target)}
+            source={recolorSrc?.buf ?? null}
+            corrected={recolorOut?.bytes ?? null}
+            comp={params.color}
             onFile={pickRecolorFile}
           />
         ) : (
