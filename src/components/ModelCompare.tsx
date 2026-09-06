@@ -86,13 +86,11 @@ export function ModelCompare({
   original,
   corrected,
   comp,
-  targetName,
   onUnsupported,
 }: {
   original: ArrayBuffer;
   corrected: Uint8Array;
   comp: ColorComp;
-  targetName: string;
   onUnsupported: (why: string) => void;
 }) {
   const leftRef = useRef<HTMLDivElement>(null);
@@ -237,18 +235,17 @@ export function ModelCompare({
       <div className="compare-pair">
         <figure>
           <div ref={leftRef} className="mc-view" />
-          <figcaption>不校正，进{targetName}是这样</figcaption>
+          <figcaption>校正前</figcaption>
         </figure>
         <figure>
           <div ref={rightRef} className="mc-view" />
-          <figcaption>校正后，进{targetName}是这样</figcaption>
+          <figcaption>校正后</figcaption>
         </figure>
       </div>
-      <div className="row">
-        <button className="btn" onClick={() => setSpin((v) => !v)} disabled={!ready}>
-          {spin ? '暂停旋转' : '继续旋转'}
-        </button>
-      </div>
+      {/* 小按钮就够了，这不是主角 */}
+      <button className="btn mc-spin" onClick={() => setSpin((v) => !v)} disabled={!ready}>
+        {spin ? '暂停' : '旋转'}
+      </button>
     </div>
   );
 }

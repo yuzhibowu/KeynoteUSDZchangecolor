@@ -1,4 +1,4 @@
-import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
+import { DEFAULT_COMP, type ColorComp } from './color';
 import { cardSection, prismSection, type Section } from './geometry';
 
 export const MAX_SIDES = 12;
@@ -182,8 +182,12 @@ export function targetLabel(id: TargetId): string {
 }
 
 export function defaultProfiles(): Record<TargetId, ColorComp> {
-  // Keynote 有实测好的内置档；别的目标是空的，等用户自己校准
-  return { keynote: DEFAULT_COMP, freeform: BLANK_COMP };
+  // 无边记直接沿用 Keynote 那份实测档做起点 —— 两个都是苹果自家的 USDZ 渲染路径，
+  // 拿它当默认远比「什么都不补」准。想更准就在无边记里自己再标一次，会覆盖掉这份。
+  return {
+    keynote: DEFAULT_COMP,
+    freeform: { ...DEFAULT_COMP, calibratedAt: `${DEFAULT_COMP.calibratedAt}（沿用 Keynote 档）` },
+  };
 }
 
 export const DEFAULT_PARAMS: Params = {

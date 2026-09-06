@@ -62,12 +62,10 @@ export function RecolorPane({
         <div className="recolor-body">
           {source && corrected && !modelError && (
             <div className="compare">
-              <span className="compare-name">模型（两边一起转，拖动可以自己转）</span>
               <ModelCompare
                 original={source}
                 corrected={corrected}
                 comp={comp}
-                targetName={targetName}
                 onUnsupported={setModelError}
               />
             </div>
@@ -119,28 +117,6 @@ export function RecolorPane({
 
             </>
           )}
-
-          <div className="derived">
-            <div>
-              <span>补偿的贴图</span>
-              <b>{report.textures} 张</b>
-            </div>
-            <div>
-              <span>补偿的纯色</span>
-              <b>{report.colors} 处</b>
-            </div>
-            <div>
-              <span>补上的自发光</span>
-              <b>{report.emissive} 处</b>
-            </div>
-          </div>
-
-          <p className="hint">
-            两边比的是「放进{targetName}之后长什么样」，不是文件本身的样子。
-            左边是你现在遇到的偏色，右边应该回到你原图的颜色 —— 那就是校正做到的事。
-            （新文件里的贴图本身看着会更暗更闷，那是算好了要被{targetName}
-            提亮一道的半成品，不用管它。）
-          </p>
 
           {report.binary.length > 0 && (
             <p className="hint warn">

@@ -1,4 +1,4 @@
-import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
+import { DEFAULT_COMP, type ColorComp } from './color';
 import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
 
 /**
@@ -19,7 +19,8 @@ type Persisted = { params: Params; transforms: (FaceTransform & { hidden?: boole
  * 别的目标本来就可能没校准过，空着是正常状态，不能拿 Keynote 的档去顶。
  */
 function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorComp {
-  const base = id === 'keynote' ? DEFAULT_COMP : BLANK_COMP;
+  // 每个目标的出厂默认都从 defaultProfiles 拿，别在这儿再写一份
+  const base = defaultProfiles()[id];
   const merged = { ...base, ...(raw ?? {}) };
   if (id === 'keynote' && (!merged.matrix || !merged.curve)) {
     return { ...DEFAULT_COMP, on: merged.on };

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { applyToHex, applyToImageData, BLANK_COMP, DEFAULT_COMP, type ColorComp } from '../lib/color';
+import { applyToHex, applyToImageData, type ColorComp } from '../lib/color';
 
 /** 累积的实测样本上限 —— 局部修正建表是 n³ 的，攒太多会拖慢导出 */
 const MAX_SAMPLES = 400;
@@ -7,7 +7,7 @@ import { COLS, fitChart, sampleChart, type Sample } from '../lib/chart';
 import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import { TARGETS, targetLabel, type TargetId } from '../lib/types';
+import { defaultProfiles, TARGETS, targetLabel, type TargetId } from '../lib/types';
 
 type Props = {
   comp: ColorComp;
@@ -414,7 +414,6 @@ export function ColorPanel({
     (comp.calibratedLift !== null && Math.abs(comp.calibratedLift - lift) > 0.02);
 
   const label = targetLabel(target);
-  const builtIn = target === 'keynote'; // 只有 Keynote 带出厂校准档
 
   return (
     <section>
@@ -442,7 +441,7 @@ export function ColorPanel({
       {/* 勾选项下面不再解释 —— 怎么校准展开「校准」那一栏里说 */}
       {comp.on && !comp.matrix && (
         <p className="hint warn tight">
-          {builtIn ? '没有校准数据，现在开着也不起作用 —— 展开下面点「恢复内置校准」。' : `还没校准过 ${label}，导出的就是原图。`}
+          没有校准数据，现在开着也不起作用 —— 展开下面点「恢复内置校准」。
         </p>
       )}
 
@@ -522,9 +521,9 @@ export function ColorPanel({
             <ChartDrop onPick={onImportProfile} label="导入校准档" accept="application/json,.json" />
           </div>
         </div>
-        {/* 只有 Keynote 有出厂档可恢复；别的目标只能清空重来 */}
-        <button className="btn" onClick={() => patch(builtIn ? DEFAULT_COMP : BLANK_COMP)}>
-          {builtIn ? '恢复内置校准' : `清空 ${label} 的校准`}
+        {/* 两个目标都有出厂档了：无边记沿用的是 Keynote 那份实测数据 */}
+        <button className="btn" onClick={() => patch(defaultProfiles()[target])}>
+          恢复内置校准
         </button>
       </details>
     </section>

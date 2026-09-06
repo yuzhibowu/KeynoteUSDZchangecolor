@@ -436,7 +436,8 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .compare-pair.three { grid-template-columns: repeat(3, 1fr); }
 
 /* 模型前后对比：两个视口并排，一起转 */
-.model-compare { display: flex; flex-direction: column; gap: 10px; }
+.model-compare { display: flex; flex-direction: column; gap: 8px; }
+.mc-spin { align-self: flex-start; min-height: 26px; padding: 0 10px; font-size: 11px; }
 .mc-view {
   aspect-ratio: 4 / 3;
   background: var(--track);
