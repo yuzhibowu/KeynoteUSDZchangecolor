@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { paperGrain } from './paperGrain';
 import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
 
@@ -11,7 +9,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import type { FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, type MaterialSpec, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, sectionOf, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -91,7 +89,6 @@ export class PrismViewer {
   private geomSig = '';
   private raf = 0;
   private paused = false;
-  private envMap: THREE.Texture | null = null;
   /** 视口缩放：双指上下推拉远拉近，1 = 刚好占满 */
   private zoom = 1;
   private ro: ResizeObserver;
@@ -220,7 +217,6 @@ export class PrismViewer {
     this.sideMaterials.forEach((m) => m.dispose());
     this.capRight.geometry.dispose();
     this.capLeft.geometry.dispose();
-    this.envMap?.dispose();
     this.renderer.dispose();
     if (el.parentElement) el.parentElement.removeChild(el);
   }
@@ -310,11 +306,9 @@ export class PrismViewer {
           m.emissiveMap = wantEmissiveMap;
           m.needsUpdate = true;
         }
-        const [tr, tg, tb] = this.tintRGB();
-        m.emissive.setRGB(lift * tr, lift * tg, lift * tb);
-        m.color.setRGB(unlit ? 0 : tr, unlit ? 0 : tg, unlit ? 0 : tb);
+        m.emissive.setRGB(lift, lift, lift);
+        m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
       }
-      this.applyMaterial(m);
 
       const im = this.innerMaterials[i];
       const wantInnerEmissive = lift > 0 ? this.store.textures[innerSlot(i)] : null;
@@ -324,7 +318,6 @@ export class PrismViewer {
       }
       im.emissive.setRGB(lift, lift, lift);
       im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
-      this.applyMaterial(im);
     }
     // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
     const showCaps = params.modelType === 'prism' && params.capMode !== 'none';
@@ -499,8 +492,7 @@ export class PrismViewer {
     }
     const lin = compensate ? compensateToLinear(hex, p.color) : null;
     const raw: [number, number, number] = lin ?? hexToLinear(hex);
-    const t = this.tintRGB();
-    const base: [number, number, number] = [raw[0] * t[0], raw[1] * t[1], raw[2] * t[2]];
+    const base = raw;
     mat.color.setRGB(unlit ? 0 : base[0], unlit ? 0 : base[1], unlit ? 0 : base[2]);
     mat.emissive.setRGB(lift * base[0], lift * base[1], lift * base[2]);
   }
@@ -516,7 +508,6 @@ export class PrismViewer {
     const unlit = p.emissiveExport;
     const lift = this.liftNow();
     for (const [mat, hex, slot] of raw) {
-      this.applyMaterial(mat);
       const textured = withCaps && !!st.faces[slot]?.source;
       const wantMap = textured ? this.store.textures[slot] : null;
       if (mat.map !== wantMap) {
@@ -544,75 +535,6 @@ export class PrismViewer {
    * 补光（自发光）只在导出时挂上 —— 视口的三条光和 Keynote 不是一套，
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
-  /**
-   * 当前的材质质感。棱柱维持原来那套（高粗糙度压高光，别干扰贴图颜色）；
-   * 卡片才走用户选的预设。
-   */
-  private materialNow(): MaterialSpec {
-    const p = this.state!.params;
-    if (p.modelType !== 'card') {
-      return { roughness: 0.9, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 };
-    }
-    return materialOf(p.material);
-  }
-
-  /**
-   * 预览用的环境贴图，第一次要用到才生成。
-   *
-   * 金属没有漫反射，颜色全来自环境反射 —— 场景里没有环境贴图的话，
-   * 金属度拉满的面在预览里就是**纯黑**。Keynote / 无边记 自带环境光照，
-   * 所以这纯粹是预览的事；envMap 也不会被 USDZExporter 写进文件。
-   *
-   * 只挂给「金属或半透明」的材质。哑光、塑料这些一律不挂 ——
-   * 那条路径上的颜色是拿去和校准档对表的，多一层环境反射就对不上了。
-   */
-  private environment(): THREE.Texture {
-    if (!this.envMap) {
-      const pmrem = new THREE.PMREMGenerator(this.renderer);
-      this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-      pmrem.dispose();
-    }
-    return this.envMap;
-  }
-
-  /** 把质感写到一个材质上。transparent 改了必须置 needsUpdate，否则着色器不重编 */
-  private applyMaterial(m: THREE.MeshPhysicalMaterial) {
-    const q = this.materialNow();
-    m.roughness = q.roughness;
-    m.metalness = q.metalness;
-    m.clearcoat = q.clearcoat;
-    m.clearcoatRoughness = q.clearcoatRoughness;
-    m.ior = q.ior;
-    // 金属没有漫反射，全靠环境反射，预览里不给它加强度就是一块暗铁。
-    // envMapIntensity 只影响预览，USDZExporter 不写这个。
-    m.envMapIntensity = q.env ?? 1;
-    // 纸纹：法线贴图按现实尺寸重复，卡片越大重复得越多，纹理颗粒才不会跟着放大
-    const wantGrain = q.grain ? paperGrain(q.grain) : null;
-    if (m.normalMap !== wantGrain) {
-      m.normalMap = wantGrain;
-      m.needsUpdate = true;
-    }
-    if (wantGrain) {
-      const p = this.state!.params;
-      const cm = q.grainCm ?? 3;
-      const wCm = (p.length * 100) / cm;
-      const hCm = ((p.length / p.aspect) * 100) / cm;
-      wantGrain.repeat.set(Math.max(1, Math.round(wCm)), Math.max(1, Math.round(hCm)));
-      wantGrain.needsUpdate = true;
-    }
-    const wantEnv = q.metalness > 0 ? this.environment() : null;
-    if (m.envMap !== wantEnv) {
-      m.envMap = wantEnv;
-      m.needsUpdate = true;
-    }
-  }
-
-  /** 材质的基础色（金属的反射色）。没有 tint 的档就是白，等于不改颜色 */
-  private tintRGB(): [number, number, number] {
-    const t = this.materialNow().tint;
-    return t ? hexToLinear(t) : [1, 1, 1];
-  }
-
   syncSideMaterials() {
     const p = this.state!.params;
     const unlit = p.emissiveExport;
@@ -634,7 +556,6 @@ export class PrismViewer {
         m.emissive.setRGB(lift, lift, lift);
         m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
       }
-      this.applyMaterial(m);
 
       const im = this.innerMaterials[i];
       const wantInner = lift > 0 ? im.map ?? this.store.textures[innerSlot(i)] : null;
@@ -644,7 +565,6 @@ export class PrismViewer {
       }
       im.emissive.setRGB(lift, lift, lift);
       im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
-      this.applyMaterial(im);
     }
   }
 

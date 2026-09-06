@@ -7,7 +7,6 @@ import {
   fromPx,
   radiusFor,
   DEFAULT_PARAMS,
-  MATERIALS,
   CARD_FRONT,
   MODEL_TYPES,
   type ModelType,
@@ -180,6 +179,20 @@ export function ControlPanel({
                   suffix=" px"
                   onChange={(v) => patch({ corner: fromPx(v) })}
                 />
+                <div className="color-row">
+                  <input
+                    type="color"
+                    aria-label="侧边颜色"
+                    value={edgeColor}
+                    onChange={(e) => patch({ capColorRight: e.target.value, edgeAuto: false })}
+                  />
+                  <span>侧边颜色{params.edgeAuto ? '（跟着正面走）' : ''}</span>
+                  {!params.edgeAuto && (
+                    <button className="btn" onClick={() => patch({ edgeAuto: true })}>
+                      跟随正面
+                    </button>
+                  )}
+                </div>
               </>
             )}
             <Slider
@@ -217,58 +230,6 @@ export function ControlPanel({
             </div>
           </div>
         </section>
-
-        {!isPrism && (
-          <section>
-            <h2>材质</h2>
-            <div className="stack">
-              <div className="opts four">
-                {MATERIALS.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className="opt"
-                    aria-pressed={params.material === m.id}
-                    // 选材质就把自发光那两个开关一起关掉。补光是把表面变成自发光来
-                    // 突破亮度上限的，自发光的面不受光，金属和光泽一点都显示不出来。
-                    // **「完全关掉灯光」也要一起关** —— 它会强制把自发光拉满，
-                    // 只关补光滑块没用，这是之前漏掉的口子。
-                    onClick={() => patch({ material: m.id, emissiveLift: 0, emissiveExport: false })}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-              {((params.emissiveLift ?? 0) > 0 || params.emissiveExport) && (
-                <p className="hint warn tight">
-                  {params.emissiveExport ? '「完全关掉灯光」' : '补光'}
-                  开着的时候看不到材质质感 —— 它把表面变成自发光的，
-                  自发光的面不受光，金属和光泽都出不来。
-                  <button
-                    className="btn"
-                    onClick={() => patch({ emissiveLift: 0, emissiveExport: false })}
-                  >
-                    关掉自发光
-                  </button>
-                </p>
-              )}
-              <div className="color-row">
-                <input
-                  type="color"
-                  aria-label="侧边颜色"
-                  value={edgeColor}
-                  onChange={(e) => patch({ capColorRight: e.target.value, edgeAuto: false })}
-                />
-                <span>侧边颜色{params.edgeAuto ? '（跟着正面走）' : ''}</span>
-                {!params.edgeAuto && (
-                  <button className="btn" onClick={() => patch({ edgeAuto: true })}>
-                    跟随正面
-                  </button>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
 
         {isPrism && (
         <section>

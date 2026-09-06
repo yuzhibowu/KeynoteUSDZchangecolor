@@ -1,6 +1,5 @@
 import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
 import { cardSection, prismSection, type Section } from './geometry';
-import type { GrainKind } from './paperGrain';
 
 export const MAX_SIDES = 12;
 
@@ -107,68 +106,12 @@ export const MODEL_TYPES = [
 ] as const;
 export type ModelType = (typeof MODEL_TYPES)[number]['id'];
 
-/**
- * 材质预设。
- *
- * 只调物理质感（粗糙度、金属度、清漆、不透明度、折射率），**不碰颜色** ——
- * 颜色仍然由贴图和那套偏色抵消决定。金和银就是「亮面金属 + 一张金色 / 银色的图」。
- *
- * 玻璃和磨砂玻璃只能做到「像」：USDZ 用的 UsdPreviewSurface 规范里没有透射通道，
- * 只能用低不透明度 + 折射率去凑，不会有真正的折射，背后的东西也不会变形。
- */
-export const MATERIALS = [
-  // 纸：几乎全靠粗糙度区分。纸真正的区别在颜色和纹理，
-  // 而颜色是你自己那张图的事，纹理要法线贴图才做得出来 —— 这里只做「反光有多散」。
-  { id: 'a4', label: 'A4 纸', roughness: 0.92, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, grain: 'fine', grainCm: 2.5 },
-  { id: 'kraft', label: '牛皮纸', roughness: 1, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, grain: 'coarse', grainCm: 3.5 },
-  { id: 'cardstock', label: '卡纸', roughness: 0.75, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, grain: 'medium', grainCm: 3 },
-  { id: 'coated', label: '铜版纸', roughness: 0.38, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.25, ior: 1.5, grain: 'subtle', grainCm: 2 },
-
-  { id: 'matte', label: '哑光', roughness: 0.85, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5 },
-  { id: 'plastic', label: '亮面塑料', roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.05, ior: 1.5 },
-  // 亮面金属：不带色，就是一块镜面金属。饼饼说这个质感好，删了又加回来
-  { id: 'metal', label: '亮面金属', roughness: 0.18, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 0.85 },
-  { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, env: 0.7 },
-
-  // 四种金属。粗糙度刻意留在 0.3 上下 —— 再低高光就是一个又硬又正的亮斑，很刺眼；
-  // 散开一点才像真金属。
-  // env 只影响**预览**的环境反射强度。它调低了不是为了好看，是为了别骗人 ——
-  // Keynote 的环境光比我们预览里这套暗得多，预览开太亮会让人以为导出去也这么强。
-  // tint 是金属的基础反射色，会**乘在贴图上** ——
-  // 金属的颜色本来就来自它自己的反射率，这是唯一会碰颜色的预设，
-  // 也因此这几档下面那套偏色抵消不再准（金属的颜色主要来自环境反射，不是漫反射）。
-  // env 只影响预览的亮度，不会写进 usdz。
-  { id: 'gold', label: '金', roughness: 0.34, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#ffc356', env: 0.75 },
-  { id: 'silver', label: '银', roughness: 0.3, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f8f5ea', env: 0.75 },
-  { id: 'copper', label: '铜', roughness: 0.36, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#f4a38a', env: 0.75 },
-  { id: 'platinum', label: '铂', roughness: 0.32, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, ior: 1.5, tint: '#dcd8d0', env: 0.75 },
-] as const;
-export type MaterialId = (typeof MATERIALS)[number]['id'];
-export type MaterialSpec = {
-  roughness: number;
-  metalness: number;
-  clearcoat: number;
-  clearcoatRoughness: number;
-  ior: number;
-  /** 金属的基础反射色，乘在贴图上。只有金属档有 */
-  tint?: string;
-  /** 预览里的环境反射强度，不导出。金属不加会偏暗 */
-  env?: number;
-  /** 纸纹的法线贴图类型 */
-  grain?: GrainKind;
-  /** 一块纸纹在现实里多大（厘米）—— 决定贴图重复多少次 */
-  grainCm?: number;
-};
-export const materialOf = (id: MaterialId): MaterialSpec =>
-  (MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]) as MaterialSpec;
-
 export type Params = {
   modelType: ModelType;
   /** 卡片厚度，米。棱柱模式下不用 */
   thickness: number;
   /** 卡片圆角半径，米。0 = 直角 */
   corner: number;
-  material: MaterialId;
   sides: number;
   radius: number; // 外接圆半径，米。由 width 和 aspect 算出来，不直接调
   length: number; // 面的宽度 = 棱柱沿 X 轴的长度，米
@@ -234,7 +177,6 @@ export const DEFAULT_PARAMS: Params = {
   modelType: 'prism',
   thickness: 0.006, // 6 mm，差不多一张厚卡片
   corner: 0,
-  material: 'a4',
   sides: 4,
   aspect: 16 / 9,
   radius: radiusFor(0.192, 16 / 9, 4),

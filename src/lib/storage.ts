@@ -1,5 +1,5 @@
 import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
-import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MATERIALS, MAX_SLOTS, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
+import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
 
 /**
  * 存档键带版本号。参数结构变了（长度/粗细改成像素、分辨率换档位、端面多了镂空、
@@ -53,8 +53,13 @@ export function load(): Persisted | null {
       ? (parsed.params!.target as TargetId)
       : 'keynote';
     params.color = profiles[params.target];
-    // 存档里可能是已经删掉的材质（玻璃那两档），落回默认，不然按钮一个都不高亮
-    if (!MATERIALS.some((m) => m.id === params.material)) params.material = MATERIALS[0].id;
+    // 材质那一套已经砍掉了。当初点材质按钮会把补光归零 —— 那是为了看质感，
+    // 现在质感没了，补光得还回来，不然颜色一直是暗的、还找不到原因。
+    if ('material' in (parsed.params ?? {})) {
+      params.emissiveLift = DEFAULT_PARAMS.emissiveLift;
+      params.emissiveExport = DEFAULT_PARAMS.emissiveExport;
+      delete (params as Record<string, unknown>).material;
+    }
     const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),
