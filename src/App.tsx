@@ -378,6 +378,21 @@ export default function App() {
     });
   }, []);
 
+  /** 侧栏取景框里的拖动：只改选中面的偏移，视口那边不再有这个手势 */
+  const onPan = useCallback(
+    (dx: number, dy: number) => {
+      if (dx === 0 && dy === 0) return;
+      setFaces((prev) => {
+        if (selected === null) return prev;
+        const next = prev.slice();
+        const f = next[selected];
+        next[selected] = { ...f, offsetX: f.offsetX + dx, offsetY: f.offsetY + dy };
+        return next;
+      });
+    },
+    [selected],
+  );
+
   const handleResetFace = useCallback(() => patchFace(DEFAULT_TRANSFORM), [patchFace]);
   const handleClearFace = useCallback(() => {
     if (selected !== null) void clearFace(selected);
@@ -510,6 +525,7 @@ export default function App() {
         selected={selected}
         face={face}
         patchFace={patchFace}
+        onPan={onPan}
         patchColor={patchColor}
         setTarget={setTarget}
         store={store}

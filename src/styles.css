@@ -395,6 +395,17 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .hint { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 0; }
 .hint.warn { color: var(--danger); }
 .hint.tight { margin: 0; }
+/* 侧栏取景框：唯一能用鼠标挪图的地方 */
+.frame-preview {
+  display: block;
+  width: 100%;
+  background: var(--track);
+  border: 1px solid var(--line);
+  cursor: grab;
+  touch-action: none;
+}
+.frame-preview:active { cursor: grabbing; }
+
 .filename {
   font-size: 12px;
   color: var(--muted);

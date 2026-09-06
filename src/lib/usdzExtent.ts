@@ -11,6 +11,19 @@ import { unzipSync, zipSync } from 'fflate';
  * 从它自己的 `point3f[] points` 算出真实包围盒，插一行 extent 回去，再原样打包。
  */
 
+/**
+ * 把不起作用的 clearcoat / ior 从材质里删掉。
+ *
+ * three 的导出器只要材质是 MeshPhysicalMaterial 就一定会写这三行，
+ * 哪怕 clearcoat 是 0。按 UsdPreviewSurface 的规范它们是无害的，
+ * 但这是我们的导出文件和「在 Keynote 里确认能显示金属」的最小对照之间
+ * **唯一剩下的差异** —— 排查到最后只剩这一条，那就别留着。
+ * clearcoat 真的大于 0 时（亮面塑料、铜版纸）原样保留。
+ */
+export function stripInertClearcoat(usda: string): string {
+  return usda.replace(/(\n[^\n]*float inputs:clearcoat = 0(?:\.0+)?)((?:\n[^\n]*float inputs:clearcoatRoughness = [^\n]*)?)((?:\n[^\n]*float inputs:ior = [^\n]*)?)/g, '');
+}
+
 /** 从一段 usda 文本里，给每个 def Mesh 块补 extent */
 export function addExtents(usda: string): string {
   // points 形如：point3f[] points = [(x, y, z), (x, y, z), ...]
@@ -91,7 +104,9 @@ export function withExtents(usdz: ArrayBuffer | Uint8Array): Uint8Array {
   const plain: Record<string, Uint8Array> = {};
   for (const name of Object.keys(entries)) {
     const data = entries[name];
-    plain[name] = name.endsWith('.usda') ? enc.encode(addExtents(dec.decode(data))) : data;
+    plain[name] = name.endsWith('.usda')
+      ? enc.encode(stripInertClearcoat(addExtents(dec.decode(data))))
+      : data;
   }
 
   // 64 字节对齐：和 USDZExporter 里的算法一致

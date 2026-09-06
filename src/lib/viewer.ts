@@ -10,8 +10,8 @@ function hexToLinear(hex: string): [number, number, number] {
   const n = parseInt(m[1], 16);
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
-import { clampTransform, type FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, type MaterialSpec, textureAspect, type FaceState, type FaceTransform, type Params } from './types';
+import type { FaceTextureStore } from './faceTexture';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, type MaterialSpec, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -20,23 +20,16 @@ export type ViewerCallbacks = {
   onTransform: (index: number, t: FaceTransform, commit: boolean) => void;
 };
 
-type Drag =
-  | { kind: 'none' }
-  | { kind: 'rotate'; lastX: number; lastY: number }
-  | {
-      kind: 'pan' | 'pinch';
-      face: number;
-      frame: FaceFrame;
-      plane: THREE.Plane;
-      start: FaceTransform;
-      startLocal: { u: number; v: number };
-      startDist: number;
-    };
+/**
+ * 视口里只有一种拖拽：转模型。
+ * 「在面上拖动里面那张图」那套整个删掉了 —— 想转模型结果图跟着窜，太难用。
+ * 挪图去右侧栏的预览框里做。
+ */
+type Drag = { kind: 'none' } | { kind: 'rotate'; lastX: number; lastY: number };
 
 const TAU = Math.PI * 2;
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
-const SCRATCH = new THREE.Vector3();
 const Q_A = new THREE.Quaternion();
 const Q_B = new THREE.Quaternion();
 
@@ -288,13 +281,6 @@ export class PrismViewer {
     Q_B.setFromAxisAngle(AXIS_X, this.curSpin);
     this.pivot.quaternion.copy(Q_A).multiply(Q_B);
     this.pivot.updateMatrixWorld(true);
-  }
-
-  /** 拖贴图之前先把阻尼动画走完，免得平面在拖的过程中还在飘 */
-  private snapRotation() {
-    this.curYaw = this.yaw;
-    this.curSpin = this.spin;
-    this.applyRotation();
   }
 
   update(next: ViewerState) {
@@ -717,71 +703,6 @@ export class PrismViewer {
     return typeof idx === 'number' ? idx : null;
   }
 
-  /** 侧面在世界坐标下的局部基 —— 物体是转过的，所以要把局部基乘上 pivot 的旋转 */
-  private worldFrame(index: number): FaceFrame {
-    const p = this.state!.params;
-    const f = faceFrame(index, sectionOf(p), p.length);
-    const q = this.pivot.quaternion;
-    f.center.applyQuaternion(q);
-    f.normal.applyQuaternion(q);
-    f.u.applyQuaternion(q);
-    f.v.applyQuaternion(q);
-    return f;
-  }
-
-  private localOnFace(frame: FaceFrame, plane: THREE.Plane): { u: number; v: number } | null {
-    const hit = this.raycaster.ray.intersectPlane(plane, SCRATCH);
-    if (!hit) return null;
-    const d = hit.clone().sub(frame.center);
-    return { u: d.dot(frame.u), v: d.dot(frame.v) };
-  }
-
-  private currentTransform(face: number): FaceTransform {
-    const f = this.state!.faces[face];
-    return { offsetX: f.offsetX, offsetY: f.offsetY, scale: f.scale, rotation: f.rotation };
-  }
-
-  private applyTransform(face: number, t: FaceTransform, commit: boolean) {
-    const st = this.state!;
-    const src = st.faces[face].source;
-    const { w, h } = this.store.size(face);
-    const clamped = src ? clampTransform(t, w, h, src.width, src.height) : t;
-    // 视口里直接烘焙，不等 React 状态回流，拖拽才跟手
-    const patched: FaceState = { ...st.faces[face], ...clamped };
-    st.faces[face] = patched;
-    // 用面的真实宽高比推画布尺寸，不要拿当前画布的 w/h 反推 —— 那个值是取整过的
-    this.store.bake(face, patched, {
-      aspect: textureAspect(st.params),
-      resolution: st.params.resolution,
-      bgColor: st.params.bgColor,
-      bgTransparent: st.params.bgTransparent,
-      sides: st.params.sides,
-      slots: [face], // 只烘这一个面
-      comp: st.params.color,
-      compensate: false, // 视口里看到的是「Keynote 里应该长成的样子」，补偿只在导出时烘进去
-    });
-    this.cb.onTransform(face, clamped, commit);
-  }
-
-  private beginTexturePan(face: number, e: { clientX: number; clientY: number }): boolean {
-    this.snapRotation();
-    const frame = this.worldFrame(face);
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(frame.normal, frame.center);
-    this.setPointer(e);
-    const local = this.localOnFace(frame, plane);
-    if (!local) return false;
-    this.drag = {
-      kind: 'pan',
-      face,
-      frame,
-      plane,
-      start: this.currentTransform(face),
-      startLocal: local,
-      startDist: 0,
-    };
-    return true;
-  }
-
   // ---- 交互 ----
 
   private onPointerDown = (e: PointerEvent) => {
@@ -789,55 +710,16 @@ export class PrismViewer {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    // 第二根手指落下 → 捏合缩放贴图
-    if (this.drag.kind === 'pan' && this.pointers.size === 2) {
-      const face = this.drag.face;
-      const mid = this.midpoint();
-      if (mid) {
-        this.setPointer(mid);
-        const local = this.localOnFace(this.drag.frame, this.drag.plane);
-        if (local) {
-          this.drag = {
-            ...this.drag,
-            kind: 'pinch',
-            start: this.currentTransform(face),
-            startLocal: local,
-            startDist: this.pointerDistance(),
-          };
-        }
-      }
-      return;
-    }
-
+    // **视口里的鼠标只做一件事：转模型。**
+    // 从前在选中面上按下会变成「拖里面那张图」—— 想转一下模型，图却跟着窜，
+    // 非常难用。挪图和缩放一律去右侧栏的预览框里做，这里绝不再抢这个手势。
     const hit = this.faceAtClient(e.clientX, e.clientY);
     const st = this.state;
-    const grabTexture =
-      hit !== null && hit === st.selected && st.faces[hit].source !== null && !e.shiftKey;
-
     this.renderer.domElement.setPointerCapture(e.pointerId);
-
-    if (grabTexture && this.beginTexturePan(hit, e)) {
-      this.renderer.domElement.style.cursor = 'grabbing';
-      return;
-    }
-
     if (hit !== null && hit !== st.selected) this.cb.onSelect(hit);
-    // 其余一律是转物体（相机不动）
     this.drag = { kind: 'rotate', lastX: e.clientX, lastY: e.clientY };
     this.renderer.domElement.style.cursor = 'grabbing';
   };
-
-  private midpoint(): { clientX: number; clientY: number } | null {
-    const pts = [...this.pointers.values()];
-    if (pts.length < 2) return null;
-    return { clientX: (pts[0].x + pts[1].x) / 2, clientY: (pts[0].y + pts[1].y) / 2 };
-  }
-
-  private pointerDistance(): number {
-    const pts = [...this.pointers.values()];
-    if (pts.length < 2) return 0;
-    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-  }
 
   private onPointerMove = (e: PointerEvent) => {
     if (!this.state) return;
@@ -857,58 +739,12 @@ export class PrismViewer {
       return;
     }
 
-    if (this.drag.kind === 'pan') {
-      this.setPointer(e);
-      const local = this.localOnFace(this.drag.frame, this.drag.plane);
-      if (!local) return;
-      const { frame, start, startLocal } = this.drag;
-      // ray-plane 求交的差值 → 物理位移 → 归一化偏移。透视被自动处理掉，
-      // 鼠标始终粘在贴图的同一个点上，拖出面的边界也不会丢追踪。
-      const du = (local.u - startLocal.u) / frame.width;
-      const dv = (local.v - startLocal.v) / frame.height;
-      this.applyTransform(
-        this.drag.face,
-        { ...start, offsetX: start.offsetX + du, offsetY: start.offsetY + dv },
-        false,
-      );
-      return;
-    }
-
-    if (this.drag.kind === 'pinch') {
-      const mid = this.midpoint();
-      const dist = this.pointerDistance();
-      if (!mid || dist <= 0 || this.drag.startDist <= 0) return;
-      this.setPointer(mid);
-      const local = this.localOnFace(this.drag.frame, this.drag.plane);
-      if (!local) return;
-      const { frame, start, startLocal } = this.drag;
-      const scale = Math.min(8, Math.max(1, start.scale * (dist / this.drag.startDist)));
-      const k = scale / start.scale;
-      const au = startLocal.u / frame.width;
-      const av = startLocal.v / frame.height;
-      const panU = (local.u - startLocal.u) / frame.width;
-      const panV = (local.v - startLocal.v) / frame.height;
-      this.applyTransform(
-        this.drag.face,
-        {
-          ...start,
-          scale,
-          offsetX: au - (au - start.offsetX) * k + panU,
-          offsetY: av - (av - start.offsetY) * k + panV,
-        },
-        false,
-      );
-      return;
-    }
-
     if (this.pointers.size === 0) {
       const hit = this.faceAtClient(e.clientX, e.clientY);
       if (hit !== this.hovered) {
         this.hovered = hit;
         this.refreshOutline();
-        const st = this.state;
-        const grabbable = hit !== null && hit === st.selected && st.faces[hit].source !== null;
-        this.renderer.domElement.style.cursor = grabbable ? 'grab' : hit !== null ? 'pointer' : 'move';
+        this.renderer.domElement.style.cursor = hit !== null ? 'pointer' : 'move';
       }
     }
   };
@@ -921,19 +757,8 @@ export class PrismViewer {
     if (this.drag.kind === 'none') return;
 
     if (this.pointers.size === 0) {
-      const drag = this.drag;
       this.drag = { kind: 'none' };
       this.renderer.domElement.style.cursor = 'grab';
-      if (drag.kind === 'pan' || drag.kind === 'pinch') {
-        this.cb.onTransform(drag.face, this.currentTransform(drag.face), true);
-      }
-      return;
-    }
-
-    // 松开一根手指，退回单指平移
-    if (this.drag.kind === 'pinch' && this.pointers.size === 1) {
-      const remaining = [...this.pointers.values()][0];
-      this.beginTexturePan(this.drag.face, { clientX: remaining.x, clientY: remaining.y });
     }
   };
 

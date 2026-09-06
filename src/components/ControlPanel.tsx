@@ -1,5 +1,6 @@
 import { ColorPanel } from './ColorPanel';
 import { Slider } from './Slider';
+import { FramePreview } from './FramePreview';
 import type { FaceTextureStore } from '../lib/faceTexture';
 import {
   ASPECTS,
@@ -28,6 +29,8 @@ type Props = {
   selected: number | null;
   face: FaceState | null;
   patchFace: (t: Partial<FaceState>) => void;
+  /** 在取景框里拖动 —— 单位是画布宽/高的几分之几 */
+  onPan: (dx: number, dy: number, commit: boolean) => void;
   patchColor: (c: Partial<ColorComp>) => void;
   setTarget: (t: TargetId) => void;
   store: FaceTextureStore;
@@ -44,6 +47,7 @@ export function ControlPanel({
   selected,
   face,
   patchFace,
+  onPan,
   patchColor,
   setTarget,
   store,
@@ -101,6 +105,11 @@ export function ControlPanel({
                 <div className="filename" title={face.sourceName ?? ''}>
                   {face.sourceName}
                 </div>
+                {/* 挪图只在这里做。视口里拖鼠标一律是转模型，绝不动图 */}
+                {selected !== null && (
+                  <FramePreview store={store} index={selected} tick={tick} onPan={onPan} />
+                )}
+                <p className="hint tight">在上面这张图里按住拖动，可以挪动画面。</p>
                 <Slider
                   label="缩放"
                   reset={1}
