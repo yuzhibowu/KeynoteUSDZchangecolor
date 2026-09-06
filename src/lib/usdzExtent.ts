@@ -100,7 +100,6 @@ export function withExtents(usdz: ArrayBuffer | Uint8Array): Uint8Array {
 
   const dec = new TextDecoder();
   const enc = new TextEncoder();
-  const files: Record<string, Uint8Array | [Uint8Array, { extra: Record<number, Uint8Array> }]> = {};
   const plain: Record<string, Uint8Array> = {};
   for (const name of Object.keys(entries)) {
     const data = entries[name];
@@ -109,24 +108,27 @@ export function withExtents(usdz: ArrayBuffer | Uint8Array): Uint8Array {
       : data;
   }
 
-  // 64 字节对齐：和 USDZExporter 里的算法一致
-  let offset = 0;
-  for (const name of Object.keys(plain)) {
-    const file = plain[name];
-    const headerSize = 34 + name.length;
-    offset += headerSize;
-    const mod = offset & 63;
-    if (mod !== 4) {
-      files[name] = [file, { extra: { 12345: new Uint8Array(64 - mod) } }];
-    } else {
-      files[name] = file;
-    }
-    offset = file.length;
-  }
-
   try {
-    return zipSync(files as Parameters<typeof zipSync>[0], { level: 0 });
+    return packUsdz(plain);
   } catch {
     return src;
   }
+}
+
+/**
+ * 按 usdz 的要求打包：**不压缩**（STORED），且每个文件的数据起始偏移
+ * 要 64 字节对齐 —— 靠往 extra 字段里塞 padding 实现。算法和 three 的
+ * USDZExporter 里那段一致。
+ */
+export function packUsdz(plain: Record<string, Uint8Array>): Uint8Array {
+  const files: Record<string, Uint8Array | [Uint8Array, { extra: Record<number, Uint8Array> }]> = {};
+  let offset = 0;
+  for (const name of Object.keys(plain)) {
+    const file = plain[name];
+    offset += 34 + name.length;
+    const mod = offset & 63;
+    files[name] = mod !== 4 ? [file, { extra: { 12345: new Uint8Array(64 - mod) } }] : file;
+    offset = file.length;
+  }
+  return zipSync(files as Parameters<typeof zipSync>[0], { level: 0 });
 }

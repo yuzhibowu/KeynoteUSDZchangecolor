@@ -392,6 +392,20 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .btn-primary:disabled { background: var(--disabled); cursor: default; }
 .btn-primary.drag-over { background: var(--ink); outline: 2px dashed var(--on-ink); outline-offset: -6px; }
 
+/* ================= 颜色校正模式 ================= */
+
+.recolor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.recolor.drag-over { outline: 2px dashed var(--ink); outline-offset: -12px; }
+.recolor-box { width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.recolor-box h2 { font-size: 15px; font-weight: 780; margin: 0; }
+.recolor-report { display: flex; flex-direction: column; gap: 8px; }
+
 /* ================= 面缩略图 ================= */
 
 /* 预览下方的一排面缩略图，水平居中，像一条 dock */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
+import { RecolorPane } from './components/RecolorPane';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
 import { CANCELLED, download, exportUsdz, formatBytes, openSaveTarget, usdzFileName } from './lib/exportUsdz';
@@ -28,6 +29,7 @@ import {
   type FaceTransform,
   type Params,
   targetLabel,
+  type Mode,
   type TargetId,
 } from './lib/types';
 
@@ -90,6 +92,9 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [frozen, setFrozen] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(loadTheme);
+  // 顶部菜单的三档。前两档改的是几何，第三档走完全另一条路（拿现成的 usdz 来改），
+  // 所以单独一个 state —— 塞进 modelType 会把几何那边全污染。
+  const [mode, setMode] = useState<Mode>('prism');
   const [status, setStatus] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<{ blob: Blob; name: string } | null>(null);
 
@@ -516,6 +521,9 @@ export default function App() {
             </button>
           </span>
         </div>
+        {mode === 'recolor' ? (
+          <RecolorPane comp={params.color} targetName={targetLabel(params.target)} />
+        ) : (
         <Viewport
           store={store}
           params={params}
@@ -530,6 +538,8 @@ export default function App() {
           onClearFace={handleClearFace}
           onTestFill={onTestFill}
         />
+        )}
+        {mode !== 'recolor' && (
         <FaceDock
           store={store}
           faces={faces}
@@ -547,11 +557,17 @@ export default function App() {
           onFiles={(files, i) => assignFiles(files, i)}
           onRotate={rotateFace}
         />
+        )}
       </main>
 
       <ControlPanel
         params={params}
         patch={patch}
+        mode={mode}
+        setMode={(m) => {
+          setMode(m);
+          if (m !== 'recolor') patch({ modelType: m });
+        }}
         selected={selected}
         face={face}
         patchFace={patchFace}

@@ -8,8 +8,8 @@ import {
   radiusFor,
   DEFAULT_PARAMS,
   CARD_FRONT,
-  MODEL_TYPES,
-  type ModelType,
+  MODES,
+  type Mode,
   MAX_SIDES,
   MIN_SIDES,
   RESOLUTIONS,
@@ -25,6 +25,8 @@ import type { ColorComp } from '../lib/color';
 type Props = {
   params: Params;
   patch: (p: Partial<Params>) => void;
+  mode: Mode;
+  setMode: (m: Mode) => void;
   selected: number | null;
   face: FaceState | null;
   patchFace: (t: Partial<FaceState>) => void;
@@ -43,6 +45,8 @@ type Props = {
 export function ControlPanel({
   params,
   patch,
+  mode,
+  setMode,
   selected,
   face,
   patchFace,
@@ -81,11 +85,11 @@ export function ControlPanel({
         {/* 模型类型放在 logo 的对角 —— 这是「先决定做什么」，该在最前面 */}
         <select
           className="model-type"
-          aria-label="模型类型"
-          value={params.modelType}
-          onChange={(e) => patch({ modelType: e.target.value as ModelType })}
+          aria-label="模式"
+          value={mode}
+          onChange={(e) => setMode(e.target.value as Mode)}
         >
-          {MODEL_TYPES.map((m) => (
+          {MODES.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}
             </option>
@@ -95,6 +99,24 @@ export function ControlPanel({
       </div>
 
       <div className="side-body">
+        {mode === 'recolor' ? (
+          <ColorPanel
+            comp={params.color}
+            patch={patchColor}
+            target={params.target}
+            setTarget={setTarget}
+            store={store}
+            selected={null}
+            hasImage={false}
+            tick={tick}
+            onExportChart={onExportChart}
+            unlit={params.emissiveExport}
+            setUnlit={(v) => patch({ emissiveExport: v })}
+            lift={params.emissiveLift ?? 0}
+            setLift={(v) => patch({ emissiveLift: v })}
+          />
+        ) : (
+        <>
         {/* 逐面的「不显示」。USD 是单面渲染的，藏掉之后从这一侧看过去是空的、
             能看穿到里面，转过去又出现 —— 不是透明，是那个面真的不存在。
             导出的 usdz 里也一样不会有这个面。 */}
@@ -379,6 +401,9 @@ export function ControlPanel({
         />
 
         {/* 不要标题、不要上面那条分隔线 —— 到这儿已经是面板最底下了 */}
+        </>
+        )}
+        {mode !== 'recolor' && (
         <section className="export-block">
           <div className="export-meta">
             <span>预估大小</span>
@@ -393,6 +418,7 @@ export function ControlPanel({
             {busy ?? '导出 USDZ'}
           </button>
         </section>
+        )}
       </div>
     </aside>
   );

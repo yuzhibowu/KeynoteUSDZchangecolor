@@ -108,6 +108,14 @@ export const MODEL_TYPES = [
 ] as const;
 export type ModelType = (typeof MODEL_TYPES)[number]['id'];
 
+/** 顶部菜单里的三档。颜色校正不是一种模型，是另一条路：拿现成的 usdz 来改 */
+export const MODES = [
+  { id: 'prism', label: '棱柱' },
+  { id: 'card', label: '卡片' },
+  { id: 'recolor', label: '颜色校正' },
+] as const;
+export type Mode = (typeof MODES)[number]['id'];
+
 export type Params = {
   modelType: ModelType;
   /** 卡片厚度，米。棱柱模式下不用 */
