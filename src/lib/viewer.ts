@@ -95,6 +95,7 @@ export class PrismViewer {
   private state: ViewerState | null = null;
   private geomSig = '';
   private raf = 0;
+  private paused = false;
   private ro: ResizeObserver;
 
   constructor(container: HTMLElement, store: FaceTextureStore, cb: ViewerCallbacks) {
@@ -229,8 +230,35 @@ export class PrismViewer {
     if (this.state) this.fitCamera();
   }
 
+  /**
+   * 暂停/恢复渲染。
+   *
+   * 导出时要把「补偿后」的像素烘进贴图，而那批像素本来就比看到的暗一截 ——
+   * 一边烘一边渲染，预览就会先整个变暗、导完再变回来，看着像卡死了。
+   * 停掉渲染，画布会一直停在最后那一帧，用户完全看不到中间态。
+   */
+  setPaused(v: boolean) {
+    this.paused = v;
+  }
+
+  /**
+   * 把当前这一帧拍成图片。
+   *
+   * 必须先 render 再立刻读 —— 这块画布没开 preserveDrawingBuffer，
+   * 隔一个任务再读就是空白（之前踩过这个坑）。
+   */
+  snapshot(): string | null {
+    try {
+      this.renderer.render(this.scene, this.camera);
+      return this.renderer.domElement.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  }
+
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
+    if (this.paused) return;
     if (!this.canonical) {
       const dYaw = this.yaw - this.curYaw;
       const dSpin = this.spin - this.curSpin;
@@ -609,7 +637,8 @@ export class PrismViewer {
       this.drag.lastX = e.clientX;
       this.drag.lastY = e.clientY;
       this.yaw += dx * 0.0075;
-      this.spin += dy * 0.0075;
+      // 上下方向是反的：往下拖/往下滚，模型该跟着往下转
+      this.spin -= dy * 0.0075;
       return;
     }
 

@@ -12,9 +12,27 @@ type Props = {
   onTransform: (i: number, t: FaceTransform, commit: boolean) => void;
   onDropFiles: (files: File[], faceIndex: number | null) => void;
   viewerRef: React.MutableRefObject<PrismViewer | null>;
+  /** 导出期间盖在预览上的静止画面，避免用户看到贴图被补偿得发暗 */
+  frozen: string | null;
+  onResetFace: () => void;
+  onClearFace: () => void;
+  onTestFill: () => void;
 };
 
-export function Viewport({ store, params, faces, selected, onSelect, onTransform, onDropFiles, viewerRef }: Props) {
+export function Viewport({
+  store,
+  params,
+  faces,
+  selected,
+  onSelect,
+  onTransform,
+  onDropFiles,
+  viewerRef,
+  frozen,
+  onResetFace,
+  onClearFace,
+  onTestFill,
+}: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cbRef = useRef({ onSelect, onTransform });
   cbRef.current = { onSelect, onTransform };
@@ -39,6 +57,7 @@ export function Viewport({ store, params, faces, selected, onSelect, onTransform
   }, [params, faces, selected, viewerRef]);
 
   const dropping = dropFace !== undefined;
+  const hasImage = selected !== null && !!faces[selected]?.source;
 
   return (
     <div
@@ -63,6 +82,7 @@ export function Viewport({ store, params, faces, selected, onSelect, onTransform
         onDropFiles(files, face);
       }}
     >
+      {frozen && <img className="viewport-freeze" src={frozen} alt="" />}
       {dropping && (
         <div className="drop-hint">
           {dropFace === null ? '松手 → 从第 0 个面开始依次分配' : `松手 → 贴到第 ${dropFace} 个面`}
@@ -79,6 +99,22 @@ export function Viewport({ store, params, faces, selected, onSelect, onTransform
         </button>
         <button className="btn" onClick={() => viewerRef.current?.resetRotation()}>
           重置角度
+        </button>
+      </div>
+      {/* 贴图操作也贴边放，右下角一排 —— 侧栏里那一段就不再重复了 */}
+      <div className="stage-tools right">
+        <button className="btn" onClick={onResetFace} disabled={!hasImage}>
+          重置此面
+        </button>
+        <button className="btn" onClick={onClearFace} disabled={!hasImage}>
+          移除图片
+        </button>
+        <button
+          className="btn"
+          onClick={onTestFill}
+          title="给每个面填一张带编号的纯色图，用来验证 Keynote 对「多 mesh 多材质」的支持"
+        >
+          填充测试色块
         </button>
       </div>
     </div>

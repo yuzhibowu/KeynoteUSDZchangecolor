@@ -74,6 +74,7 @@ export default function App() {
   const [tick, setTick] = useState(0);
   const [sizeText, setSizeText] = useState('—');
   const [busy, setBusy] = useState<string | null>(null);
+  const [frozen, setFrozen] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<{ blob: Blob; name: string } | null>(null);
 
@@ -163,11 +164,14 @@ export default function App() {
     Object.assign(window as unknown as Record<string, unknown>, { __store: store, __faces: faces, __params: params });
   });
 
-  // 烘焙完通知缩略图重画，用 rAF 压一下频率
+  // 烘焙完通知缩略图重画，用 rAF 压一下频率。
+  // 导出期间不重画：那会儿贴图里装的是补偿过的像素，比眼睛该看到的暗一截，
+  // 缩略图跟着变暗又变回来，看着就像整个界面闪了一下。
+  const busyRef = useRef(false);
   useEffect(() => {
     let pending = false;
     return store.subscribe(() => {
-      if (pending) return;
+      if (pending || busyRef.current) return;
       pending = true;
       requestAnimationFrame(() => {
         pending = false;
@@ -309,6 +313,12 @@ export default function App() {
     setStatus('已填入测试色块：导出后在 Keynote 里核对每个面的颜色和编号是否对得上');
   }, [fillTestBlocks]);
 
+  const handleResetFace = useCallback(() => patchFace(DEFAULT_TRANSFORM), [patchFace]);
+  const handleClearFace = useCallback(() => {
+    if (selected !== null) void clearFace(selected);
+    patchFace({ ...DEFAULT_TRANSFORM, source: null, sourceName: null, sourceKey: sourceKey.current++ });
+  }, [patchFace, selected]);
+
   const handleExportChart = useCallback(async () => {
     try {
       const { blob, name } = await exportChartCard(params, store.canvases);
@@ -328,6 +338,12 @@ export default function App() {
     if (target === CANCELLED) return;
     setBusy('导出中…');
     setStatus(null);
+    // 烘补偿贴图会让预览和缩略图整体变暗 —— 那是「Keynote 里才该出现」的像素，
+    // 不该让用户看见。先把当前画面拍下来盖上去，再停掉渲染和缩略图刷新。
+    busyRef.current = true;
+    setFrozen(viewer.snapshot());
+    await yieldToBrowser(); // 等这张静止图真的铺上去，再停渲染，否则会闪一下白
+    viewer.setPaused(true);
     try {
       // 导出前跑一次全量烘焙，把颜色预补偿烘进去（视口里那份是不带补偿的）
       const base = {
@@ -368,7 +384,11 @@ export default function App() {
       if (target) await target.abort().catch(() => undefined);
       setStatus(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      viewer.setPaused(false);
+      busyRef.current = false;
+      setFrozen(null);
       setBusy(null);
+      setTick((t) => t + 1); // 导出期间压住了缩略图刷新，这里补一次
     }
   }, [faces, params, store]);
 
@@ -391,6 +411,10 @@ export default function App() {
           onTransform={onTransform}
           onDropFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? 0)}
           viewerRef={viewerRef}
+          frozen={frozen}
+          onResetFace={handleResetFace}
+          onClearFace={handleClearFace}
+          onTestFill={onTestFill}
         />
         <FaceDock
           store={store}
@@ -418,12 +442,6 @@ export default function App() {
         store={store}
         tick={tick}
         onExportChart={handleExportChart}
-        onResetFace={() => patchFace(DEFAULT_TRANSFORM)}
-        onClearFace={() => {
-          if (selected !== null) void clearFace(selected);
-          patchFace({ ...DEFAULT_TRANSFORM, source: null, sourceName: null, sourceKey: sourceKey.current++ });
-        }}
-        onTestFill={onTestFill}
         onExport={handleExport}
         sizeText={sizeText}
         busy={busy}

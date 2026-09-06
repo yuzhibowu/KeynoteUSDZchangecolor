@@ -1,10 +1,8 @@
 import { ColorPanel } from './ColorPanel';
 import { Slider } from './Slider';
-import { canvasSizeFor } from '../lib/faceTexture';
 import type { FaceTextureStore } from '../lib/faceTexture';
 import {
   ASPECTS,
-  faceChord,
   fromPx,
   radiusFor,
   MAX_SIDES,
@@ -28,9 +26,6 @@ type Props = {
   store: FaceTextureStore;
   tick: number;
   onExportChart: () => void;
-  onResetFace: () => void;
-  onClearFace: () => void;
-  onTestFill: () => void;
   onExport: () => void;
   sizeText: string;
   busy: string | null;
@@ -46,18 +41,12 @@ export function ControlPanel({
   store,
   tick,
   onExportChart,
-  onResetFace,
-  onClearFace,
-  onTestFill,
   onExport,
   sizeText,
   busy,
 }: Props) {
   // Safari 没有 showSaveFilePicker，导出只能落到「下载」文件夹 —— 先说清楚，免得用户找不到文件
   const canPickFolder = typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
-  const chord = faceChord(params.radius, params.sides);
-  const aspect = params.length / chord;
-  const canvas = canvasSizeFor(aspect, params.resolution);
 
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
   const patchGeom = (p: Partial<Params>) => {
@@ -73,11 +62,12 @@ export function ControlPanel({
       </div>
 
       <div className="side-body">
-        <section>
-          <h2>贴图位置</h2>
-          <div className="stack">
-            {face && hasImage ? (
-              <>
+        {/* 没选中带图的面就整段不显示 —— 重置/移除/填充测试色块那三个按钮
+            已经挪到预览区右下角，这里只留跟「这张图怎么摆」有关的东西 */}
+        {face && hasImage && (
+          <section>
+            <h2>贴图位置</h2>
+            <div className="stack">
                 <div className="filename" title={face.sourceName ?? ''}>
                   {face.sourceName}
                 </div>
@@ -108,29 +98,9 @@ export function ControlPanel({
                     </b>
                   </div>
                 </div>
-              </>
-            ) : (
-              <p className="hint">
-                点下面那排缩略图右下角的 <b>+</b> 导入图片，或者直接把图片从访达拖到某一格上。
-              </p>
-            )}
-            <div className="row">
-              <button className="btn" onClick={onResetFace} disabled={!hasImage}>
-                重置此面
-              </button>
-              <button className="btn" onClick={onClearFace} disabled={!hasImage}>
-                移除图片
-              </button>
             </div>
-            <button
-              className="btn"
-              onClick={onTestFill}
-              title="给每个面填一张带编号的纯色图，用来验证 Keynote 对「多 mesh 多材质」的支持"
-            >
-              填充测试色块
-            </button>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section>
           <h2>几何</h2>
@@ -167,24 +137,6 @@ export function ControlPanel({
                     {a.label}
                   </button>
                 ))}
-              </div>
-            </div>
-            <div className="derived">
-              <div>
-                <span>侧面尺寸</span>
-                <b>
-                  {(params.length * 100).toFixed(2)} × {(chord * 100).toFixed(2)} cm
-                </b>
-              </div>
-              <div>
-                <span>粗细（外接圆半径）</span>
-                <b>{toPx(params.radius)} px</b>
-              </div>
-              <div>
-                <span>贴图画布</span>
-                <b>
-                  {canvas.w} × {canvas.h}
-                </b>
               </div>
             </div>
           </div>
