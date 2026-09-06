@@ -102,8 +102,8 @@ export function ControlPanel({
           </section>
         )}
 
-        <section>
-          <h2>几何</h2>
+        {/* 不要标题、也不要上面那条分隔线 */}
+        <section className="bare">
           <div className="stack">
             <Slider
               label="边数"
