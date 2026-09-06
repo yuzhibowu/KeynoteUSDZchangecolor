@@ -89,13 +89,20 @@ export function sideGeometry(
   // 谁在前面完全看渲染器的深度判定。three 靠背面剔除看不出问题，
   // 但 Keynote 里会随机显示成内壁 —— 看起来就像摄像机跑进了模型内部。
   // 让开的量取半径的千分之二，肉眼看不出厚度，又足够拉开深度差。
+  //
+  // 让开的方式很讲究：**不能把四边形整块沿自己的法线平移**。相邻两个面的法线方向不同，
+  // 同一个棱上的顶点被推向两个方向，棱上就裂开一条缝（四棱柱是半径的 0.28%），
+  // 没有端面时能透过这条缝看见内壁 —— 表现就是模型每条边上一道浅色虚线。
+  // 正确做法是让内面落在一个**同心的小一圈棱柱**上：面到轴的距离减 gap，
+  // 对应外接圆半径减 gap/cos(half)。这样相邻内面仍然共用棱上的顶点，缝就不存在。
   const gap = radius * 0.002;
-  const inset = new Float32Array(12);
-  for (let k = 0; k < 4; k++) {
-    inset[k * 3] = positions[k * 3];
-    inset[k * 3 + 1] = positions[k * 3 + 1] - ny * gap;
-    inset[k * 3 + 2] = positions[k * 3 + 2] - nz * gap;
-  }
+  const rIn = radius - gap / Math.cos(half);
+  const inset = new Float32Array([
+    -hl, rIn * Math.sin(a0), rIn * Math.cos(a0),
+    hl, rIn * Math.sin(a0), rIn * Math.cos(a0),
+    hl, rIn * Math.sin(a1), rIn * Math.cos(a1),
+    -hl, rIn * Math.sin(a1), rIn * Math.cos(a1),
+  ]);
   const inv = new Float32Array(12);
   for (let k = 0; k < 12; k++) inv[k] = -normals[k];
   const uvMirror = new Float32Array([1, 0, 0, 0, 0, 1, 1, 1]);
