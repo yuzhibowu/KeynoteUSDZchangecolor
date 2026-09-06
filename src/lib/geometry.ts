@@ -82,12 +82,24 @@ export function sideGeometry(
     return g;
   }
 
-  // 内面：同样四个角，法线翻过来、绕序反过来，这样只有从里面才看得见。
-  // u 也左右镜像 —— 从里面看这个面，左右本来就是反的，不镜像的话贴上去的图是反着的。
+  // 内面：法线翻过来、绕序反过来，这样只有从里面才看得见。
+  // u 左右镜像 —— 从里面看这个面，左右本来就是反的，不镜像贴上去的图就是反的。
+  //
+  // **必须沿法线往里让开一点**：内面和外面如果顶点完全重合，就是一层贴在另一层上，
+  // 谁在前面完全看渲染器的深度判定。three 靠背面剔除看不出问题，
+  // 但 Keynote 里会随机显示成内壁 —— 看起来就像摄像机跑进了模型内部。
+  // 让开的量取半径的千分之二，肉眼看不出厚度，又足够拉开深度差。
+  const gap = radius * 0.002;
+  const inset = new Float32Array(12);
+  for (let k = 0; k < 4; k++) {
+    inset[k * 3] = positions[k * 3];
+    inset[k * 3 + 1] = positions[k * 3 + 1] - ny * gap;
+    inset[k * 3 + 2] = positions[k * 3 + 2] - nz * gap;
+  }
   const inv = new Float32Array(12);
   for (let k = 0; k < 12; k++) inv[k] = -normals[k];
   const uvMirror = new Float32Array([1, 0, 0, 0, 0, 1, 1, 1]);
-  g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  g.setAttribute('position', new THREE.BufferAttribute(inset, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(inv, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uvMirror, 2));
   g.setIndex([0, 2, 1, 0, 3, 2]);
