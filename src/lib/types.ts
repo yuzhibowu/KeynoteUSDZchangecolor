@@ -1,4 +1,5 @@
 import { BLANK_COMP, DEFAULT_COMP, type ColorComp } from './color';
+import { cardSection, prismSection, type Section } from './geometry';
 
 export const MAX_SIDES = 12;
 
@@ -96,7 +97,39 @@ export function radiusFor(width: number, aspect: number, sides: number): number 
   return chord / (2 * Math.sin(Math.PI / sides));
 }
 
+/** 模型类型：棱柱（N 个侧面 + 两个端面）或卡片（正反两面 + 四条窄边） */
+export const MODEL_TYPES = [
+  { id: 'prism', label: '棱柱' },
+  { id: 'card', label: '卡片' },
+] as const;
+export type ModelType = (typeof MODEL_TYPES)[number]['id'];
+
+/**
+ * 材质预设。
+ *
+ * 只调物理质感（粗糙度、金属度、清漆、不透明度、折射率），**不碰颜色** ——
+ * 颜色仍然由贴图和那套偏色抵消决定。金和银就是「亮面金属 + 一张金色 / 银色的图」。
+ *
+ * 玻璃和磨砂玻璃只能做到「像」：USDZ 用的 UsdPreviewSurface 规范里没有透射通道，
+ * 只能用低不透明度 + 折射率去凑，不会有真正的折射，背后的东西也不会变形。
+ */
+export const MATERIALS = [
+  { id: 'matte', label: '哑光', roughness: 0.85, metalness: 0, clearcoat: 0, opacity: 1, ior: 1.5 },
+  { id: 'plastic', label: '亮面塑料', roughness: 0.35, metalness: 0, clearcoat: 1, opacity: 1, ior: 1.5 },
+  { id: 'anodized', label: '阳极氧化', roughness: 0.45, metalness: 1, clearcoat: 0, opacity: 1, ior: 1.5 },
+  { id: 'metal', label: '亮面金属', roughness: 0.15, metalness: 1, clearcoat: 0, opacity: 1, ior: 1.5 },
+  { id: 'translucent', label: '半透明', roughness: 0.4, metalness: 0, clearcoat: 0, opacity: 0.6, ior: 1.45 },
+  { id: 'glass', label: '玻璃（近似）', roughness: 0.02, metalness: 0, clearcoat: 1, opacity: 0.25, ior: 1.5 },
+  { id: 'frosted', label: '磨砂玻璃（近似）', roughness: 0.55, metalness: 0, clearcoat: 0, opacity: 0.45, ior: 1.5 },
+] as const;
+export type MaterialId = (typeof MATERIALS)[number]['id'];
+export const materialOf = (id: MaterialId) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
+
 export type Params = {
+  modelType: ModelType;
+  /** 卡片厚度，米。棱柱模式下不用 */
+  thickness: number;
+  material: MaterialId;
   sides: number;
   radius: number; // 外接圆半径，米。由 width 和 aspect 算出来，不直接调
   length: number; // 面的宽度 = 棱柱沿 X 轴的长度，米
@@ -157,6 +190,9 @@ export function defaultProfiles(): Record<TargetId, ColorComp> {
 }
 
 export const DEFAULT_PARAMS: Params = {
+  modelType: 'prism',
+  thickness: 0.006, // 6 mm，差不多一张厚卡片
+  material: 'matte',
   sides: 4,
   aspect: 16 / 9,
   radius: radiusFor(0.1, 16 / 9, 4),
@@ -192,7 +228,48 @@ export function faceChord(radius: number, sides: number): number {
   return 2 * radius * Math.sin(Math.PI / sides);
 }
 
+/**
+ * 当前参数对应的横截面。
+ *
+ * 棱柱是正多边形；卡片是矩形 —— 高度由「宽度 ÷ 画面比例」得到，厚度自己一个参数。
+ * 有了这一层，几何、拾取、贴图尺寸全都不用管是哪种模型。
+ */
+export function sectionOf(p: Pick<Params, 'modelType' | 'sides' | 'radius' | 'length' | 'aspect' | 'thickness'>): Section {
+  if (p.modelType === 'card') return cardSection(p.length / p.aspect, p.thickness);
+  return prismSection(p.sides, p.radius);
+}
+
 /** 侧面宽高比 = 长度 / 弦长（u 方向 / v 方向），贴图画布就按这个比例来 */
 export function faceAspect(radius: number, sides: number, length: number): number {
   return length / faceChord(radius, sides);
+}
+
+/**
+ * 贴图画布的宽高比。
+ * 卡片正反面就是画面比例本身；棱柱是「长度 ÷ 弦长」。
+ */
+export function textureAspect(p: Pick<Params, 'modelType' | 'sides' | 'radius' | 'length' | 'aspect'>): number {
+  return p.modelType === 'card' ? p.aspect : faceAspect(p.radius, p.sides, p.length);
+}
+
+/** 卡片模式下真正能贴图的两个槽位：正面（面 0）和背面（面 2），中间隔着一条窄边 */
+export const CARD_FRONT = 0;
+export const CARD_BACK = 2;
+
+/**
+ * 需要烘贴图的槽位。
+ *
+ * 卡片只有正反两面能贴图 —— 四条窄边走纯色材质。要是也给它们发贴图，
+ * 一张 2K 纯色 PNG 就是一百多 KB，四条边白白多出半兆。
+ */
+export function textureSlots(
+  p: Pick<Params, 'modelType' | 'sides' | 'capMode' | 'separateCaps'>,
+): number[] {
+  if (p.modelType === 'card') return [CARD_FRONT, CARD_BACK];
+  return activeSlots(p.sides, p.capMode === 'none', p.capMode !== 'none' && p.separateCaps);
+}
+
+/** 卡片的窄边（上下两条侧面 + 两个端面）—— 这些面不贴图，只上纯色 */
+export function isCardEdge(p: Pick<Params, 'modelType'>, slot: number): boolean {
+  return p.modelType === 'card' && slot !== CARD_FRONT && slot !== CARD_BACK;
 }

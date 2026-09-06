@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import { CAP_LEFT, CAP_RIGHT, innerSlot, isCap, MAX_SIDES, type FaceState } from '../lib/types';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, innerSlot, isCap, MAX_SIDES, type FaceState } from '../lib/types';
 
 function Thumb({ store, index, tick }: { store: FaceTextureStore; index: number; tick: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -34,6 +34,8 @@ type Props = {
   showInner: boolean;
   /** 勾了「两端分别设置」才给两个端面各开一个贴图入口 */
   showCaps: boolean;
+  /** 卡片模式：只有正反两面能贴图，四条窄边走纯色 */
+  card: boolean;
   onSelect: (i: number) => void;
   onFiles: (files: File[], faceIndex: number) => void;
   /** 把某一格的图旋转 90°，dir = 1 顺时针、-1 逆时针 */
@@ -46,13 +48,21 @@ type Props = {
  * 每一格既是「选中这个面」，也是「给这个面导入图片」—— 右下角那个加号点了就开文件框，
  * 从访达直接拖图片到格子上也行。所以不需要再单独放一个「导入图片」按钮。
  */
-export function FaceDock({ store, faces, sides, selected, tick, showInner, showCaps, onSelect, onFiles, onRotate }: Props) {
+export function FaceDock({ store, faces, sides, selected, tick, showInner, showCaps, card, onSelect, onFiles, onRotate }: Props) {
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const hidden: number[] = [];
-  for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
+  if (!card) for (let i = sides; i < MAX_SIDES; i++) if (faces[i].source) hidden.push(i);
 
   const nameOf = (slot: number, faceIndex: number) =>
-    isCap(slot) ? (slot === CAP_RIGHT ? '右端面' : '左端面') : `第 ${faceIndex + 1} 个面的${slot === faceIndex ? '正面' : '反面'}`;
+    card
+      ? slot === CARD_FRONT
+        ? '卡片正面'
+        : '卡片背面'
+      : isCap(slot)
+        ? slot === CAP_RIGHT
+          ? '右端面'
+          : '左端面'
+        : `第 ${faceIndex + 1} 个面的${slot === faceIndex ? '正面' : '反面'}`;
 
   const cell = (slot: number, faceIndex: number) => (
           <div
@@ -132,7 +142,17 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
               }}
             />
             {/* 给人看的编号从 1 起，内部索引还是 0 起 */}
-            <i>{isCap(slot) ? (slot === CAP_RIGHT ? '右' : '左') : faceIndex + 1}</i>
+            <i>
+              {card
+                ? slot === CARD_FRONT
+                  ? '正'
+                  : '背'
+                : isCap(slot)
+                  ? slot === CAP_RIGHT
+                    ? '右'
+                    : '左'
+                  : faceIndex + 1}
+            </i>
           </div>
   );
 
@@ -144,7 +164,9 @@ export function FaceDock({ store, faces, sides, selected, tick, showInner, showC
           {/* 端面排在最左边，左端在左、右端在右 —— 和默认视角下模型上看到的一致 */}
           {showCaps && cell(CAP_LEFT, CAP_LEFT)}
           {showCaps && cell(CAP_RIGHT, CAP_RIGHT)}
-          {Array.from({ length: sides }, (_, i) => cell(i, i))}
+          {card
+            ? [cell(CARD_FRONT, CARD_FRONT), cell(CARD_BACK, CARD_BACK)]
+            : Array.from({ length: sides }, (_, i) => cell(i, i))}
         </div>
       </div>
       {showInner && (

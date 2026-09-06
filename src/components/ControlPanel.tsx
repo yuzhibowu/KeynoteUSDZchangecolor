@@ -5,6 +5,9 @@ import {
   ASPECTS,
   fromPx,
   radiusFor,
+  MATERIALS,
+  MODEL_TYPES,
+  type ModelType,
   MAX_SIDES,
   MIN_SIDES,
   RESOLUTIONS,
@@ -52,6 +55,7 @@ export function ControlPanel({
   const canPickFolder = typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
 
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
+  const isPrism = params.modelType === 'prism';
   const patchGeom = (p: Partial<Params>) => {
     const next = { ...params, ...p };
     patch({ ...p, radius: radiusFor(next.length, next.aspect, next.sides) });
@@ -61,6 +65,19 @@ export function ControlPanel({
   return (
     <aside className="side">
       <div className="side-head">
+        {/* 模型类型放在 logo 的对角 —— 这是「先决定做什么」，该在最前面 */}
+        <select
+          className="model-type"
+          aria-label="模型类型"
+          value={params.modelType}
+          onChange={(e) => patch({ modelType: e.target.value as ModelType })}
+        >
+          {MODEL_TYPES.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
         <span className="brand">饼饼SHOW</span>
       </div>
 
@@ -108,13 +125,16 @@ export function ControlPanel({
         {/* 不要标题、也不要上面那条分隔线 */}
         <section className="bare">
           <div className="stack">
-            <Slider
-              label="边数"
-              value={params.sides}
-              min={MIN_SIDES}
-              max={MAX_SIDES}
-              onChange={(v) => patchGeom({ sides: v })}
-            />
+            {/* 卡片就是正反两面，没有边数可调 */}
+            {isPrism && (
+              <Slider
+                label="边数"
+                value={params.sides}
+                min={MIN_SIDES}
+                max={MAX_SIDES}
+                onChange={(v) => patchGeom({ sides: v })}
+              />
+            )}
             <Slider
               label="宽度"
               value={toPx(params.length)}
@@ -145,6 +165,51 @@ export function ControlPanel({
           </div>
         </section>
 
+        {!isPrism && (
+          <section>
+            <h2>材质</h2>
+            <div className="stack">
+              <Slider
+                label="厚度"
+                value={toPx(params.thickness)}
+                min={2}
+                max={600}
+                step={1}
+                suffix=" px"
+                onChange={(v) => patch({ thickness: fromPx(v) })}
+              />
+              <div className="opts four">
+                {MATERIALS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className="opt"
+                    aria-pressed={params.material === m.id}
+                    onClick={() => patch({ material: m.id })}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <div className="color-row">
+                <input
+                  type="color"
+                  aria-label="侧边颜色"
+                  value={params.capColorRight}
+                  onChange={(e) => patch({ capColorRight: e.target.value })}
+                />
+                <span>侧边颜色</span>
+              </div>
+              {(params.material === 'glass' || params.material === 'frosted') && (
+                <p className="hint tight">
+                  USDZ 没有透射通道，玻璃只能用「半透明 + 折射率」近似 —— 不会有真正的折射。
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {isPrism && (
         <section>
           <h2>端面</h2>
           <div className="stack">
@@ -199,6 +264,7 @@ export function ControlPanel({
             )}
           </div>
         </section>
+        )}
 
         <section>
           <h2>贴图</h2>

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
 import { drawChart, setChartExtra, pickCovering, EXTRA_SLOTS, type RGB } from './chart';
 import { isIdentity, solveWritten } from './color';
-import { capGeometry, sideGeometry } from './geometry';
+import { capGeometry, prismSection, sideGeometry } from './geometry';
 import { MAX_SIDES, type Params } from './types';
 
 /**
@@ -106,7 +106,7 @@ export async function exportChartCard(
       mat.emissive.setRGB(lift, lift, lift);
     }
     if (unlit) mat.color.setRGB(0, 0, 0);
-    const geo = sideGeometry(i, sides, radius, length);
+    const geo = sideGeometry(i, prismSection(sides, radius), length);
     group.add(new THREE.Mesh(geo, mat));
     disposables.push(tex, mat, geo);
   }
@@ -117,7 +117,7 @@ export async function exportChartCard(
       mat.emissive.set(0x202020);
       mat.color.setRGB(0, 0, 0);
     }
-    const geo = capGeometry(sides, radius, length, right);
+    const geo = capGeometry(prismSection(sides, radius), length, right);
     group.add(new THREE.Mesh(geo, mat));
     disposables.push(mat, geo);
   }

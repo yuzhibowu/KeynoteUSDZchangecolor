@@ -10,6 +10,51 @@ export function faceCenterAngle(i: number, sides: number): number {
   return (2 * Math.PI * i) / sides;
 }
 
+/**
+ * 横截面：绕 X 轴的那个多边形，写成「各向异性的正多边形」。
+ * 顶点 k 落在 (ry·sinθ, rz·cosθ)，θ = 面心角 − 半个扇区。
+ *
+ * ry === rz 就是外接圆半径为 r 的正多边形 —— 棱柱。
+ * 四边形上让 ry ≠ rz 就是矩形 —— 卡片。两种模型共用下面所有几何代码，
+ * 不用为卡片另起一套。
+ */
+export type Section = { sides: number; ry: number; rz: number };
+
+export const prismSection = (sides: number, radius: number): Section => ({ sides, ry: radius, rz: radius });
+
+/** 卡片：正面朝 +Z，高度沿 Y、厚度沿 Z。除以 √2 是因为四边形顶点在 ±45°。 */
+export const cardSection = (height: number, thickness: number): Section => ({
+  sides: 4,
+  ry: height / Math.SQRT2,
+  rz: thickness / Math.SQRT2,
+});
+
+/** 横截面第 k 个顶点，(y, z) */
+export function sectionVertex(sec: Section, k: number): [number, number] {
+  const half = Math.PI / sec.sides;
+  const t = faceCenterAngle(k % sec.sides, sec.sides) - half;
+  return [sec.ry * Math.sin(t), sec.rz * Math.cos(t)];
+}
+
+/** 侧面 i 的那条边：从顶点 i 到顶点 i+1 */
+function faceEdge(sec: Section, i: number) {
+  const [y0, z0] = sectionVertex(sec, i);
+  const [y1, z1] = sectionVertex(sec, i + 1);
+  return { y0, z0, y1, z1 };
+}
+
+/**
+ * 侧面 i 朝外的单位法线。
+ * 从边算，不是拿面心角凑 —— 截面各向异性之后，只有面心角是不够的。
+ */
+function faceNormal(sec: Section, i: number): [number, number] {
+  const { y0, z0, y1, z1 } = faceEdge(sec, i);
+  const dy = y1 - y0;
+  const dz = z1 - z0;
+  const len = Math.hypot(dy, dz) || 1;
+  return [-dz / len, dy / len];
+}
+
 export type FaceFrame = {
   center: THREE.Vector3; // 面心
   normal: THREE.Vector3; // 朝外法线
@@ -19,18 +64,20 @@ export type FaceFrame = {
   height: number; // v 方向的物理长度 = 弦长
 };
 
-export function faceFrame(i: number, sides: number, radius: number, length: number): FaceFrame {
-  const a = faceCenterAngle(i, sides);
-  const half = Math.PI / sides;
-  const normal = new THREE.Vector3(0, Math.sin(a), Math.cos(a));
-  const center = normal.clone().multiplyScalar(radius * Math.cos(half));
+export function faceFrame(i: number, sec: Section, length: number): FaceFrame {
+  const { y0, z0, y1, z1 } = faceEdge(sec, i);
+  const [ny, nz] = faceNormal(sec, i);
+  const dy = y1 - y0;
+  const dz = z1 - z0;
+  const edge = Math.hypot(dy, dz);
   return {
-    center,
-    normal,
+    center: new THREE.Vector3(0, (y0 + y1) / 2, (z0 + z1) / 2),
+    normal: new THREE.Vector3(0, ny, nz),
     u: new THREE.Vector3(1, 0, 0),
-    v: new THREE.Vector3(0, Math.cos(a), -Math.sin(a)),
+    // v 沿圆周切线，方向和顶点 i → i+1 一致（贴图的上下就是靠它定的）
+    v: new THREE.Vector3(0, dy / (edge || 1), dz / (edge || 1)),
     width: length,
-    height: 2 * radius * Math.sin(half),
+    height: edge,
   };
 }
 
@@ -46,22 +93,14 @@ export function faceFrame(i: number, sides: number, radius: number, length: numb
  */
 export function sideGeometry(
   i: number,
-  sides: number,
-  radius: number,
+  sec: Section,
   length: number,
   face: 'outer' | 'inner' = 'outer',
 ): THREE.BufferGeometry {
-  const a = faceCenterAngle(i, sides);
-  const half = Math.PI / sides;
+  const half = Math.PI / sec.sides;
   const hl = length / 2;
-  const a0 = a - half;
-  const a1 = a + half;
-  const y0 = radius * Math.sin(a0);
-  const z0 = radius * Math.cos(a0);
-  const y1 = radius * Math.sin(a1);
-  const z1 = radius * Math.cos(a1);
-  const ny = Math.sin(a);
-  const nz = Math.cos(a);
+  const { y0, z0, y1, z1 } = faceEdge(sec, i);
+  const [ny, nz] = faceNormal(sec, i);
 
   // 从外部看：u 沿 +X 向右，v 沿圆周向上
   const positions = new Float32Array([
@@ -95,13 +134,18 @@ export function sideGeometry(
   // 没有端面时能透过这条缝看见内壁 —— 表现就是模型每条边上一道浅色虚线。
   // 正确做法是让内面落在一个**同心的小一圈棱柱**上：面到轴的距离减 gap，
   // 对应外接圆半径减 gap/cos(half)。这样相邻内面仍然共用棱上的顶点，缝就不存在。
-  const gap = radius * 0.002;
-  const rIn = radius - gap / Math.cos(half);
+  // 两个半轴各自缩同样的量，每个面的平面就都往里让开 gap（矩形截面同样成立）。
+  // gap 取较短那个半轴的千分之二 —— 卡片很薄时不能让开得比它自己还厚。
+  const gap = Math.min(sec.ry, sec.rz) * 0.002;
+  const shrink = gap / Math.cos(half);
+  const inner: Section = { sides: sec.sides, ry: sec.ry - shrink, rz: sec.rz - shrink };
+  const [iy0, iz0] = sectionVertex(inner, i);
+  const [iy1, iz1] = sectionVertex(inner, i + 1);
   const inset = new Float32Array([
-    -hl, rIn * Math.sin(a0), rIn * Math.cos(a0),
-    hl, rIn * Math.sin(a0), rIn * Math.cos(a0),
-    hl, rIn * Math.sin(a1), rIn * Math.cos(a1),
-    -hl, rIn * Math.sin(a1), rIn * Math.cos(a1),
+    -hl, iy0, iz0,
+    hl, iy0, iz0,
+    hl, iy1, iz1,
+    -hl, iy1, iz1,
   ]);
   const inv = new Float32Array(12);
   for (let k = 0; k < 12; k++) inv[k] = -normals[k];
@@ -115,13 +159,12 @@ export function sideGeometry(
 
 /** 端面：中心点 + N 个扇形三角形，法线 ±X。 */
 export function capGeometry(
-  sides: number,
-  radius: number,
+  sec: Section,
   length: number,
   right: boolean,
 ): THREE.BufferGeometry {
+  const sides = sec.sides;
   const x = right ? length / 2 : -length / 2;
-  const half = Math.PI / sides;
   const positions: number[] = [x, 0, 0];
   const uvs: number[] = [0.5, 0.5];
   // 贴图朝向：图片的「上」对着模型的 +Y，也就是默认正视时端面的下边缘 = 图片的下边缘。
@@ -130,11 +173,9 @@ export function capGeometry(
   // 从 -X 往里看，右手边是 +Z。搞反了图就是镜像的。
   const uSign = right ? -1 : 1;
   for (let i = 0; i < sides; i++) {
-    const ang = faceCenterAngle(i, sides) - half;
-    const y = radius * Math.sin(ang);
-    const z = radius * Math.cos(ang);
+    const [y, z] = sectionVertex(sec, i);
     positions.push(x, y, z);
-    uvs.push(0.5 + uSign * (z / radius) * 0.5, 0.5 + (y / radius) * 0.5);
+    uvs.push(0.5 + uSign * (z / sec.rz) * 0.5, 0.5 + (y / sec.ry) * 0.5);
   }
   const index: number[] = [];
   for (let i = 0; i < sides; i++) {

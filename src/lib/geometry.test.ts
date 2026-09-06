@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { sideGeometry } from './geometry';
+import { cardSection, faceFrame, prismSection, sideGeometry } from './geometry';
 
 /** 取一个面的四个顶点 */
 function corners(i: number, sides: number, r: number, len: number, face: 'outer' | 'inner') {
-  const p = sideGeometry(i, sides, r, len, face).getAttribute('position').array as ArrayLike<number>;
+  const p = sideGeometry(i, prismSection(sides, r), len, face).getAttribute('position').array as ArrayLike<number>;
   return Array.from({ length: 4 }, (_, k) => [p[k * 3], p[k * 3 + 1], p[k * 3 + 2]] as const);
 }
 
@@ -66,5 +66,28 @@ describe('侧面几何', () => {
     const planeIn = corners(0, sides, r, 0.1, 'inner')[0][2];
     expect(planeOut).toBeCloseTo(r * Math.cos(half), 7);
     expect(planeOut - planeIn).toBeCloseTo(r * 0.002, 7);
+  });
+});
+
+describe('卡片截面', () => {
+  it('就是一个 高 × 厚 的矩形', () => {
+    const sec = cardSection(0.06, 0.006);
+    // 正面（面 0）朝 +Z：宽度方向是棱柱长度，另一边是卡片的高
+    const front = faceFrame(0, sec, 0.1);
+    expect(front.height).toBeCloseTo(0.06, 9);
+    expect(front.normal.z).toBeCloseTo(1, 9);
+    // 上下窄边（面 1、3）朝 ±Y，宽度就是厚度
+    const edge = faceFrame(1, sec, 0.1);
+    expect(edge.height).toBeCloseTo(0.006, 9);
+    expect(Math.abs(edge.normal.y)).toBeCloseTo(1, 9);
+    // 背面（面 2）朝 -Z
+    expect(faceFrame(2, sec, 0.1).normal.z).toBeCloseTo(-1, 9);
+  });
+
+  it('厚度再薄，内面也不会穿到外面去', () => {
+    const sec = cardSection(0.06, 0.002);
+    const p = sideGeometry(0, sec, 0.1, 'inner').getAttribute('position').array as ArrayLike<number>;
+    // 内面的 z 必须小于外面的 z（外面在 thickness/2）
+    for (let k = 0; k < 4; k++) expect(p[k * 3 + 2]).toBeLessThan(0.001);
   });
 });

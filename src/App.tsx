@@ -21,7 +21,8 @@ import {
   isInner,
   CAP_RIGHT,
   createFaces,
-  faceAspect,
+  textureAspect,
+  textureSlots,
   type FaceState,
   type FaceTransform,
   type Params,
@@ -168,7 +169,7 @@ export default function App() {
 
   // 烘焙：面的宽高比一变，画布尺寸跟着变，旧的 offset 可能已经盖不满，先重新夹一遍
   useEffect(() => {
-    const aspect = faceAspect(params.radius, params.sides, params.length);
+    const aspect = textureAspect(params);
     const side = canvasSizeFor(aspect, params.resolution);
     const cap = canvasSizeFor(1, params.resolution); // 端面画布是正方形
     let changed = false;
@@ -192,8 +193,7 @@ export default function App() {
       bgColor: params.bgColor,
       bgTransparent: params.bgTransparent,
       sides: params.sides,
-      withInner: params.capMode === 'none',
-      withCaps: params.capMode !== 'none' && params.separateCaps,
+      slots: textureSlots(params),
       capColorRight: params.capColorRight,
       capColorLeft: params.capColorLeft,
       comp: params.color,
@@ -235,13 +235,12 @@ export default function App() {
     const id = setTimeout(() => {
       store
         .estimateBytes(faces, params.sides, {
-          aspect: faceAspect(params.radius, params.sides, params.length),
+          aspect: textureAspect(params),
           resolution: params.resolution,
           bgColor: params.bgColor,
           bgTransparent: params.bgTransparent,
           sides: params.sides,
-          withInner: params.capMode === 'none',
-          withCaps: params.capMode !== 'none' && params.separateCaps,
+          slots: textureSlots(params),
           capColorRight: params.capColorRight,
           capColorLeft: params.capColorLeft,
           comp: params.color,
@@ -413,13 +412,12 @@ export default function App() {
     try {
       // 导出前跑一次全量烘焙，把颜色预补偿烘进去（视口里那份是不带补偿的）
       const base = {
-        aspect: faceAspect(params.radius, params.sides, params.length),
+        aspect: textureAspect(params),
         resolution: params.resolution,
         bgColor: params.bgColor,
         bgTransparent: params.bgTransparent,
         sides: params.sides,
-        withInner: params.capMode === 'none',
-        withCaps: params.capMode !== 'none' && params.separateCaps,
+        slots: textureSlots(params),
         capColorRight: params.capColorRight,
         capColorLeft: params.capColorLeft,
         comp: params.color,
@@ -493,8 +491,9 @@ export default function App() {
           sides={params.sides}
           selected={selected}
           tick={tick}
-          showInner={params.capMode === 'none'}
-          showCaps={params.capMode !== 'none' && params.separateCaps}
+          showInner={params.modelType === 'prism' && params.capMode === 'none'}
+          showCaps={params.modelType === 'prism' && params.capMode !== 'none' && params.separateCaps}
+          card={params.modelType === 'card'}
           onSelect={(i) => {
             setSelected(i);
             // 从底部选面就顺手转到正对着它 —— 否则改缩放、旋转在预览里根本看不见

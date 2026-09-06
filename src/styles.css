@@ -81,7 +81,31 @@ button, input, select { font: inherit; color: inherit; }
   overflow: hidden;
 }
 
-.side-head { padding: 14px 16px 12px; text-align: right; }
+/* 模型类型在左、品牌在右，一左一右各占一角 */
+.side-head {
+  padding: 14px 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.model-type {
+  height: 30px;
+  padding: 0 26px 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 680;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 13px, calc(100% - 10px) 13px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
 .brand {
   display: inline-block;
   font-size: clamp(12.75px, 1.05vw, 18px);

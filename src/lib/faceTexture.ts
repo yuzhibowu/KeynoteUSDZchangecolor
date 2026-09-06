@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
 import { yieldToBrowser } from './yieldToBrowser';
-import { CAP_LEFT, MAX_SLOTS, activeSlots, faceOfSlot, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
+import { CAP_LEFT, MAX_SLOTS, faceOfSlot, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
 
 export type BakeOptions = {
   aspect: number;
@@ -11,10 +11,8 @@ export type BakeOptions = {
   bgTransparent?: boolean;
   /** 当前边数 —— 没贴图的面按它算占位色的色相 */
   sides: number;
-  /** 有没有内面（「没有端面」时才有） */
-  withInner?: boolean;
-  /** 端面要不要各自的贴图（勾了「两端分别设置」才有） */
-  withCaps?: boolean;
+  /** 这次要烘哪些槽位 —— 由 textureSlots(params) 算出来 */
+  slots: number[];
   /** 端面还没贴图时铺的底色 */
   capColorRight?: string;
   capColorLeft?: string;
@@ -327,7 +325,7 @@ export class FaceTextureStore {
    * 每次拖滑块都白干 20 张，导出时还要来回两遍，标签页卡死甚至黑屏就是这么来的。
    */
   bakeAll(faces: FaceState[], opts: BakeOptions, force = false): number {
-    const slots = activeSlots(opts.sides, opts.withInner, opts.withCaps);
+    const slots = opts.slots;
     let n = 0;
     for (const i of slots) {
       if (this.bake(i, faces[i], opts, force)) n++;
@@ -347,7 +345,7 @@ export class FaceTextureStore {
     opts: BakeOptions,
     onProgress?: (done: number, total: number) => void,
   ): Promise<number> {
-    const slots = activeSlots(opts.sides, opts.withInner, opts.withCaps);
+    const slots = opts.slots;
     let n = 0;
     for (let k = 0; k < slots.length; k++) {
       if (this.bake(slots[k], faces[slots[k]], opts)) n++;
@@ -400,7 +398,8 @@ export class FaceTextureStore {
     // （每个面各有一份材质定义和一个几何文件），基础约 4 KB。
     // 原来这里拍了个 4096 的常数，12 面时会少估 50 KB。
     // 没有端面时每个面有正反两张贴图，都要算进去
-    const slots = activeSlots(sides, opts.withInner, opts.withCaps);
+    const slots = opts.slots;
+    void sides;
 
     let total = USDA_BASE_BYTES + slots.length * USDA_PER_FACE_BYTES;
     for (const i of slots) {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { capGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
 
@@ -9,7 +10,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import { clampTransform, type FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, MAX_SIDES, faceAspect, innerSlot, isCap, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, textureAspect, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -63,13 +64,13 @@ export class PrismViewer {
   private cb: ViewerCallbacks;
 
   private sideMeshes: THREE.Mesh[] = [];
-  private sideMaterials: THREE.MeshStandardMaterial[] = [];
-  private innerMaterials: THREE.MeshStandardMaterial[] = [];
+  private sideMaterials: THREE.MeshPhysicalMaterial[] = [];
+  private innerMaterials: THREE.MeshPhysicalMaterial[] = [];
   private innerMeshes: THREE.Mesh[] = [];
   private capRight: THREE.Mesh;
   private capLeft: THREE.Mesh;
-  private capRightMat: THREE.MeshStandardMaterial;
-  private capLeftMat: THREE.MeshStandardMaterial;
+  private capRightMat: THREE.MeshPhysicalMaterial;
+  private capLeftMat: THREE.MeshPhysicalMaterial;
   private outline: THREE.Mesh;
   private hoverline: THREE.Mesh;
   private grid: THREE.GridHelper;
@@ -96,6 +97,7 @@ export class PrismViewer {
   private geomSig = '';
   private raf = 0;
   private paused = false;
+  private envMap: THREE.Texture | null = null;
   private ro: ResizeObserver;
 
   constructor(container: HTMLElement, store: FaceTextureStore, cb: ViewerCallbacks) {
@@ -138,8 +140,11 @@ export class PrismViewer {
     this.scene.add(this.pivot);
     this.pivot.add(this.prism);
 
-    this.capRightMat = new THREE.MeshStandardMaterial({ color: 0xd9d9de, roughness: 0.85, metalness: 0 });
-    this.capLeftMat = new THREE.MeshStandardMaterial({ color: 0xd9d9de, roughness: 0.85, metalness: 0 });
+    // 用 MeshPhysicalMaterial 而不是 Standard：清漆和折射率只有它才会被
+    // USDZExporter 写进文件（导出器里那段是 isMeshPhysicalMaterial 才走的）。
+    // 它是 Standard 的超集，默认值下渲染结果完全一样。
+    this.capRightMat = new THREE.MeshPhysicalMaterial({ color: 0xd9d9de, roughness: 0.85, metalness: 0 });
+    this.capLeftMat = new THREE.MeshPhysicalMaterial({ color: 0xd9d9de, roughness: 0.85, metalness: 0 });
     this.capRightMat.name = 'cap_right';
     this.capLeftMat.name = 'cap_left';
     this.capRight = new THREE.Mesh(new THREE.BufferGeometry(), this.capRightMat);
@@ -151,7 +156,7 @@ export class PrismViewer {
     this.prism.add(this.capRight, this.capLeft);
 
     for (let i = 0; i < MAX_SIDES; i++) {
-      const mat = new THREE.MeshStandardMaterial({
+      const mat = new THREE.MeshPhysicalMaterial({
         map: store.textures[i],
         roughness: 0.9, // 高粗糙度：压制高光对贴图颜色的干扰
         metalness: 0.0,
@@ -164,7 +169,7 @@ export class PrismViewer {
       // 同一个面的内面：法线朝里，挂它自己那张贴图。
       // 正反两面各贴一张图（像卡片），所以必须是两个 mesh 两个材质 ——
       // USD 的 doubleSided 只能让同一张图两面都看得见，做不到正反不同。
-      const innerMat = new THREE.MeshStandardMaterial({
+      const innerMat = new THREE.MeshPhysicalMaterial({
         map: store.textures[innerSlot(i)],
         roughness: 0.9,
         metalness: 0.0,
@@ -219,6 +224,7 @@ export class PrismViewer {
     this.sideMaterials.forEach((m) => m.dispose());
     this.capRight.geometry.dispose();
     this.capLeft.geometry.dispose();
+    this.envMap?.dispose();
     this.renderer.dispose();
     if (el.parentElement) el.parentElement.removeChild(el);
   }
@@ -292,7 +298,7 @@ export class PrismViewer {
     // faces 复制一份：拖拽时视口会就地改自己这份，不去动 React 的状态对象
     this.state = { ...next, faces: next.faces.slice() };
     const { params } = next;
-    const sig = `${params.sides}|${params.radius}|${params.length}|${params.capMode}`;
+    const sig = `${params.modelType}|${params.sides}|${params.radius}|${params.length}|${params.aspect}|${params.thickness}|${params.capMode}`;
     if (sig !== this.geomSig) {
       this.geomSig = sig;
       this.rebuildGeometry();
@@ -305,14 +311,20 @@ export class PrismViewer {
     const lift = this.liftNow();
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
-      // 补光 > 0 时也要挂 emissiveMap，加法那一项才能逐像素跟着贴图走
-      const wantEmissiveMap = lift > 0 ? this.store.textures[i] : null;
-      if (m.emissiveMap !== wantEmissiveMap) {
-        m.emissiveMap = wantEmissiveMap;
-        m.needsUpdate = true;
+      if (isCardEdge(params, i)) {
+        // 卡片的窄边：纯色，拿端面色当侧边色（不另开一个颜色字段）
+        this.paintSolid(m, params.capColorRight, this.exportMode);
+      } else {
+        // 补光 > 0 时也要挂 emissiveMap，加法那一项才能逐像素跟着贴图走
+        const wantEmissiveMap = lift > 0 ? this.store.textures[i] : null;
+        if (m.emissiveMap !== wantEmissiveMap) {
+          m.emissiveMap = wantEmissiveMap;
+          m.needsUpdate = true;
+        }
+        m.emissive.setRGB(lift, lift, lift);
+        m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
       }
-      m.emissive.setRGB(lift, lift, lift);
-      m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+      this.applyMaterial(m);
 
       const im = this.innerMaterials[i];
       const wantInnerEmissive = lift > 0 ? this.store.textures[innerSlot(i)] : null;
@@ -322,6 +334,7 @@ export class PrismViewer {
       }
       im.emissive.setRGB(lift, lift, lift);
       im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+      this.applyMaterial(im);
     }
     // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
     const showCaps = params.capMode !== 'none';
@@ -333,23 +346,34 @@ export class PrismViewer {
   }
 
   private rebuildGeometry() {
-    const { sides, radius, length } = this.state!.params;
-    // 「没有端面」时才需要内面：封了口本来就看不到里面
-    const showInner = this.state!.params.capMode === 'none';
+    const p = this.state!.params;
+    const { length } = p;
+    const sec = sectionOf(p);
+    const sides = sec.sides;
+    // 「没有端面」时才需要内面：封了口本来就看不到里面。卡片永远是实心的，没有内面。
+    const showInner = p.modelType === 'prism' && p.capMode === 'none';
     for (let i = 0; i < MAX_SIDES; i++) {
       const inner = this.innerMeshes[i];
       inner.geometry.dispose();
       if (i < sides && showInner) {
-        inner.geometry = sideGeometry(i, sides, radius, length, 'inner');
+        inner.geometry = sideGeometry(i, sec, length, 'inner');
         inner.visible = true;
       } else {
         inner.geometry = new THREE.BufferGeometry();
         inner.visible = false;
       }
+      // 卡片的四条窄边不发贴图，走纯色 —— 一张 2K 纯色 PNG 一百多 KB，四条边纯浪费。
+      // 这一步放在几何重建里做，不能放进 syncSideMaterials：导出时会把 map 换成
+      // 一批全新的 texture 对象，那会儿再动 map 就把替换给冲掉了。
+      const wantMap = isCardEdge(p, i) ? null : this.store.textures[i];
+      if (this.sideMaterials[i].map !== wantMap) {
+        this.sideMaterials[i].map = wantMap;
+        this.sideMaterials[i].needsUpdate = true;
+      }
       const mesh = this.sideMeshes[i];
       mesh.geometry.dispose();
       if (i < sides) {
-        mesh.geometry = sideGeometry(i, sides, radius, length);
+        mesh.geometry = sideGeometry(i, sec, length);
         mesh.visible = true;
       } else {
         mesh.geometry = new THREE.BufferGeometry();
@@ -358,10 +382,11 @@ export class PrismViewer {
     }
     this.capRight.geometry.dispose();
     this.capLeft.geometry.dispose();
-    this.capRight.geometry = capGeometry(sides, radius, length, true);
-    this.capLeft.geometry = capGeometry(sides, radius, length, false);
-    this.grid.scale.setScalar(Math.max(radius * 10, length * 2.5));
-    this.grid.position.y = -radius * 1.9;
+    this.capRight.geometry = capGeometry(sec, length, true);
+    this.capLeft.geometry = capGeometry(sec, length, false);
+    const span = Math.max(sec.ry, sec.rz);
+    this.grid.scale.setScalar(Math.max(span * 10, length * 2.5));
+    this.grid.position.y = -span * 1.9;
   }
 
   /** 相机方向永远固定在 +Z，只按包围球调距离，保证物体始终占满画面 */
@@ -411,17 +436,36 @@ export class PrismViewer {
    * 端面：贴了图就走贴图那一路（和侧面同样的规则），没贴图还是纯色。
    * 纯色不受 8 位限制，可以直接写 > 1 的线性值，不需要贴图那套增益。
    */
+  /**
+   * 给一个「没有贴图」的面上色：端面、以及卡片的四条窄边。
+   * 纯色不受 8 位限制，可以直接写 > 1 的线性值，不需要贴图那套增益。
+   */
+  private paintSolid(mat: THREE.MeshPhysicalMaterial, hex: string, compensate: boolean) {
+    const p = this.state!.params;
+    const unlit = p.emissiveExport;
+    const lift = this.liftNow();
+    if (mat.emissiveMap) {
+      mat.emissiveMap = null;
+      mat.needsUpdate = true;
+    }
+    const lin = compensate ? compensateToLinear(hex, p.color) : null;
+    const base: [number, number, number] = lin ?? hexToLinear(hex);
+    mat.color.setRGB(unlit ? 0 : base[0], unlit ? 0 : base[1], unlit ? 0 : base[2]);
+    mat.emissive.setRGB(lift * base[0], lift * base[1], lift * base[2]);
+  }
+
   private applyCapColors(compensate: boolean) {
     const p = this.state!.params;
     const st = this.state!;
     const withCaps = p.capMode !== 'none' && p.separateCaps;
-    const raw: [THREE.MeshStandardMaterial, string, number][] = [
+    const raw: [THREE.MeshPhysicalMaterial, string, number][] = [
       [this.capRightMat, p.capColorRight, CAP_RIGHT],
       [this.capLeftMat, p.separateCaps ? p.capColorLeft : p.capColorRight, CAP_LEFT],
     ];
     const unlit = p.emissiveExport;
     const lift = this.liftNow();
     for (const [mat, hex, slot] of raw) {
+      this.applyMaterial(mat);
       const textured = withCaps && !!st.faces[slot]?.source;
       const wantMap = textured ? this.store.textures[slot] : null;
       if (mat.map !== wantMap) {
@@ -439,14 +483,7 @@ export class PrismViewer {
         mat.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
         continue;
       }
-      if (mat.emissiveMap) {
-        mat.emissiveMap = null;
-        mat.needsUpdate = true;
-      }
-      const lin = compensate ? compensateToLinear(hex, p.color) : null;
-      const base: [number, number, number] = lin ?? hexToLinear(hex);
-      mat.color.setRGB(unlit ? 0 : base[0], unlit ? 0 : base[1], unlit ? 0 : base[2]);
-      mat.emissive.setRGB(lift * base[0], lift * base[1], lift * base[2]);
+      this.paintSolid(mat, hex, compensate);
     }
   }
 
@@ -456,6 +493,57 @@ export class PrismViewer {
    * 补光（自发光）只在导出时挂上 —— 视口的三条光和 Keynote 不是一套，
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
+  /**
+   * 当前的材质质感。棱柱维持原来那套（高粗糙度压高光，别干扰贴图颜色）；
+   * 卡片才走用户选的预设。
+   */
+  private materialNow() {
+    const p = this.state!.params;
+    if (p.modelType !== 'card') {
+      return { roughness: 0.9, metalness: 0, clearcoat: 0, opacity: 1, ior: 1.5 };
+    }
+    return materialOf(p.material);
+  }
+
+  /**
+   * 预览用的环境贴图，第一次要用到才生成。
+   *
+   * 金属没有漫反射，颜色全来自环境反射 —— 场景里没有环境贴图的话，
+   * 金属度拉满的面在预览里就是**纯黑**。Keynote / 无边记 自带环境光照，
+   * 所以这纯粹是预览的事；envMap 也不会被 USDZExporter 写进文件。
+   *
+   * 只挂给「金属或半透明」的材质。哑光、塑料这些一律不挂 ——
+   * 那条路径上的颜色是拿去和校准档对表的，多一层环境反射就对不上了。
+   */
+  private environment(): THREE.Texture {
+    if (!this.envMap) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    }
+    return this.envMap;
+  }
+
+  /** 把质感写到一个材质上。transparent 改了必须置 needsUpdate，否则着色器不重编 */
+  private applyMaterial(m: THREE.MeshPhysicalMaterial) {
+    const q = this.materialNow();
+    m.roughness = q.roughness;
+    m.metalness = q.metalness;
+    m.clearcoat = q.clearcoat;
+    m.ior = q.ior;
+    m.opacity = q.opacity;
+    const wantTransparent = q.opacity < 1;
+    if (m.transparent !== wantTransparent) {
+      m.transparent = wantTransparent;
+      m.needsUpdate = true;
+    }
+    const wantEnv = q.metalness > 0 || q.opacity < 1 ? this.environment() : null;
+    if (m.envMap !== wantEnv) {
+      m.envMap = wantEnv;
+      m.needsUpdate = true;
+    }
+  }
+
   syncSideMaterials() {
     const p = this.state!.params;
     const unlit = p.emissiveExport;
@@ -466,13 +554,18 @@ export class PrismViewer {
       // texture 对象（为了不让 Keynote 按名字缓存旧贴图），如果这里仍然挂 store 的那张，
       // diffuse 和 emissive 就指向两个不同的 texture —— USDZExporter 按 source.id 建表，
       // 于是同样的像素在 usdz 里被存了两份，文件体积白白翻倍。
-      const want = lift > 0 ? m.map ?? this.store.textures[i] : null;
-      if (m.emissiveMap !== want) {
-        m.emissiveMap = want;
-        m.needsUpdate = true;
+      if (isCardEdge(p, i)) {
+        this.paintSolid(m, p.capColorRight, this.exportMode);
+      } else {
+        const want = lift > 0 ? m.map ?? this.store.textures[i] : null;
+        if (m.emissiveMap !== want) {
+          m.emissiveMap = want;
+          m.needsUpdate = true;
+        }
+        m.emissive.setRGB(lift, lift, lift);
+        m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
       }
-      m.emissive.setRGB(lift, lift, lift);
-      m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+      this.applyMaterial(m);
 
       const im = this.innerMaterials[i];
       const wantInner = lift > 0 ? im.map ?? this.store.textures[innerSlot(i)] : null;
@@ -482,6 +575,7 @@ export class PrismViewer {
       }
       im.emissive.setRGB(lift, lift, lift);
       im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+      this.applyMaterial(im);
     }
   }
 
@@ -507,7 +601,7 @@ export class PrismViewer {
   private refreshOutline() {
     const st = this.state;
     if (!st) return;
-    const { sides, radius, length } = st.params;
+    const { sides, length } = st.params;
     const sel = st.selected;
     // 选中态不画东西了
     this.outline.visible = false;
@@ -515,7 +609,7 @@ export class PrismViewer {
     if (this.hovered === null || this.hovered >= sides || this.hovered === sel) {
       this.hoverline.visible = false;
     } else {
-      setOutline(this.hoverline, faceFrame(this.hovered, sides, radius, length));
+      setOutline(this.hoverline, faceFrame(this.hovered, sectionOf(st.params), length));
       this.hoverline.visible = true;
     }
   }
@@ -542,8 +636,8 @@ export class PrismViewer {
 
   /** 侧面在世界坐标下的局部基 —— 物体是转过的，所以要把局部基乘上 pivot 的旋转 */
   private worldFrame(index: number): FaceFrame {
-    const { sides, radius, length } = this.state!.params;
-    const f = faceFrame(index, sides, radius, length);
+    const p = this.state!.params;
+    const f = faceFrame(index, sectionOf(p), p.length);
     const q = this.pivot.quaternion;
     f.center.applyQuaternion(q);
     f.normal.applyQuaternion(q);
@@ -574,11 +668,12 @@ export class PrismViewer {
     st.faces[face] = patched;
     // 用面的真实宽高比推画布尺寸，不要拿当前画布的 w/h 反推 —— 那个值是取整过的
     this.store.bake(face, patched, {
-      aspect: faceAspect(st.params.radius, st.params.sides, st.params.length),
+      aspect: textureAspect(st.params),
       resolution: st.params.resolution,
       bgColor: st.params.bgColor,
       bgTransparent: st.params.bgTransparent,
       sides: st.params.sides,
+      slots: [face], // 只烘这一个面
       comp: st.params.color,
       compensate: false, // 视口里看到的是「Keynote 里应该长成的样子」，补偿只在导出时烘进去
     });
