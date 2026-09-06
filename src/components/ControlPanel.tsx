@@ -7,6 +7,8 @@ import {
   ASPECTS,
   fromPx,
   radiusFor,
+  MODEL_TYPES,
+  type ModelType,
   DEFAULT_PARAMS,
   CARD_FRONT,
   type Mode,
@@ -91,6 +93,21 @@ export function ControlPanel({
   return (
     <aside className="side">
       <div className="side-head">
+        {/* 模型类型（棱柱 / 卡片）还在原来的位置；左上角那个菜单管的是另一件事 */}
+        {mode !== 'recolor' && (
+          <select
+            className="model-type"
+            aria-label="模型类型"
+            value={params.modelType}
+            onChange={(e) => patch({ modelType: e.target.value as ModelType })}
+          >
+            {MODEL_TYPES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="brand">饼饼SHOW</span>
       </div>
 

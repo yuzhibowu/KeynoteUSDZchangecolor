@@ -96,7 +96,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(loadTheme);
   // 顶部菜单的三档。前两档改的是几何，第三档走完全另一条路（拿现成的 usdz 来改），
   // 所以单独一个 state —— 塞进 modelType 会把几何那边全污染。
-  const [mode, setMode] = useState<Mode>('prism');
+  const [mode, setMode] = useState<Mode>('model');
   // 颜色校正：导入之后先算好放着给人看，导出要自己再点一下
   const [recolorSrc, setRecolorSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
   const [recolorOut, setRecolorOut] = useState<{ bytes: Uint8Array; report: RecolorReport } | null>(null);
@@ -553,11 +553,7 @@ export default function App() {
             className="tool-name"
             aria-label="模式"
             value={mode}
-            onChange={(e) => {
-              const m = e.target.value as Mode;
-              setMode(m);
-              if (m !== 'recolor') patch({ modelType: m });
-            }}
+            onChange={(e) => setMode(e.target.value as Mode)}
           >
             {MODES.map((m) => (
               <option key={m.id} value={m.id}>
