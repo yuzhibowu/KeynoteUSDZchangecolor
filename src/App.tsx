@@ -400,7 +400,9 @@ export default function App() {
       <main className="stage">
         <div className="titlebar">
           <span className="tool-name">棱柱 USDZ 导出器</span>
-          <span className="tool-en">Prism to USDZ · Keynote color-matched</span>
+          <span className="tool-en">
+            Prism to USDZ · Keynote color-matched · build {__BUILD_ID__}
+          </span>
         </div>
         <Viewport
           store={store}
