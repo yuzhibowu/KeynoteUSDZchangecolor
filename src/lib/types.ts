@@ -12,6 +12,19 @@ export const MAX_SLOTS = MAX_SIDES * 2;
 export const innerSlot = (face: number) => MAX_SIDES + face;
 export const isInner = (slot: number) => slot >= MAX_SIDES;
 export const faceOfSlot = (slot: number) => slot % MAX_SIDES;
+
+/**
+ * 当前真正会被渲染／导出的贴图槽位。
+ *
+ * 别拿 MAX_SLOTS 当循环上界 —— 那是 24 个槽，画 4 个面的时候会白白烘 20 张
+ * 2K 画布（每张 ~9 MB），既拖慢每一次滑块拖动，也把显存顶爆，标签页直接黑掉。
+ */
+export function activeSlots(sides: number, withInner?: boolean): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < sides; i++) out.push(i);
+  if (withInner) for (let i = 0; i < sides; i++) out.push(innerSlot(i));
+  return out;
+}
 export const MIN_SIDES = 3;
 
 /** 单个侧面的贴图状态。所有用户调整只影响烘焙参数，永远不改 UV。 */

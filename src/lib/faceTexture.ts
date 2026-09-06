@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
-import { MAX_SLOTS, faceOfSlot, innerSlot, type FaceState, type FaceTransform, type Resolution } from './types';
+import { yieldToBrowser } from './yieldToBrowser';
+import { MAX_SLOTS, activeSlots, faceOfSlot, innerSlot, type FaceState, type FaceTransform, type Resolution } from './types';
 
 export type BakeOptions = {
   aspect: number;
@@ -306,22 +307,74 @@ export class FaceTextureStore {
   }
 
   /**
-   * 导出前算一遍需要多大增益：扫一遍每张源图，看补偿之后有没有颜色顶到天花板。
-   * 没有就返回 1，一切照旧、零风险；有才启用增益。
+   * 烘焙当前用得上的每一个面。
+   *
+   * 只烘 activeSlots —— 从前这里是 `i < MAX_SLOTS`，画 4 个面也要烘满 24 张 2K 画布，
+   * 每次拖滑块都白干 20 张，导出时还要来回两遍，标签页卡死甚至黑屏就是这么来的。
    */
   bakeAll(faces: FaceState[], opts: BakeOptions, force = false): number {
+    const slots = activeSlots(opts.sides, opts.withInner);
     let n = 0;
-    for (let i = 0; i < MAX_SLOTS; i++) {
+    for (const i of slots) {
       if (this.bake(i, faces[i], opts, force)) n++;
     }
+    this.releaseUnused(slots);
     return n;
   }
 
-  /** 用 PNG 实际编码体积估算导出文件大小（USDZ 里贴图就是 PNG，且不再压缩） */
+  /**
+   * 同上，但每烘一张就把主线程让出去一次。
+   *
+   * 导出要在一次点击里烘十几张 2K 画布，同步跑就是几秒钟的整页假死（画面会黑）。
+   * 让出去之后浏览器能把「导出中…」画出来，用户看得到进度。
+   */
+  async bakeAllAsync(
+    faces: FaceState[],
+    opts: BakeOptions,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<number> {
+    const slots = activeSlots(opts.sides, opts.withInner);
+    let n = 0;
+    for (let k = 0; k < slots.length; k++) {
+      if (this.bake(slots[k], faces[slots[k]], opts)) n++;
+      onProgress?.(k + 1, slots.length);
+      await yieldToBrowser();
+    }
+    this.releaseUnused(slots);
+    return n;
+  }
+
+  /**
+   * 把用不到的槽位缩成 1×1，把那几十兆画布和显存还回去。
+   * 同时清掉签名，等它重新变成活动面时会照常重烘。
+   */
+  private releaseUnused(active: number[]) {
+    const live = new Set(active);
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      if (live.has(i)) continue;
+      const c = this.canvases[i];
+      if (c.width === 1 && c.height === 1) continue;
+      c.width = 1;
+      c.height = 1;
+      this.sigs[i] = '';
+      this.corrected[i] = null;
+      this.correctedKey[i] = '';
+      this.textures[i].needsUpdate = true;
+    }
+  }
+
+  /**
+   * 用 PNG 实际编码体积估算导出文件大小（USDZ 里贴图就是 PNG，且不再压缩）。
+   *
+   * 一张 4K 图编码要一秒上下，十几个面就是十几秒。所以必须能中途叫停：
+   * 参数一变就该丢掉旧的这一轮，否则用户拖一次滑块就多压一叠任务在队列里，
+   * 导出的时候更是每烘一张就触发一轮，整个页面被自己压死。
+   */
   async estimateBytes(
     faces: FaceState[],
     sides: number,
     opts: BakeOptions,
+    token?: { aborted: boolean },
   ): Promise<number> {
     // 关键：按**导出口径**估，也就是补偿之后的像素。
     // 视口里那张是不带补偿的，颜色被推开之后 PNG 压缩率会变，两者体积对不上。
@@ -340,11 +393,13 @@ export class FaceTextureStore {
 
     let total = USDA_BASE_BYTES + slots.length * USDA_PER_FACE_BYTES;
     for (const i of slots) {
+      if (token?.aborted) return -1;
       this.paint(probe, i, faces[i], opts, w, h, useComp);
       total += await new Promise<number>((resolve) => {
         probe.toBlob((b) => resolve(b ? b.size : 0), 'image/png', 1);
       });
     }
+    if (token?.aborted) return -1;
     return total;
   }
 }

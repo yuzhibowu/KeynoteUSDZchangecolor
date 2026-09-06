@@ -4,6 +4,7 @@ import { FaceDock } from './components/FaceDock';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
 import { CANCELLED, download, exportUsdz, formatBytes, openSaveTarget, usdzFileName } from './lib/exportUsdz';
+import { yieldToBrowser } from './lib/yieldToBrowser';
 import { exportChartCard } from './lib/exportCard';
 import { isIdentity, type ColorComp } from './lib/color';
 import { load, save } from './lib/storage';
@@ -148,12 +149,19 @@ export default function App() {
       bgColor: params.bgColor,
       bgTransparent: params.bgTransparent,
       sides: params.sides,
+      withInner: params.capMode === 'none',
       comp: params.color,
       compensate: false,
     };
-    for (let i = 0; i < MAX_SLOTS; i++) store.bake(i, next[i], opts);
+    store.bakeAll(next, opts);
     if (changed) setFaces(next);
-  }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.color, store]);
+  }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.bgTransparent, params.capMode, params.color, store]);
+
+  // 开发时把内部状态挂到 window 上，方便在控制台里量各段耗时
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    Object.assign(window as unknown as Record<string, unknown>, { __store: store, __faces: faces, __params: params });
+  });
 
   // 烘焙完通知缩略图重画，用 rAF 压一下频率
   useEffect(() => {
@@ -171,21 +179,32 @@ export default function App() {
   // 体积预估：拖拽时不算，停下来 500ms 再算。
   // 按导出口径估（补偿之后的像素），否则和实际文件对不上。
   useEffect(() => {
+    // 导出期间一律不估：那会儿正在烘贴图，每烘一张就把这个 effect 重跑一遍，
+    // 一叠 4K 编码任务同时挤在队列里，页面就是那样被自己压黑的。
+    if (busy) return;
+    const token = { aborted: false };
     const id = setTimeout(() => {
       store
         .estimateBytes(faces, params.sides, {
           aspect: faceAspect(params.radius, params.sides, params.length),
           resolution: params.resolution,
           bgColor: params.bgColor,
-      bgTransparent: params.bgTransparent,
-      sides: params.sides,
+          bgTransparent: params.bgTransparent,
+          sides: params.sides,
+          withInner: params.capMode === 'none',
           comp: params.color,
           compensate: true,
-        })
-        .then((b) => setSizeText(formatBytes(b)));
+        }, token)
+        .then((b) => {
+          if (b >= 0) setSizeText(formatBytes(b));
+        });
     }, 500);
-    return () => clearTimeout(id);
+    return () => {
+      clearTimeout(id);
+      token.aborted = true; // 换参数了，上一轮编码到一半也别再算下去
+    };
   }, [
+    busy,
     tick,
     faces,
     params.sides,
@@ -193,6 +212,8 @@ export default function App() {
     params.radius,
     params.length,
     params.bgColor,
+    params.bgTransparent,
+    params.capMode,
     params.color,
     store,
   ]);
@@ -313,11 +334,18 @@ export default function App() {
         aspect: faceAspect(params.radius, params.sides, params.length),
         resolution: params.resolution,
         bgColor: params.bgColor,
-      bgTransparent: params.bgTransparent,
-      sides: params.sides,
+        bgTransparent: params.bgTransparent,
+        sides: params.sides,
+        withInner: params.capMode === 'none',
         comp: params.color,
       };
-      store.bakeAll(faces, { ...base, compensate: true });
+      await store.bakeAllAsync(faces, { ...base, compensate: true }, (done, total) =>
+        setBusy(`烘焙贴图 ${done}/${total}…`),
+      );
+      // 打包这一段是 three 在逐张编码 PNG，一张 4K 大约要一秒，中途插不进进度，
+      // 所以先把话说在前面，免得用户以为卡死了。
+      setBusy('打包中…（面多、分辨率高会慢一点）');
+      await yieldToBrowser();
       const { blob, name } = await exportUsdz(viewer, store, params);
       const note = isIdentity(params.color) ? '' : ' · 已套用颜色补偿';
       if (target) {
@@ -335,7 +363,7 @@ export default function App() {
         setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)}${note}`);
       }
       // 烘回不带补偿的版本，视口继续显示「Keynote 里应有的样子」
-      store.bakeAll(faces, { ...base, compensate: false });
+      await store.bakeAllAsync(faces, { ...base, compensate: false });
     } catch (err) {
       if (target) await target.abort().catch(() => undefined);
       setStatus(`导出失败：${err instanceof Error ? err.message : String(err)}`);

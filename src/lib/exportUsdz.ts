@@ -104,8 +104,12 @@ export async function openSaveTarget(
       suggestedName: name,
       types: [{ description: 'USDZ 模型', accept: { 'model/vnd.usdz+zip': ['.usdz'] } }],
     });
-  } catch {
-    return CANCELLED; // 用户取消
+  } catch (err) {
+    // 只有 AbortError 才是「用户点了取消」。别的错误（某些浏览器在特殊窗口里
+    // 直接把这个 API 抛掉）如果也当成取消，点导出就会毫无反应 —— 什么都没发生，
+    // 也没有任何提示，最难查。那种情况退回下载，至少文件是拿得到的。
+    if (err instanceof Error && err.name === 'AbortError') return CANCELLED;
+    return null;
   }
   try {
     return await handle.createWritable();
