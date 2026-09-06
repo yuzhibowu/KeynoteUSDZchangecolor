@@ -58,6 +58,11 @@ export function ControlPanel({
 
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
   const isPrism = params.modelType === 'prism';
+  // 宽度滑杆上标出来的档位，按数值从小到大排，刻度才不会左右乱跳
+  // 标签用短名，不然 720P / 1080P 两个挤在一起会叠字
+  const WIDTH_MARKS = [...RESOLUTIONS]
+    .sort((a, b) => a.value - b.value)
+    .map((r) => ({ value: r.value, label: r.label.replace(/P$/, '') }));
   // 侧边色默认取正面贴图的平均色；tick 变了要重取（贴图换了平均色就变了）
   void tick;
   const edgeColor = params.edgeAuto ? store.averageColor(CARD_FRONT) : params.capColorRight;
@@ -172,10 +177,13 @@ export function ControlPanel({
               label="宽度"
               reset={toPx(DEFAULT_PARAMS.length)}
               // 四档分辨率对应的宽度各设一个吸附点，拖到附近会咬住
-              snaps={RESOLUTIONS.map((r) => r.value)}
+              snaps={WIDTH_MARKS.map((r) => r.value)}
+              snapLabels={WIDTH_MARKS.map((r) => r.label)}
               value={toPx(params.length)}
               min={100}
-              max={10000}
+              // 上限从 10000（1 米）收到 5000：四个分辨率档全在 3840 以内，
+              // 量程放到 1 米的话它们会挤在滑杆左边三分之一，刻度叠成一团。
+              max={5000}
               step={10}
               suffix=" px"
               onChange={(v) => patchGeom({ length: fromPx(v) })}
@@ -212,12 +220,23 @@ export function ControlPanel({
                     type="button"
                     className="opt"
                     aria-pressed={params.material === m.id}
-                    onClick={() => patch({ material: m.id })}
+                    // 选材质就把补光关掉：补光是把表面变成自发光来突破亮度上限的，
+                    // 自发光的面不受光，金属和光泽一点都显示不出来。两者只能二选一。
+                    onClick={() => patch({ material: m.id, emissiveLift: 0 })}
                   >
                     {m.label}
                   </button>
                 ))}
               </div>
+              {(params.emissiveLift ?? 0) > 0 && (
+                <p className="hint warn tight">
+                  补光开着的时候看不到材质质感 —— 补光是把表面变成自发光的，
+                  自发光的面不受光，金属和光泽都出不来。
+                  <button className="btn" onClick={() => patch({ emissiveLift: 0 })}>
+                    关掉补光
+                  </button>
+                </p>
+              )}
               <div className="color-row">
                 <input
                   type="color"

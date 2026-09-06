@@ -24,6 +24,8 @@ type Props = {
   snaps?: number[];
   /** 吸附范围（值的单位），默认是全程的 1.5% */
   snapRange?: number;
+  /** 吸附点的名字，给了就在滑杆下面标出来 */
+  snapLabels?: string[];
   onChange: (v: number) => void;
 };
 
@@ -42,6 +44,7 @@ export function Slider({
   reset,
   snaps,
   snapRange,
+  snapLabels,
   onChange,
 }: Props) {
   const p = max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 0;
@@ -96,6 +99,25 @@ export function Slider({
         style={{ '--split': split } as React.CSSProperties}
         onChange={(e) => onChange(snapped(Number(e.target.value)))}
       />
+      {snaps && snaps.length > 0 && (
+        // 刻度的位置和圆钮中心用同一个公式，否则标记和吸附点会对不齐
+        <span className="ticks">
+          {snaps.map((v, i) => {
+            const q = max > min ? Math.min(1, Math.max(0, (v - min) / (max - min))) : 0;
+            const left = `calc(${(q * 100).toFixed(4)}% + ${(THUMB / 2 - THUMB * q).toFixed(4)}px)`;
+            return (
+              <span
+                key={v}
+                className={`tick${Math.abs(value - v) < 1e-6 ? ' on' : ''}`}
+                style={{ left }}
+              >
+                <i />
+                {snapLabels?.[i] && <em>{snapLabels[i]}</em>}
+              </span>
+            );
+          })}
+        </span>
+      )}
     </label>
   );
 }
