@@ -127,8 +127,17 @@ export function packUsdz(plain: Record<string, Uint8Array>): Uint8Array {
     const file = plain[name];
     offset += 34 + name.length;
     const mod = offset & 63;
-    files[name] = mod !== 4 ? [file, { extra: { 12345: new Uint8Array(64 - mod) } }] : file;
+    files[name] = mod !== 4 ? [file, { extra: { [USDZ_ALIGN_EXTRA_ID]: new Uint8Array(64 - mod) } }] : file;
     offset = file.length;
   }
   return zipSync(files as Parameters<typeof zipSync>[0], { level: 0 });
 }
+
+/**
+ * 对齐用的 zip 扩展字段 ID。
+ *
+ * `0x1986` 是 Pixar 的 usdzip 写的那个，苹果自家工具产出的 usdz 里也是它。
+ * three 的导出器随手挑了 12345 —— 那个值我们的模型在 Keynote 里能用，
+ * 但既然官方有约定的 ID，就没有理由不跟着走。
+ */
+const USDZ_ALIGN_EXTRA_ID = 0x1986;
