@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
+import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
 import { CANCELLED, download, exportUsdz, formatBytes, openSaveTarget, usdzFileName } from './lib/exportUsdz';
@@ -29,6 +30,7 @@ import {
   type FaceTransform,
   type Params,
   targetLabel,
+  MODES,
   type Mode,
   type TargetId,
 } from './lib/types';
@@ -95,6 +97,11 @@ export default function App() {
   // 顶部菜单的三档。前两档改的是几何，第三档走完全另一条路（拿现成的 usdz 来改），
   // 所以单独一个 state —— 塞进 modelType 会把几何那边全污染。
   const [mode, setMode] = useState<Mode>('prism');
+  // 颜色校正：导入之后先算好放着给人看，导出要自己再点一下
+  const [recolorSrc, setRecolorSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
+  const [recolorOut, setRecolorOut] = useState<{ bytes: Uint8Array; report: RecolorReport } | null>(null);
+  const [recolorBusy, setRecolorBusy] = useState<string | null>(null);
+  const [recolorError, setRecolorError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<{ blob: Blob; name: string } | null>(null);
 
@@ -404,6 +411,40 @@ export default function App() {
     });
   }, []);
 
+  // 换了文件、或者换了校准目标，就重算一遍 —— 左边看到的对比必须和当前设置一致
+  useEffect(() => {
+    if (!recolorSrc) return;
+    let alive = true;
+    setRecolorError(null);
+    setRecolorOut(null);
+    setRecolorBusy('正在校正…');
+    (async () => {
+      try {
+        const r = await recolorUsdz(recolorSrc.buf, params.color);
+        if (alive) setRecolorOut(r);
+      } catch (e) {
+        if (alive) setRecolorError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive) setRecolorBusy(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [recolorSrc, params.color]);
+
+  const pickRecolorFile = useCallback(async (f: File) => {
+    setRecolorSrc({ name: f.name, buf: await f.arrayBuffer() });
+  }, []);
+
+  const exportRecolor = useCallback(() => {
+    if (!recolorOut || !recolorSrc) return;
+    const name = recolorSrc.name.replace(/\.usdz$/i, '') + `-${targetLabel(params.target)}校正.usdz`;
+    const blob = new Blob([recolorOut.bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
+    download(blob, name);
+    setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)}`);
+  }, [recolorOut, recolorSrc, params.target]);
+
   /** 侧栏取景框里的拖动：只改选中面的偏移，视口那边不再有这个手势 */
   const onPan = useCallback(
     (dx: number, dy: number) => {
@@ -507,7 +548,23 @@ export default function App() {
     <div className="app">
       <main className="stage">
         <div className="titlebar">
-          <span className="tool-name">棱柱 USDZ 导出器</span>
+          {/* 工具名本身就是模式菜单 —— 换模式是「先决定做什么」，该在最显眼的地方 */}
+          <select
+            className="tool-name"
+            aria-label="模式"
+            value={mode}
+            onChange={(e) => {
+              const m = e.target.value as Mode;
+              setMode(m);
+              if (m !== 'recolor') patch({ modelType: m });
+            }}
+          >
+            {MODES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title}
+              </option>
+            ))}
+          </select>
           <span className="titlebar-right">
             <span className="tool-en">Prism to USDZ · color-matched · build {__BUILD_ID__}</span>
             <button
@@ -522,7 +579,14 @@ export default function App() {
           </span>
         </div>
         {mode === 'recolor' ? (
-          <RecolorPane comp={params.color} targetName={targetLabel(params.target)} />
+          <RecolorPane
+            fileName={recolorSrc?.name ?? null}
+            busy={recolorBusy}
+            error={recolorError}
+            report={recolorOut?.report ?? null}
+            targetName={targetLabel(params.target)}
+            onFile={pickRecolorFile}
+          />
         ) : (
         <Viewport
           store={store}
@@ -564,10 +628,11 @@ export default function App() {
         params={params}
         patch={patch}
         mode={mode}
-        setMode={(m) => {
-          setMode(m);
-          if (m !== 'recolor') patch({ modelType: m });
-        }}
+        recolorName={recolorSrc?.name ?? null}
+        recolorReady={!!recolorOut}
+        recolorBusy={recolorBusy}
+        onPickRecolor={pickRecolorFile}
+        onExportRecolor={exportRecolor}
         selected={selected}
         face={face}
         patchFace={patchFace}

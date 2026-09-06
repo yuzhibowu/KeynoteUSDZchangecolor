@@ -1,4 +1,5 @@
 import { ColorPanel } from './ColorPanel';
+import { useRef } from 'react';
 import { Slider } from './Slider';
 import { FramePreview } from './FramePreview';
 import type { FaceTextureStore } from '../lib/faceTexture';
@@ -8,7 +9,6 @@ import {
   radiusFor,
   DEFAULT_PARAMS,
   CARD_FRONT,
-  MODES,
   type Mode,
   MAX_SIDES,
   MIN_SIDES,
@@ -26,7 +26,11 @@ type Props = {
   params: Params;
   patch: (p: Partial<Params>) => void;
   mode: Mode;
-  setMode: (m: Mode) => void;
+  recolorName: string | null;
+  recolorReady: boolean;
+  recolorBusy: string | null;
+  onPickRecolor: (f: File) => void;
+  onExportRecolor: () => void;
   selected: number | null;
   face: FaceState | null;
   patchFace: (t: Partial<FaceState>) => void;
@@ -46,7 +50,11 @@ export function ControlPanel({
   params,
   patch,
   mode,
-  setMode,
+  recolorName,
+  recolorReady,
+  recolorBusy,
+  onPickRecolor,
+  onExportRecolor,
   selected,
   face,
   patchFace,
@@ -64,6 +72,7 @@ export function ControlPanel({
   const canPickFolder = typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
 
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
+  const recolorInput = useRef<HTMLInputElement>(null);
   const isPrism = params.modelType === 'prism';
   // 宽度滑杆上标出来的档位，按数值从小到大排，刻度才不会左右乱跳
   // 标签用短名，不然 720P / 1080P 两个挤在一起会叠字
@@ -82,24 +91,35 @@ export function ControlPanel({
   return (
     <aside className="side">
       <div className="side-head">
-        {/* 模型类型放在 logo 的对角 —— 这是「先决定做什么」，该在最前面 */}
-        <select
-          className="model-type"
-          aria-label="模式"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as Mode)}
-        >
-          {MODES.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
         <span className="brand">饼饼SHOW</span>
       </div>
 
       <div className="side-body">
         {mode === 'recolor' ? (
+          <>
+          <section className="bare">
+            <div className="stack">
+              <button
+                className="btn"
+                disabled={recolorBusy !== null}
+                onClick={() => recolorInput.current?.click()}
+              >
+                {recolorBusy ?? '选择 USDZ 文件'}
+              </button>
+              <input
+                ref={recolorInput}
+                type="file"
+                accept=".usdz,model/vnd.usdz+zip"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (f) onPickRecolor(f);
+                }}
+              />
+              {recolorName && <div className="filename" title={recolorName}>{recolorName}</div>}
+            </div>
+          </section>
           <ColorPanel
             comp={params.color}
             patch={patchColor}
@@ -115,6 +135,12 @@ export function ControlPanel({
             lift={params.emissiveLift ?? 0}
             setLift={(v) => patch({ emissiveLift: v })}
           />
+          <section className="export-block">
+            <button className="btn-primary" disabled={!recolorReady} onClick={onExportRecolor}>
+              导出 USDZ
+            </button>
+          </section>
+          </>
         ) : (
         <>
         {/* 逐面的「不显示」。USD 是单面渲染的，藏掉之后从这一侧看过去是空的、

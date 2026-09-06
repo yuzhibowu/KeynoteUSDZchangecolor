@@ -121,7 +121,26 @@ button, input, select { font: inherit; color: inherit; }
   padding: 0 16px;
   gap: 12px;
 }
-.tool-name { font-size: clamp(13.6px, 1.12vw, 19.2px); font-weight: 800; white-space: nowrap; }
+/* 工具名是个下拉菜单：外观和原来的标题一模一样，右边多一个小三角 */
+.tool-name {
+  font-size: clamp(13.6px, 1.12vw, 19.2px);
+  font-weight: 800;
+  white-space: nowrap;
+  padding: 2px 22px 2px 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--titlebar-ink);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 11px) 50%, calc(100% - 6px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+.tool-name option { color: var(--ink); background: var(--surface); }
 .tool-en {
   font-size: clamp(8.5px, 0.7vw, 12px);
   font-weight: 650;
@@ -394,17 +413,37 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 
 /* ================= 颜色校正模式 ================= */
 
-.recolor {
+.recolor { overflow-y: auto; padding: 20px; }
+.recolor.drag-over { outline: 2px dashed var(--ink); outline-offset: -12px; }
+.recolor-empty {
+  height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  overflow-y: auto;
+  gap: 8px;
+  text-align: center;
 }
-.recolor.drag-over { outline: 2px dashed var(--ink); outline-offset: -12px; }
-.recolor-box { width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px; }
-.recolor-box h2 { font-size: 15px; font-weight: 780; margin: 0; }
-.recolor-report { display: flex; flex-direction: column; gap: 8px; }
+.recolor-empty h2 { font-size: 15px; font-weight: 780; margin: 0; }
+.recolor-body { display: flex; flex-direction: column; gap: 20px; }
+
+.compare { display: flex; flex-direction: column; gap: 8px; }
+.compare-name { font-size: 12px; font-weight: 680; color: var(--label); }
+.compare-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compare-pair.three { grid-template-columns: repeat(3, 1fr); }
+.compare-pair figure { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.compare-pair img {
+  display: block;
+  width: 100%;
+  background: var(--track);
+  border: 1px solid var(--line);
+}
+.compare-pair figcaption { font-size: 11px; color: var(--muted); }
+
+/* 纯色对照：上半格是原色、下半格是校正后 */
+.swatch-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.swatch { width: 34px; border: 1px solid var(--line); }
+.swatch i { display: block; height: 17px; }
 
 /* ================= 面缩略图 ================= */
 

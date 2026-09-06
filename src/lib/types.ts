@@ -110,9 +110,9 @@ export type ModelType = (typeof MODEL_TYPES)[number]['id'];
 
 /** 顶部菜单里的三档。颜色校正不是一种模型，是另一条路：拿现成的 usdz 来改 */
 export const MODES = [
-  { id: 'prism', label: '棱柱' },
-  { id: 'card', label: '卡片' },
-  { id: 'recolor', label: '颜色校正' },
+  { id: 'prism', label: '棱柱', title: '棱柱 USDZ 导出器' },
+  { id: 'card', label: '卡片', title: '卡片 USDZ 导出器' },
+  { id: 'recolor', label: '颜色校正', title: 'USDZ 颜色校正' },
 ] as const;
 export type Mode = (typeof MODES)[number]['id'];
 

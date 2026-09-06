@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate';
-import { applyToImageData, compensateToLinear, isIdentity, linearToSrgb, type ColorComp } from './color';
+import { applyToImageData, compensateToLinear, forwardOf, isIdentity, linearToSrgb, type ColorComp } from './color';
 import { packUsdz } from './usdzExtent';
 
 /**
@@ -10,7 +10,28 @@ import { packUsdz } from './usdzExtent';
  * 按我们标定时的条件补上自发光 → 原样打回去。
  */
 
+/**
+ * 一张贴图的三联对照（缩略图 dataURL）。
+ *
+ * 比的不是「原图 vs 补偿后的半成品」—— 那个半成品本来就不是给人看的，
+ * 看着又暗又怪，对不上任何直觉。比的是**你在 Keynote 里会看到什么**：
+ * 不校正会变成什么样、校正之后又会是什么样。
+ */
+export type TexturePreview = {
+  name: string;
+  /** 你的原图 */
+  source: string;
+  /** 不校正：Keynote 会把它显示成这样 */
+  before: string;
+  /** 校正之后：Keynote 会把它显示成这样，应该和原图基本一致 */
+  after: string;
+};
+
 export type RecolorReport = {
+  /** 贴图的前后对照，给界面拿去并排显示 */
+  previews: TexturePreview[];
+  /** 写死的纯色的前后对照，十六进制 */
+  swatches: { before: string; after: string }[];
   /** 改了几张贴图 */
   textures: number;
   /** 改了几处写死的纯色 */
@@ -28,12 +49,59 @@ const IMAGE = /\.(png|jpe?g)$/i;
 /** 数字格式和 USD 里常见的写法保持一致，别把 1 写成 1.0000000 那种噪声 */
 const num = (v: number) => String(Math.round(v * 1e6) / 1e6);
 
+/** 缩略图最长边，够看颜色就行，别把几兆的 dataURL 塞进内存 */
+const PREVIEW_MAX = 320;
+
+/**
+ * 把「Keynote 会怎么显示它」算出来 —— 正向模型，和反解用的是同一份校准。
+ * 只在缩略图上跑（十万来个像素），全尺寸图上逐像素跑没必要也太慢。
+ */
+function predictOnThumb(dataUrl: string, comp: ColorComp): Promise<string> {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = im.width;
+      c.height = im.height;
+      const ctx = c.getContext('2d', { willReadFrequently: true })!;
+      ctx.drawImage(im, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      const px = d.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const [r, g, b] = forwardOf(px[i], px[i + 1], px[i + 2], comp);
+        px[i] = r;
+        px[i + 1] = g;
+        px[i + 2] = b;
+      }
+      ctx.putImageData(d, 0, 0);
+      resolve(c.toDataURL('image/png'));
+    };
+    im.onerror = () => resolve(dataUrl);
+    im.src = dataUrl;
+  });
+}
+
+function thumb(canvas: HTMLCanvasElement): string {
+  const k = Math.min(1, PREVIEW_MAX / Math.max(canvas.width, canvas.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(canvas.width * k));
+  c.height = Math.max(1, Math.round(canvas.height * k));
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, c.width, c.height);
+  return c.toDataURL('image/png');
+}
+
 function linearToHex(r: number, g: number, b: number): string {
   const to255 = (v: number) => Math.max(0, Math.min(255, Math.round(linearToSrgb(v) * 255)));
   return '#' + [to255(r), to255(g), to255(b)].map((n) => n.toString(16).padStart(2, '0')).join('');
 }
 
-async function recolorImage(bytes: Uint8Array, name: string, comp: ColorComp): Promise<Uint8Array> {
+async function recolorImage(
+  bytes: Uint8Array,
+  name: string,
+  comp: ColorComp,
+): Promise<{ bytes: Uint8Array; preview: TexturePreview }> {
   const mime = /\.png$/i.test(name) ? 'image/png' : 'image/jpeg';
   const blob = new Blob([bytes as unknown as BlobPart], { type: mime });
   const bmp = await createImageBitmap(blob);
@@ -43,14 +111,24 @@ async function recolorImage(bytes: Uint8Array, name: string, comp: ColorComp): P
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(bmp, 0, 0);
   bmp.close?.();
+  const source = thumb(canvas);
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
   applyToImageData(img.data, comp);
   ctx.putImageData(img, 0, 0);
+  const written = thumb(canvas);
+  const preview: TexturePreview = {
+    name,
+    source,
+    // 不校正 = Keynote 直接拿原图去显示
+    before: await predictOnThumb(source, comp),
+    // 校正后 = Keynote 拿补偿过的那张去显示，应该正好落回原图
+    after: await predictOnThumb(written, comp),
+  };
   // **原样保留扩展名对应的格式**：usda 里是按文件名引用的，
   // 把 .jpg 换成 PNG 字节，有些读取器会按扩展名挑解码器，直接读不出来。
   const out = await new Promise<Blob | null>((r) => canvas.toBlob(r, mime, mime === 'image/jpeg' ? 0.95 : 1));
-  if (!out) return bytes;
-  return new Uint8Array(await out.arrayBuffer());
+  if (!out) return { bytes, preview };
+  return { bytes: new Uint8Array(await out.arrayBuffer()), preview };
 }
 
 /**
@@ -59,17 +137,27 @@ async function recolorImage(bytes: Uint8Array, name: string, comp: ColorComp): P
  * 为什么一定要补自发光：那份校准档是在「灯光开着 + 补光拉满」下标出来的，
  * 只改像素、不补自发光，等于换了一套响应条件，补偿量就对不上了。
  */
-export function recolorUsda(usda: string, comp: ColorComp): { text: string; colors: number; emissive: number } {
+export function recolorUsda(
+  usda: string,
+  comp: ColorComp,
+): { text: string; colors: number; emissive: number; swatches: { before: string; after: string }[] } {
   let colors = 0;
   let emissive = 0;
+  const swatches: { before: string; after: string }[] = [];
 
   // 1) 写死的漫反射色。USD 里存的是线性值，先转回 sRGB 才能进补偿
   let text = usda.replace(
     /color3f inputs:diffuseColor = \(\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*,\s*([-\d.eE]+)\s*\)/g,
     (whole, r: string, g: string, b: string) => {
-      const lin = compensateToLinear(linearToHex(+r, +g, +b), comp);
+      const before = linearToHex(+r, +g, +b);
+      const lin = compensateToLinear(before, comp);
       if (!lin) return whole;
       colors++;
+      const after = linearToHex(lin[0], lin[1], lin[2]);
+      // 同一个颜色可能在文件里出现很多次，只留不重复的，最多 24 个
+      if (swatches.length < 24 && !swatches.some((s) => s.before === before)) {
+        swatches.push({ before, after });
+      }
       return `color3f inputs:diffuseColor = (${num(lin[0])}, ${num(lin[1])}, ${num(lin[2])})`;
     },
   );
@@ -91,7 +179,7 @@ export function recolorUsda(usda: string, comp: ColorComp): { text: string; colo
     return block.replace(/\n(\s*)token outputs:surface/, `${line}\n$1token outputs:surface`);
   });
 
-  return { text, colors, emissive };
+  return { text, colors, emissive, swatches };
 }
 
 export async function recolorUsdz(
@@ -99,7 +187,15 @@ export async function recolorUsdz(
   comp: ColorComp,
 ): Promise<{ bytes: Uint8Array; report: RecolorReport }> {
   const src = new Uint8Array(buf);
-  const report: RecolorReport = { textures: 0, colors: 0, emissive: 0, binary: [], skipped: [] };
+  const report: RecolorReport = {
+    previews: [],
+    swatches: [],
+    textures: 0,
+    colors: 0,
+    emissive: 0,
+    binary: [],
+    skipped: [],
+  };
   if (isIdentity(comp)) throw new Error('当前目标还没有校准档，先在「颜色」里选一个校准过的目标');
 
   const entries = unzipSync(src);
@@ -110,7 +206,9 @@ export async function recolorUsdz(
   for (const name of Object.keys(entries)) {
     const data = entries[name];
     if (IMAGE.test(name)) {
-      out[name] = await recolorImage(data, name, comp);
+      const r = await recolorImage(data, name, comp);
+      out[name] = r.bytes;
+      report.previews.push(r.preview);
       report.textures++;
       continue;
     }
@@ -119,6 +217,11 @@ export async function recolorUsdz(
       out[name] = enc.encode(r.text);
       report.colors += r.colors;
       report.emissive += r.emissive;
+      for (const sw of r.swatches) {
+        if (report.swatches.length < 24 && !report.swatches.some((x) => x.before === sw.before)) {
+          report.swatches.push(sw);
+        }
+      }
       continue;
     }
     // .usdc 是二进制的 crate 格式，没有解析器就动不了里面的材质。
