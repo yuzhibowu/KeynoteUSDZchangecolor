@@ -6,6 +6,7 @@ import {
   fromPx,
   radiusFor,
   MATERIALS,
+  CARD_FRONT,
   MODEL_TYPES,
   type ModelType,
   MAX_SIDES,
@@ -56,6 +57,9 @@ export function ControlPanel({
 
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
   const isPrism = params.modelType === 'prism';
+  // 侧边色默认取正面贴图的平均色；tick 变了要重取（贴图换了平均色就变了）
+  void tick;
+  const edgeColor = params.edgeAuto ? store.averageColor(CARD_FRONT) : params.capColorRight;
   const patchGeom = (p: Partial<Params>) => {
     const next = { ...params, ...p };
     patch({ ...p, radius: radiusFor(next.length, next.aspect, next.sides) });
@@ -178,6 +182,15 @@ export function ControlPanel({
                 suffix=" px"
                 onChange={(v) => patch({ thickness: fromPx(v) })}
               />
+              <Slider
+                label="圆角"
+                value={toPx(params.corner)}
+                min={0}
+                max={Math.round(toPx(Math.min(params.length, params.length / params.aspect)) / 2)}
+                step={1}
+                suffix=" px"
+                onChange={(v) => patch({ corner: fromPx(v) })}
+              />
               <div className="opts four">
                 {MATERIALS.map((m) => (
                   <button
@@ -195,10 +208,15 @@ export function ControlPanel({
                 <input
                   type="color"
                   aria-label="侧边颜色"
-                  value={params.capColorRight}
-                  onChange={(e) => patch({ capColorRight: e.target.value })}
+                  value={edgeColor}
+                  onChange={(e) => patch({ capColorRight: e.target.value, edgeAuto: false })}
                 />
-                <span>侧边颜色</span>
+                <span>侧边颜色{params.edgeAuto ? '（跟着正面走）' : ''}</span>
+                {!params.edgeAuto && (
+                  <button className="btn" onClick={() => patch({ edgeAuto: true })}>
+                    跟随正面
+                  </button>
+                )}
               </div>
               {(params.material === 'glass' || params.material === 'frosted') && (
                 <p className="hint tight">

@@ -168,6 +168,9 @@ export class FaceTextureStore {
   private sigs: string[] = [];
   /** 估体积用的离屏画布，复用一张就够 —— 逐个面画上去、编码、丢掉 */
   private estimateCanvas: HTMLCanvasElement | null = null;
+  /** 求平均色用的 1×1 画布，和它的结果缓存（按贴图版本号） */
+  private avgCanvas: HTMLCanvasElement | null = null;
+  private avg: ({ v: number; hex: string } | null)[] = [];
   private corrected: (HTMLCanvasElement | null)[] = [];
   private correctedKey: string[] = [];
   private listeners = new Set<(index: number) => void>();
@@ -188,6 +191,7 @@ export class FaceTextureStore {
       this.versions.push(0);
       this.sigs.push('');
       this.corrected.push(null);
+      this.avg.push(null);
       this.correctedKey.push('');
     }
   }
@@ -195,6 +199,53 @@ export class FaceTextureStore {
   subscribe(cb: (index: number) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
+  }
+
+  /**
+   * 一个面的平均色，十六进制。
+   *
+   * 卡片的侧边默认要跟着正面贴图走 —— 一张红卡片的侧边不该是灰的。
+   * 做法是缩到 32×32 再自己把这 1024 个像素平均掉。
+   * **不能直接缩到 1×1** —— 那一步默认走最近邻，取到的是正中间那一个像素：
+   * 一张红底白字的图会被判成纯白。缩到 32 再平均，结果稳定也不依赖浏览器的缩放质量。
+   * 按版本号缓存：贴图没变就不重算，否则每帧都要拷一张 2K 画布。
+   */
+  averageColor(index: number): string {
+    const v = this.versions[index];
+    const hit = this.avg[index];
+    if (hit && hit.v === v) return hit.hex;
+    const N = 32;
+    const src = this.canvases[index];
+    const probe = this.avgCanvas ?? (this.avgCanvas = document.createElement('canvas'));
+    probe.width = N;
+    probe.height = N;
+    const ctx = probe.getContext('2d', { willReadFrequently: true })!;
+    ctx.clearRect(0, 0, N, N);
+    let hex = '#d9d9de';
+    try {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(src, 0, 0, N, N);
+      const d = ctx.getImageData(0, 0, N, N).data;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        r += d[i];
+        g += d[i + 1];
+        b += d[i + 2];
+      }
+      const n = d.length / 4;
+      hex =
+        '#' +
+        [r / n, g / n, b / n]
+          .map((x) => Math.round(x).toString(16).padStart(2, '0'))
+          .join('');
+    } catch {
+      /* 画布还没画过，退回默认灰 */
+    }
+    this.avg[index] = { v, hex };
+    return hex;
   }
 
   size(index: number): CanvasSize {

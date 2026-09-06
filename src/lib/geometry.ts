@@ -195,3 +195,120 @@ export function capGeometry(
   g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   return g;
 }
+
+/**
+ * 卡片专用几何：圆角矩形沿厚度方向拉出来。
+ *
+ * 为什么不能沿用「横截面」那一套：横截面是绕 X 轴的截面，沿 X 拉伸出来的形状
+ * 在长度方向上处处相同。而卡片的圆角在**正面这个平面里**（XY 平面），
+ * 拉伸方向反过来了 —— 只能单独建。
+ *
+ * 返回三块：正面、背面、一圈侧边。正面朝 +Z，和四棱柱模式下的面 0 一致，
+ * 所以 faceFrame 那套拖拽/缩放的坐标系原样能用。
+ */
+export function cardGeometry(width: number, height: number, thickness: number, corner: number) {
+  const hw = width / 2;
+  const hh = height / 2;
+  const hz = thickness / 2;
+  const r = Math.max(0, Math.min(corner, Math.min(hw, hh)));
+  const pts = roundedRect(hw, hh, r);
+
+  const front = faceOfOutline(pts, hz, hw, hh, true);
+  const back = faceOfOutline(pts, -hz, hw, hh, false);
+  const band = bandOfOutline(pts, hz);
+  return { front, back, band };
+}
+
+/** 圆角矩形的轮廓点，逆时针（从 +Z 方向看），起点在右下角那段圆弧 */
+function roundedRect(hw: number, hh: number, r: number): [number, number][] {
+  if (r <= 1e-9) {
+    return [
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+      [-hw, -hh],
+    ];
+  }
+  // 圆角越大、卡片越大，分段就要越多，否则边缘看得出棱
+  const seg = Math.max(4, Math.min(24, Math.round(r / Math.max(hw, hh) * 120) + 4));
+  const centers: [number, number, number][] = [
+    [hw - r, -hh + r, -Math.PI / 2],
+    [hw - r, hh - r, 0],
+    [-hw + r, hh - r, Math.PI / 2],
+    [-hw + r, -hh + r, Math.PI],
+  ];
+  const out: [number, number][] = [];
+  for (const [cx, cy, a0] of centers) {
+    for (let k = 0; k <= seg; k++) {
+      const a = a0 + (Math.PI / 2) * (k / seg);
+      out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+  }
+  return out;
+}
+
+/** 把轮廓做成一个平面：从中心扇形三角化，UV 按外接矩形铺满 */
+function faceOfOutline(
+  pts: [number, number][],
+  z: number,
+  hw: number,
+  hh: number,
+  front: boolean,
+): THREE.BufferGeometry {
+  const n = pts.length;
+  const position: number[] = [0, 0, z];
+  // 背面从后面看，左右是反的，u 要镜像，否则贴上去的图是反的
+  const uOf = (x: number) => (front ? 0.5 + x / (2 * hw) : 0.5 - x / (2 * hw));
+  const uv: number[] = [front ? 0.5 : 0.5, 0.5];
+  for (const [x, y] of pts) {
+    position.push(x, y, z);
+    uv.push(uOf(x), 0.5 + y / (2 * hh));
+  }
+  const index: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = 1 + i;
+    const b = 1 + ((i + 1) % n);
+    if (front) index.push(0, a, b);
+    else index.push(0, b, a);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  const nz = front ? 1 : -1;
+  const normal: number[] = [];
+  for (let i = 0; i < position.length / 3; i++) normal.push(0, 0, nz);
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+  g.setIndex(index);
+  return g;
+}
+
+/** 沿轮廓围一圈侧边 */
+function bandOfOutline(pts: [number, number][], hz: number): THREE.BufferGeometry {
+  const position: number[] = [];
+  const normal: number[] = [];
+  const uv: number[] = [];
+  const index: number[] = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % n];
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const len = Math.hypot(dx, dy) || 1;
+    // 轮廓是逆时针，边 (i → i+1) 的朝外法线是 (dy, -dx)
+    const nx = dy / len;
+    const ny = -dx / len;
+    const base = position.length / 3;
+    position.push(x0, y0, hz, x1, y1, hz, x1, y1, -hz, x0, y0, -hz);
+    for (let k = 0; k < 4; k++) normal.push(nx, ny, 0);
+    uv.push(0, 1, 1, 1, 1, 0, 0, 0);
+    // 绕序要让法线朝外：(A,C,B) 和 (A,D,C)
+    index.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(index);
+  return g;
+}

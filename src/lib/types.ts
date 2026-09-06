@@ -84,6 +84,8 @@ export const ASPECTS: { ratio: number; label: string }[] = [
   { ratio: 3 / 4, label: '3:4' },
   { ratio: 9 / 16, label: '9:16' },
   { ratio: 2, label: '2:1' },
+  // 集换式卡牌（游戏王 / 宝可梦这一类）的实际尺寸是 59 × 86 mm
+  { ratio: 59 / 86, label: '卡牌' },
 ];
 
 /**
@@ -129,12 +131,16 @@ export type Params = {
   modelType: ModelType;
   /** 卡片厚度，米。棱柱模式下不用 */
   thickness: number;
+  /** 卡片圆角半径，米。0 = 直角 */
+  corner: number;
   material: MaterialId;
   sides: number;
   radius: number; // 外接圆半径，米。由 width 和 aspect 算出来，不直接调
   length: number; // 面的宽度 = 棱柱沿 X 轴的长度，米
   aspect: number; // 面的宽高比，从菜单里选
   capMode: CapMode; // 端面：实心 or 镂空
+  /** 卡片侧边的颜色跟着正面贴图走（默认）；用户手动调过就变成 false */
+  edgeAuto: boolean;
   capColorRight: string; // +X 端面
   capColorLeft: string; // -X 端面
   separateCaps: boolean;
@@ -192,12 +198,14 @@ export function defaultProfiles(): Record<TargetId, ColorComp> {
 export const DEFAULT_PARAMS: Params = {
   modelType: 'prism',
   thickness: 0.006, // 6 mm，差不多一张厚卡片
+  corner: 0,
   material: 'matte',
   sides: 4,
   aspect: 16 / 9,
   radius: radiusFor(0.1, 16 / 9, 4),
   length: 0.1,
   capMode: 'solid',
+  edgeAuto: true,
   capColorRight: '#d9d9de',
   capColorLeft: '#d9d9de',
   separateCaps: false,

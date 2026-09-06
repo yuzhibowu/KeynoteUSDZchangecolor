@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { capGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
+import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
 
 function hexToLinear(hex: string): [number, number, number] {
@@ -10,7 +10,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import { clampTransform, type FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, textureAspect, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, textureAspect, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -298,7 +298,7 @@ export class PrismViewer {
     // faces 复制一份：拖拽时视口会就地改自己这份，不去动 React 的状态对象
     this.state = { ...next, faces: next.faces.slice() };
     const { params } = next;
-    const sig = `${params.modelType}|${params.sides}|${params.radius}|${params.length}|${params.aspect}|${params.thickness}|${params.capMode}`;
+    const sig = `${params.modelType}|${params.sides}|${params.radius}|${params.length}|${params.aspect}|${params.thickness}|${params.corner}|${params.capMode}`;
     if (sig !== this.geomSig) {
       this.geomSig = sig;
       this.rebuildGeometry();
@@ -312,8 +312,8 @@ export class PrismViewer {
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
       if (isCardEdge(params, i)) {
-        // 卡片的窄边：纯色，拿端面色当侧边色（不另开一个颜色字段）
-        this.paintSolid(m, params.capColorRight, this.exportMode);
+        // 卡片的窄边：纯色。默认跟着正面贴图的平均色走 —— 红卡片的侧边不该是灰的
+        this.paintSolid(m, this.edgeColor(), this.exportMode);
       } else {
         // 补光 > 0 时也要挂 emissiveMap，加法那一项才能逐像素跟着贴图走
         const wantEmissiveMap = lift > 0 ? this.store.textures[i] : null;
@@ -337,7 +337,7 @@ export class PrismViewer {
       this.applyMaterial(im);
     }
     // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
-    const showCaps = params.capMode !== 'none';
+    const showCaps = params.modelType === 'prism' && params.capMode !== 'none';
     this.capRight.visible = showCaps;
     this.capLeft.visible = showCaps;
     this.applyCapColors(false);
@@ -348,6 +348,10 @@ export class PrismViewer {
   private rebuildGeometry() {
     const p = this.state!.params;
     const { length } = p;
+    if (p.modelType === 'card') {
+      this.rebuildCard();
+      return;
+    }
     const sec = sectionOf(p);
     const sides = sec.sides;
     // 「没有端面」时才需要内面：封了口本来就看不到里面。卡片永远是实心的，没有内面。
@@ -387,6 +391,43 @@ export class PrismViewer {
     const span = Math.max(sec.ry, sec.rz);
     this.grid.scale.setScalar(Math.max(span * 10, length * 2.5));
     this.grid.position.y = -span * 1.9;
+  }
+
+  /**
+   * 卡片：圆角矩形沿厚度拉出来，三块几何挂到三个现成的 mesh 上 ——
+   * 正面 → face 0、背面 → face 2（和 CARD_FRONT / CARD_BACK 对得上），
+   * 一圈侧边 → face 1。face 3 和两个端面藏起来。
+   * 这样 dock、槽位、拾取全都不用为卡片开特例。
+   */
+  private rebuildCard() {
+    const p = this.state!.params;
+    const height = p.length / p.aspect;
+    const { front, back, band } = cardGeometry(p.length, height, p.thickness, p.corner);
+    const put = (i: number, g: THREE.BufferGeometry | null) => {
+      const mesh = this.sideMeshes[i];
+      mesh.geometry.dispose();
+      mesh.geometry = g ?? new THREE.BufferGeometry();
+      mesh.visible = g !== null;
+      const inner = this.innerMeshes[i];
+      inner.geometry.dispose();
+      inner.geometry = new THREE.BufferGeometry();
+      inner.visible = false;
+      const wantMap = isCardEdge(p, i) ? null : this.store.textures[i];
+      if (this.sideMaterials[i].map !== wantMap) {
+        this.sideMaterials[i].map = wantMap;
+        this.sideMaterials[i].needsUpdate = true;
+      }
+    };
+    put(CARD_FRONT, front);
+    put(1, band);
+    put(CARD_BACK, back);
+    for (let i = 3; i < MAX_SIDES; i++) put(i, null);
+    // 卡片是一整块，没有端面这回事
+    this.capRight.visible = false;
+    this.capLeft.visible = false;
+    const span = Math.max(p.length, height) / 2;
+    this.grid.scale.setScalar(Math.max(span * 5, p.length * 2.5));
+    this.grid.position.y = -height * 0.95;
   }
 
   /** 相机方向永远固定在 +Z，只按包围球调距离，保证物体始终占满画面 */
@@ -440,6 +481,12 @@ export class PrismViewer {
    * 给一个「没有贴图」的面上色：端面、以及卡片的四条窄边。
    * 纯色不受 8 位限制，可以直接写 > 1 的线性值，不需要贴图那套增益。
    */
+  /** 卡片侧边的颜色：默认取正面贴图的平均色，用户手动调过就用他调的 */
+  private edgeColor(): string {
+    const p = this.state!.params;
+    return p.edgeAuto ? this.store.averageColor(CARD_FRONT) : p.capColorRight;
+  }
+
   private paintSolid(mat: THREE.MeshPhysicalMaterial, hex: string, compensate: boolean) {
     const p = this.state!.params;
     const unlit = p.emissiveExport;
@@ -555,7 +602,7 @@ export class PrismViewer {
       // diffuse 和 emissive 就指向两个不同的 texture —— USDZExporter 按 source.id 建表，
       // 于是同样的像素在 usdz 里被存了两份，文件体积白白翻倍。
       if (isCardEdge(p, i)) {
-        this.paintSolid(m, p.capColorRight, this.exportMode);
+        this.paintSolid(m, this.edgeColor(), this.exportMode);
       } else {
         const want = lift > 0 ? m.map ?? this.store.textures[i] : null;
         if (m.emissiveMap !== want) {
