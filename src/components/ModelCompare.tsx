@@ -203,6 +203,7 @@ export function ModelCompare({
       setReady(true);
 
       let yaw = 0.35;
+      let pitch = 0.18;
       let last = performance.now();
       const loop = () => {
         raf = requestAnimationFrame(loop);
@@ -211,7 +212,7 @@ export function ModelCompare({
         last = now;
         if (spinRef.current) yaw += dt * 0.5;
         for (const p of parts) {
-          p.pivot.rotation.set(0.18, yaw, 0);
+          p.pivot.rotation.set(pitch, yaw, 0);
           p.renderer.render(p.scene, p.camera);
         }
       };
@@ -220,9 +221,11 @@ export function ModelCompare({
       // 在任意一边拖动，两边一起转
       let dragging = false;
       let lastX = 0;
+      let lastY = 0;
       const down = (e: PointerEvent) => {
         dragging = true;
         lastX = e.clientX;
+        lastY = e.clientY;
         spinRef.current = false;
         setSpin(false);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -230,7 +233,11 @@ export function ModelCompare({
       const move = (e: PointerEvent) => {
         if (!dragging) return;
         yaw += (e.clientX - lastX) * 0.01;
+        // 上下也能转。方向和主视口一致：往下拖，正对着你的那一面就往下走。
+        // 夹在 ±80° 以内，别让它翻过顶点，那一下会很晕
+        pitch = Math.max(-1.4, Math.min(1.4, pitch + (e.clientY - lastY) * 0.01));
         lastX = e.clientX;
+        lastY = e.clientY;
       };
       const up = () => {
         dragging = false;
