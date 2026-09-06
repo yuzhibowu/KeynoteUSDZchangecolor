@@ -85,9 +85,9 @@ button, input, select { font: inherit; color: inherit; }
   font-weight: 850;
   line-height: 1.1;
   white-space: nowrap;
-  /* 黄线通铺字宽，只是细一半 */
-  border-bottom: 3px solid var(--brand);
-  padding-bottom: 2px;
+  /* 黄线通铺字宽，6px */
+  border-bottom: 6px solid var(--brand);
+  padding-bottom: 1px;
 }
 
 .side-body {
