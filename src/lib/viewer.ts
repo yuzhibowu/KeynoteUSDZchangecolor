@@ -351,9 +351,18 @@ export class PrismViewer {
    */
   private applyHidden() {
     const st = this.state!;
+    const p = st.params;
+    const card = p.modelType === 'card';
+    // 卡片用到 0（正面）/ 1（一圈侧边）/ 2（背面）三个 mesh
+    const used = card ? 3 : p.sides;
+    const withInner = !card && p.capMode === 'none';
     for (let i = 0; i < MAX_SIDES; i++) {
-      if (st.faces[i]?.hidden) this.sideMeshes[i].visible = false;
-      if (st.faces[innerSlot(i)]?.hidden) this.innerMeshes[i].visible = false;
+      // 卡片那一圈侧边没有对应的 dock 格子，也就没有开关，别被别的模式留下的标记误伤
+      const off = card && i === 1 ? false : !!st.faces[i]?.hidden;
+      // **两个方向都要写。**只写 false 的话，取消勾选之后没人把它打开 ——
+      // 只有几何重建才会恢复，而改这个开关不会触发重建，面就再也回不来了。
+      this.sideMeshes[i].visible = i < used && !off;
+      this.innerMeshes[i].visible = withInner && i < p.sides && !st.faces[innerSlot(i)]?.hidden;
     }
   }
 
