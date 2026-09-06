@@ -3,6 +3,7 @@ import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
 import type { PrismViewer } from './viewer';
 import type { FaceTextureStore } from './faceTexture';
 import type { Params } from './types';
+import { withExtents } from './usdzExtent';
 
 export function usdzFileName(sides: number): string {
   const d = new Date();
@@ -64,10 +65,13 @@ export async function exportUsdz(
   }
   for (const t of fresh) t.dispose();
 
+  // 补上每个 Mesh 的 extent —— USDZExporter 一个都不写，而渲染器拿不到包围盒
+  // 就只能自己猜，猜出来的框可能把模型切掉一块。
+  const patched = withExtents(buffer as unknown as ArrayBuffer);
   if (import.meta.env.DEV) {
-    (window as unknown as Record<string, unknown>).__lastUsdz = buffer;
+    (window as unknown as Record<string, unknown>).__lastUsdz = patched;
   }
-  const blob = new Blob([buffer as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
+  const blob = new Blob([patched as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
   return { blob, name: usdzFileName(params.sides) };
 }
 
