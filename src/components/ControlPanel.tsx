@@ -220,20 +220,26 @@ export function ControlPanel({
                     type="button"
                     className="opt"
                     aria-pressed={params.material === m.id}
-                    // 选材质就把补光关掉：补光是把表面变成自发光来突破亮度上限的，
-                    // 自发光的面不受光，金属和光泽一点都显示不出来。两者只能二选一。
-                    onClick={() => patch({ material: m.id, emissiveLift: 0 })}
+                    // 选材质就把自发光那两个开关一起关掉。补光是把表面变成自发光来
+                    // 突破亮度上限的，自发光的面不受光，金属和光泽一点都显示不出来。
+                    // **「完全关掉灯光」也要一起关** —— 它会强制把自发光拉满，
+                    // 只关补光滑块没用，这是之前漏掉的口子。
+                    onClick={() => patch({ material: m.id, emissiveLift: 0, emissiveExport: false })}
                   >
                     {m.label}
                   </button>
                 ))}
               </div>
-              {(params.emissiveLift ?? 0) > 0 && (
+              {((params.emissiveLift ?? 0) > 0 || params.emissiveExport) && (
                 <p className="hint warn tight">
-                  补光开着的时候看不到材质质感 —— 补光是把表面变成自发光的，
+                  {params.emissiveExport ? '「完全关掉灯光」' : '补光'}
+                  开着的时候看不到材质质感 —— 它把表面变成自发光的，
                   自发光的面不受光，金属和光泽都出不来。
-                  <button className="btn" onClick={() => patch({ emissiveLift: 0 })}>
-                    关掉补光
+                  <button
+                    className="btn"
+                    onClick={() => patch({ emissiveLift: 0, emissiveExport: false })}
+                  >
+                    关掉自发光
                   </button>
                 </p>
               )}
