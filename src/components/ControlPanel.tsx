@@ -94,6 +94,34 @@ export function ControlPanel({
     const next = { ...params, ...p };
     patch({ ...p, radius: radiusFor(next.length, next.aspect, next.sides) });
   };
+  /**
+   * 在不在自定义模式。
+   *
+   * 只要有一格填过就算 —— 不能要求两格都有值：用户把「高」删空准备重打的那一瞬间，
+   * 整行输入框会直接消失，字还没敲完框就没了。点任何一个预设才会退出自定义。
+   */
+  const isCustomAspect =
+    params.aspectW !== undefined || params.aspectH !== undefined;
+
+  /**
+   * 改宽或改高。传 null 表示这一格不动。
+   *
+   * 中间态要留得住：清空输入框、或者敲到一半只有 "0"，都不能立刻把比例算成
+   * 0 或 NaN 塞回去 —— 那会让半径变成 0，模型当场消失，用户还在打字。
+   * 所以只有两边都是正数时才真的换 aspect，否则只记住输入框里的字。
+   */
+  const setRatio = (wRaw: string | null, hRaw: string | null) => {
+    const num = (v: string | null, fallback: number | undefined) => {
+      if (v === null) return fallback;
+      const n = Number(v);
+      return v.trim() === '' || !Number.isFinite(n) ? undefined : n;
+    };
+    const w = num(wRaw, params.aspectW);
+    const h = num(hRaw, params.aspectH);
+    const usable = w !== undefined && h !== undefined && w > 0 && h > 0;
+    patchGeom({ aspectW: w, aspectH: h, aspect: usable ? w / h : params.aspect });
+  };
+
   const hasImage = !!face?.source;
 
   return (
@@ -313,13 +341,49 @@ export function ControlPanel({
                     key={a.label}
                     type="button"
                     className="opt"
-                    aria-pressed={Math.abs(params.aspect - a.ratio) < 1e-4}
-                    onClick={() => patchGeom({ aspect: a.ratio })}
+                    aria-pressed={!isCustomAspect && Math.abs(params.aspect - a.ratio) < 1e-4}
+                    onClick={() => patchGeom({ aspect: a.ratio, aspectW: undefined, aspectH: undefined })}
                   >
                     {a.label}
                   </button>
                 ))}
+                {/* 预设之外的比例。点一下就把当前比例拆成两个数填进输入框，
+                    用户接着改哪个都行 —— 不用先猜一组数字再开始调 */}
+                <button
+                  type="button"
+                  className="opt"
+                  aria-pressed={isCustomAspect}
+                  onClick={() => {
+                    if (isCustomAspect) return;
+                    const w = Math.round(params.aspect * 100);
+                    patchGeom({ aspect: params.aspect, aspectW: w, aspectH: 100 });
+                  }}
+                >
+                  自定义
+                </button>
               </div>
+              {isCustomAspect && (
+                <div className="ratio-row">
+                  <input
+                    type="number"
+                    aria-label="自定义比例：宽"
+                    min={1}
+                    step={1}
+                    value={params.aspectW ?? ''}
+                    onChange={(e) => setRatio(e.target.value, null)}
+                  />
+                  <span>:</span>
+                  <input
+                    type="number"
+                    aria-label="自定义比例：高"
+                    min={1}
+                    step={1}
+                    value={params.aspectH ?? ''}
+                    onChange={(e) => setRatio(null, e.target.value)}
+                  />
+                  <b>{params.aspect.toFixed(3)}</b>
+                </div>
+              )}
             </div>
           </div>
         </section>

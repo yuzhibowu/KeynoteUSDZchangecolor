@@ -128,7 +128,16 @@ export type Params = {
   sides: number;
   radius: number; // 外接圆半径，米。由 width 和 aspect 算出来，不直接调
   length: number; // 面的宽度 = 棱柱沿 X 轴的长度，米
-  aspect: number; // 面的宽高比，从菜单里选
+  aspect: number; // 面的宽高比，从菜单里选，或者自定义输入
+  /**
+   * 自定义比例的原始输入（宽 : 高）。
+   *
+   * aspect 本身只是个小数，从它反推不回「几比几」—— 1.5 既可能是 3:2 也可能是 6:4，
+   * 而输入框要把用户当初敲的那两个数原样显示回来，所以单独存一份。
+   * 没用过自定义就一直是 undefined。
+   */
+  aspectW?: number;
+  aspectH?: number;
   capMode: CapMode; // 端面：实心 or 镂空
   /** 卡片侧边的颜色跟着正面贴图走（默认）；用户手动调过就变成 false */
   edgeAuto: boolean;

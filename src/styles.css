@@ -389,6 +389,26 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .opt[aria-pressed='true'] { background: var(--on); color: var(--on-ink); border-color: var(--on); }
 .opt:disabled { color: var(--disabled); border-color: var(--line); cursor: default; }
 
+/* 自定义比例：宽 : 高，右边跟一个算出来的小数，方便和预设对照 */
+.ratio-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.ratio-row input {
+  width: 0;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.ratio-row input:focus { outline: none; border-color: var(--ink); }
+.ratio-row span { font-size: 13px; font-weight: 700; color: var(--label); }
+.ratio-row b { font-size: 12px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
+
 /* ================= 按钮 ================= */
 
 .btn {
