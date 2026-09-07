@@ -21,34 +21,21 @@ import { normalizeUsdzForLoader } from '../lib/recolor';
 const PREVIEW_TEX = 1024;
 
 /**
- * 等模型上所有贴图真正解码完。
+ * 加载一个 usdz，**等到贴图真正解码完**才 resolve。
  *
- * 加载器是**异步**建贴图的（Blob → Image），刚 parse 完那一刻
- * `image.width` 很可能还是 0。这时候去读像素会得到一张 1×1 的空图，
- * 材质又是 transparent 的，渲染出来就是全黑 —— 10 MB 的大贴图必踩。
+ * 关键是必须走 onLoad 回调：`parse()` 本身是同步的，它建好几何和材质就立刻返回，
+ * 贴图是另一条异步链（Blob → Image → onload 才把 image 挂到 texture 上）。
+ * 加载器只有在收到 onLoad 时才会去等自己那批 texturePromises —— 直接
+ * `await loader.parse(...)` 等于没等，拿到的模型上每个 map 都还是空的，
+ * 渲染出来整个模型是黑的（贴图槽有值、内容是空的，采样结果就是黑）。
+ *
+ * 以前这里是 parse 完再自己遍历材质「等贴图」，但判断条件是看 `map.image` 在不在 ——
+ * 那一刻它必然是 null，于是一张都没等到，颜色模拟也整个被跳过。
  */
-async function waitTextures(root: THREE.Object3D) {
-  const jobs: Promise<unknown>[] = [];
-  root.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const m of mats) {
-      const img = (m as THREE.MeshStandardMaterial).map?.image as HTMLImageElement | undefined;
-      if (!img || typeof img.decode !== 'function') continue;
-      if (img.complete && img.naturalWidth > 0) continue;
-      jobs.push(
-        img.decode().catch(
-          () =>
-            new Promise<void>((r) => {
-              img.onload = () => r();
-              img.onerror = () => r();
-            }),
-        ),
-      );
-    }
+function loadUsdz(buf: ArrayBuffer): Promise<THREE.Object3D> {
+  return new Promise((resolve, reject) => {
+    new USDLoader().parse(buf, '', resolve, reject);
   });
-  await Promise.all(jobs);
 }
 
 /** 把模型上每张贴图换成「Keynote 里会显示成的样子」 */
@@ -148,20 +135,15 @@ export function ModelCompare({
       let a: THREE.Object3D;
       let b: THREE.Object3D;
       try {
-        const loader = new USDLoader();
         // 加载器会改传进去的 buffer 吗？不确定，各给一份拷贝更保险
         // 排版规范化之后再喂给加载器 —— 有些导出器写的 usda 是紧凑格式，
         // 而这个解析器按行切，紧凑格式会让它一个 mesh 都认不出来
-        a = await loader.parse(normalizeUsdzForLoader(original.slice(0)));
-        b = await loader.parse(normalizeUsdzForLoader(corrected.slice().buffer as ArrayBuffer));
+        a = await loadUsdz(normalizeUsdzForLoader(original.slice(0)));
+        b = await loadUsdz(normalizeUsdzForLoader(corrected.slice().buffer as ArrayBuffer));
       } catch (e) {
         onUnsupported(e instanceof Error ? e.message : String(e));
         return;
       }
-      if (!alive) return;
-
-      // 贴图解码完才能读像素，否则读到的是空的
-      await Promise.all([waitTextures(a), waitTextures(b)]);
       if (!alive) return;
 
       // 左边：不校正，直接拿原模型去显示 → 就是现在的偏色

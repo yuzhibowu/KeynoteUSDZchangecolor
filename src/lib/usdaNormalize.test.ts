@@ -48,3 +48,38 @@ def Xform "M"
     expect(out).not.toMatch(/240: \(0, 0, 0\n/);
   });
 });
+
+describe('属性行尾的括号元数据', () => {
+  // 真实文件里踩到的（正面千面英雄-3d.usdz）：
+  //   texCoord2f[] primvars:st = [(0,1),(1,1)] (interpolation = "faceVarying")
+  // 解析器按第一个 = 切左右，右边整段当值，括号那一截混进数组 → JSON.parse 崩 →
+  // 退到「只去方括号」的兜底，每对坐标的第一个数变成 NaN，贴图一个像素都采不到。
+  it('摊到下一行，值本身不动', () => {
+    const src = `#usda 1.0
+(
+    defaultPrim = "M"
+)
+
+def Mesh "M"
+{
+    texCoord2f[] primvars:st = [(0,1),(1,1),(1,0)] (interpolation = "faceVarying")
+}`;
+    const out = normalizeUsda(src);
+    expect(out).toContain('texCoord2f[] primvars:st = [(0,1),(1,1),(1,0)] (\n');
+    expect(out).toContain('interpolation = "faceVarying"');
+    expect(out).not.toMatch(/\] \(interpolation/);
+  });
+
+  it('值本身就是括号向量的行不能碰', () => {
+    const src = `#usda 1.0
+(
+    defaultPrim = "M"
+)
+
+def Xform "M"
+{
+    float3 xformOp:translate = (0, 0, 0)
+}`;
+    expect(normalizeUsda(src)).toContain('float3 xformOp:translate = (0, 0, 0)\n');
+  });
+});
