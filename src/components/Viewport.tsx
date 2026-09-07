@@ -112,9 +112,9 @@ export function Viewport({
         <button
           className="btn"
           onClick={onTestFill}
-          title="给每个面填一张带编号的纯色图，用来验证 Keynote 对「多 mesh 多材质」的支持"
+          title="给每个面填一张纯色图（只有底色，不带编号），用来验证 Keynote 对「多 mesh 多材质」的支持"
         >
-          填充测试色块
+          填充纯色
         </button>
       </div>
     </div>

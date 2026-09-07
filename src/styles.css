@@ -26,6 +26,8 @@
      直接用 --ink 当底色的话，暗色里就是白底白字，什么都看不见 */
   --on: #1d1d1f;
   --on-ink: #ffffff;
+  /* 滑块的填充段、圆钮、勾选框 —— 亮色下就是 --ink，暗色下要单独压一档，见下 */
+  --ctl: var(--ink);
   color-scheme: light;
 }
 
@@ -52,8 +54,11 @@
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     --titlebar: #2c2c2e;
     --titlebar-ink: #f5f5f7;
-    --on: #f5f5f7;
+    /* 暗底上纯白太扎眼：选中的按钮、滑块、勾选框统一压到 #f5f5f7 的八成亮度。
+       正文的 --ink 不动 —— 那是文字，压暗会掉可读性 */
+    --on: #c4c4c6;
     --on-ink: #1c1c1e;
+    --ctl: #c4c4c6;
     color-scheme: dark;
   }
 }
@@ -73,8 +78,10 @@
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   --titlebar: #2c2c2e;
   --titlebar-ink: #f5f5f7;
-  --on: #f5f5f7;
+  /* 同上：暗色下选中的按钮、滑块、勾选框比正文白低两成 */
+  --on: #c4c4c6;
   --on-ink: #1c1c1e;
+  --ctl: #c4c4c6;
   color-scheme: dark;
 }
 
@@ -300,7 +307,7 @@ input[type='range']::-webkit-slider-runnable-track {
   /* 两个硬切换的色段，不是渐变过渡 */
   background: linear-gradient(
     to right,
-    var(--ink) 0 var(--split, 50%),
+    var(--ctl) 0 var(--split, 50%),
     var(--track) var(--split, 50%) 100%
   );
 }
@@ -312,7 +319,7 @@ input[type='range']::-webkit-slider-thumb {
   border: none;
   box-shadow: none;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--ctl);
   margin-top: -5px; /* (6 - 16) / 2 */
 }
 input[type='range']::-moz-range-track {
@@ -325,7 +332,7 @@ input[type='range']::-moz-range-progress {
   height: 6px;
   border: none;
   border-radius: 3px;
-  background: var(--ink);
+  background: var(--ctl);
 }
 input[type='range']::-moz-range-thumb {
   width: 16px;
@@ -333,7 +340,7 @@ input[type='range']::-moz-range-thumb {
   border: none;
   box-shadow: none;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--ctl);
 }
 input[type='range']:focus { outline: none; }
 input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-offset: 3px; }
@@ -366,7 +373,9 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .opts { display: grid; gap: 8px; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .opts.four { grid-template-columns: repeat(4, 1fr); grid-auto-flow: row; gap: 6px; }
 .opt {
-  min-height: 38px;
+  /* 所有选项按钮同一个高度 —— 画面比例、分辨率是四列一行，端面 / 留白底色 / 目标 App
+     是两列一行，但它们在侧栏里是一列上下排着的，高矮不一眼就看出来了 */
+  min-height: 32px;
   padding: 0 8px;
   background: var(--surface);
   color: var(--ink);
@@ -376,7 +385,6 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
   font-weight: 650;
   cursor: pointer;
 }
-.opts.four .opt { min-height: 32px; }
 .opt:hover { border-color: var(--ink); }
 .opt[aria-pressed='true'] { background: var(--on); color: var(--on-ink); border-color: var(--on); }
 .opt:disabled { color: var(--disabled); border-color: var(--line); cursor: default; }
@@ -566,7 +574,7 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 /* ================= 颜色区 ================= */
 
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.check input { width: 15px; height: 15px; accent-color: var(--ink); }
+.check input { width: 15px; height: 15px; accent-color: var(--ctl); }
 .check span { font-size: 13px; font-weight: 680; color: var(--label); }
 .check.switch span { font-weight: 780; color: var(--ink); }
 /* 紧跟在目标 App 那排按钮下面的勾选项，要留出明显的空 —— 贴着按钮很挤 */
@@ -688,8 +696,8 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   .side-body { padding: 0 10px; }
   .side-body section { padding: 14px 0; }
   .btn-primary { min-height: 26px; font-size: 12px; }
-  .btn, .opt, .chart-drop, details.tweaks > summary { min-height: 26px; }
-  .opts.four .opt { min-height: 22px; }
+  .btn, .chart-drop, details.tweaks > summary { min-height: 26px; }
+  .opt { min-height: 22px; }
   .field input[type='number'], .field select { height: 26px; }
 }
 

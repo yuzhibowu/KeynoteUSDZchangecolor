@@ -50,7 +50,12 @@ async function decode(file: File): Promise<ImageBitmap> {
   }
 }
 
-/** 每个面一张带编号的纯色图 —— 用来在阶段 1 就验证 Keynote 对多 mesh 多材质的支持 */
+/**
+ * 每个面一张纯色图 —— 用来验证 Keynote 对多 mesh 多材质的支持。
+ *
+ * 只有底色，不写编号也不描边：要的是干净的纯色背景，面上多一个数字就没法直接拿去用了。
+ * 面与面之间仍然换色相，不然「每个面是不是真的各有各的材质」根本看不出来。
+ */
 async function makeTestImages(count: number): Promise<{ bmp: ImageBitmap; blob: Blob }[]> {
   const out: { bmp: ImageBitmap; blob: Blob }[] = [];
   for (let i = 0; i < count; i++) {
@@ -60,14 +65,6 @@ async function makeTestImages(count: number): Promise<{ bmp: ImageBitmap; blob: 
     const ctx = c.getContext('2d')!;
     ctx.fillStyle = `hsl(${(i * 360) / count}, 72%, 56%)`;
     ctx.fillRect(0, 0, 512, 512);
-    ctx.fillStyle = 'rgba(0,0,0,0.82)';
-    ctx.font = 'bold 260px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(i + 1), 256, 268); // 编号和 dock 上一致，从 1 起
-    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-    ctx.lineWidth = 16;
-    ctx.strokeRect(8, 8, 496, 496);
     const blob = await new Promise<Blob>((res) => c.toBlob((b) => res(b!), 'image/png'));
     out.push({ bmp: await createImageBitmap(c), blob });
   }
@@ -209,7 +206,6 @@ export default function App() {
       resolution: params.resolution,
       bgColor: params.bgColor,
       bgTransparent: params.bgTransparent,
-      sides: params.sides,
       slots: textureSlots(params),
       capColorRight: params.capColorRight,
       capColorLeft: params.capColorLeft,
@@ -269,7 +265,6 @@ export default function App() {
           resolution: params.resolution,
           bgColor: params.bgColor,
           bgTransparent: params.bgTransparent,
-          sides: params.sides,
           slots: textureSlots(params),
           capColorRight: params.capColorRight,
           capColorLeft: params.capColorLeft,
@@ -504,7 +499,6 @@ export default function App() {
         resolution: params.resolution,
         bgColor: params.bgColor,
         bgTransparent: params.bgTransparent,
-        sides: params.sides,
         slots: textureSlots(params),
         capColorRight: params.capColorRight,
         capColorLeft: params.capColorLeft,

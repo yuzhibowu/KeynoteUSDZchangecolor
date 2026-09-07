@@ -5,10 +5,12 @@
  * 结果就是一刷新贴图全没、得重新上传一遍。IndexedDB 没这个限制。
  */
 /**
- * 库名带版本：换版本等于把之前存的贴图（包括早期测试用的照片）一起作废，
- * 打开就是干净的默认彩色块。
+ * 库名带版本：换版本等于把之前存的贴图一起作废，打开就是干净的默认纯色。
+ *
+ * v3 是为了清掉早期那批带字母的示例图（front.png / back-F.png 这些）——
+ * 它们存在 IndexedDB 里，改代码是清不掉的，只有换库名才会真的不再被读回来。
  */
-const DB = 'prism-usdz-exporter-v2';
+const DB = 'prism-usdz-exporter-v3';
 const STORE = 'faces';
 
 export type StoredFace = { index: number; blob: Blob; name: string };

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
 import { yieldToBrowser } from './yieldToBrowser';
-import { CAP_LEFT, MAX_SLOTS, faceOfSlot, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
+import { CAP_LEFT, MAX_SLOTS, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
 
 export type BakeOptions = {
   aspect: number;
@@ -9,8 +9,6 @@ export type BakeOptions = {
   bgColor: string;
   /** 底色留透明（不填任何颜色）。Keynote 对带 alpha 的贴图行为不稳，默认关着 */
   bgTransparent?: boolean;
-  /** 当前边数 —— 没贴图的面按它算占位色的色相 */
-  sides: number;
   /** 这次要烘哪些槽位 —— 由 textureSlots(params) 算出来 */
   slots: number[];
   /** 端面还没贴图时铺的底色 */
@@ -38,41 +36,16 @@ export type CanvasSize = { w: number; h: number };
  * 尺寸取偶数，对 mipmap 友好。
  */
 /**
- * 还没贴图的面，用一个彩色块占位。
+ * 还没贴图的面铺什么色。
  *
- * 之前是「首次打开时自动填一批测试图片」，但那依赖「有没有存档」来判断，
- * 而存档的写入和读取是两条异步路径 —— 谁先谁后不一定，一旦存档先写进去，
- * 填充就被跳过，打开就是一个白棱柱。改成渲染时直接上色就没有这个时序问题：
- * 没有图 = 彩色块，永远成立。
+ * 以前是「每个面一个色相」的彩虹块，方便调试时一眼分清哪个面是哪个 —— 但那是调试期的
+ * 需要，平时一打开就是个花棱柱，跟用户真正要做的东西没关系。现在不管棱柱还是卡片，
+ * 默认全铺同一个中性灰：端面色、卡片窄边的默认色也是它，整个模型开局就是一块干净的纯色。
+ *
+ * 必须是 #rrggbb：颜色补偿那一路（applyToHex）只认十六进制，给它 hsl(...) 会被原样退回、
+ * 整块颜色绕过补偿 —— 结果就是别的面都补过了，这块没补，进 Keynote 一看色差很扎眼。
  */
-export function placeholderColor(index: number, sides: number): string {
-  // 必须返回 #rrggbb：颜色补偿那一路（applyToHex）只认十六进制，
-  // 给它一个 hsl(...) 会被原样退回、整块颜色绕过补偿 ——
-  // 结果就是别的面都补过了，占位块没补，进 Keynote 一看色差很扎眼。
-  const h = ((index * 360) / Math.max(1, sides)) % 360;
-  return hslToHex(h, 0.72, 0.56);
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - c / 2;
-  const seg = Math.floor(h / 60) % 6;
-  const rgb = [
-    [c, x, 0],
-    [x, c, 0],
-    [0, c, x],
-    [0, x, c],
-    [x, 0, c],
-    [c, 0, x],
-  ][seg];
-  return (
-    '#' +
-    rgb
-      .map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0'))
-      .join('')
-  );
-}
+export const FACE_FILL = '#d9d9de';
 
 /** fillStyle 收到非法字符串会静默沿用上一次的值（默认黑），所以先校验 */
 function safeHex(v: string | undefined): string {
@@ -308,11 +281,11 @@ export class FaceTextureStore {
     // fillStyle 赋一个非法字符串时浏览器会「静默忽略」，保留上一次的值（默认是黑）——
     // 那样整张贴图会变黑，所以这里先校验。
     if (!face.source) {
-      // 还没贴图：整面铺占位色，一眼能分清哪个面是哪个。
-      // 端面铺的是它自己那个端面色，不是彩虹色 —— 否则一勾「两端分别设置」两头就变花的
+      // 还没贴图：整面铺纯色。端面铺的是它自己那个端面色（默认和 FACE_FILL 同色，
+      // 勾了「两端分别设置」才会各走各的）
       const c = isCap(index)
         ? safeHex(index === CAP_LEFT ? opts.capColorLeft : opts.capColorRight)
-        : placeholderColor(faceOfSlot(index), opts.sides);
+        : FACE_FILL;
       ctx.fillStyle = useComp ? applyToHex(c, opts.comp) : c;
       ctx.fillRect(0, 0, w, h);
     } else if (!opts.bgTransparent) {
@@ -359,7 +332,6 @@ export class FaceTextureStore {
       h,
       opts.bgColor,
       opts.bgTransparent ? 'alpha' : 'opaque',
-      opts.sides,
       compSig,
     ].join('|');
     if (!force && sig === this.sigs[index]) return false;
