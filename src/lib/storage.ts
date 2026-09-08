@@ -1,4 +1,4 @@
-import { DEFAULT_COMP, type ColorComp } from './color';
+import { type ColorComp } from './color';
 import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
 
 /**
@@ -22,8 +22,12 @@ function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorCom
   // 每个目标的出厂默认都从 defaultProfiles 拿，别在这儿再写一份
   const base = defaultProfiles()[id];
   const merged = { ...base, ...(raw ?? {}) };
-  if (id === 'keynote' && (!merged.matrix || !merged.curve)) {
-    return { ...DEFAULT_COMP, on: merged.on };
+  // 存档里没有校准数据（被清除过，或者是旧版本存的）就回退到出厂档 ——
+  // 否则一次「清除」会永久盖住内置档，之后代码里更新校准也永远生不了效。
+  // 想彻底不补偿只有一个入口：把 on 关掉。
+  // 现在两个目标都有真正实测的出厂档了，所以这条对它们一视同仁（原来只护着 Keynote）。
+  if (!merged.matrix || !merged.curve) {
+    return { ...base, on: merged.on };
   }
   return merged;
 }

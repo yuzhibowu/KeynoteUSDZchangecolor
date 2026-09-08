@@ -125,11 +125,31 @@ export default function App() {
     [],
   );
   // 换目标 App：把当前这份收好，把那份取出来生效
+  /**
+   * 切换目标 App。
+   *
+   * 补光和「关掉灯光」要跟着档一起走。这两个不是偏好，是**校准的前提条件** ——
+   * 档里的每个数字都是在某个补光下测出来的，条件一变整条响应曲线就变了。
+   * 两个目标的最佳补光本来就不一样：Keynote 的色调曲线有天花板，纯白顶死在 244，
+   * 必须靠自发光顶上去，所以拉满；无边记没这个天花板，50% 时纯白就有 247，
+   * 拉满只多 8 阶却把明暗压平了 —— 实测残差反而从 5.9 阶劣化到 8.8 阶。
+   *
+   * 不跟着走的话，每切一次目标都会撞上「当前设置和校准条件对不上」的警告，
+   * 而用户根本不知道该把补光调到多少。
+   */
   const setTarget = useCallback((target: TargetId) => {
     setParams((prev) => {
       if (prev.target === target) return prev;
       const profiles = { ...prev.profiles, [prev.target]: prev.color };
-      return { ...prev, target, profiles, color: profiles[target] };
+      const next = profiles[target];
+      return {
+        ...prev,
+        target,
+        profiles,
+        color: next,
+        emissiveLift: next.calibratedLift ?? prev.emissiveLift,
+        emissiveExport: next.calibratedUnlit ?? prev.emissiveExport,
+      };
     });
   }, []);
 

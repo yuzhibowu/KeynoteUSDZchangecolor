@@ -651,7 +651,7 @@ export function ColorPanel({
             <ChartDrop onPick={onImportProfile} label="导入校准档" accept="application/json,.json" />
           </div>
         </div>
-        {/* 两个目标都有出厂档了：无边记沿用的是 Keynote 那份实测数据 */}
+        {/* 两个目标各有一份真正实测的出厂档，补光条件也各不相同 */}
         <button className="btn" onClick={() => patch(defaultProfiles()[target])}>
           恢复内置校准
         </button>

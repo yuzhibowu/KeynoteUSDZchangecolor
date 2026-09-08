@@ -1,4 +1,4 @@
-import { DEFAULT_COMP, type ColorComp } from './color';
+import { DEFAULT_COMP, FREEFORM_COMP, type ColorComp } from './color';
 import { cardSection, prismSection, type Section } from './geometry';
 
 export const MAX_SIDES = 12;
@@ -191,11 +191,11 @@ export function targetLabel(id: TargetId): string {
 }
 
 export function defaultProfiles(): Record<TargetId, ColorComp> {
-  // 无边记直接沿用 Keynote 那份实测档做起点 —— 两个都是苹果自家的 USDZ 渲染路径，
-  // 拿它当默认远比「什么都不补」准。想更准就在无边记里自己再标一次，会覆盖掉这份。
+  // 两个目标各有一份真正实测的出厂档，不再互相沿用。
+  // 它们的补光条件不一样（Keynote 拉满、无边记 50%），切目标时要跟着走 —— 见 App 里的 setTarget。
   return {
     keynote: DEFAULT_COMP,
-    freeform: { ...DEFAULT_COMP, calibratedAt: `${DEFAULT_COMP.calibratedAt}（沿用 Keynote 档）` },
+    freeform: FREEFORM_COMP,
   };
 }
 

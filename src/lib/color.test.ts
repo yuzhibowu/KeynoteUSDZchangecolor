@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { defaultProfiles } from './types';
 import {
   DEFAULT_COMP,
+  FREEFORM_COMP,
   BUILT_IN_PROFILE,
   solveWritten,
   applyToHex,
@@ -211,5 +213,32 @@ describe('整图补偿', () => {
     const px = new Uint8ClampedArray([161, 20, 0, 128]);
     applyToImageData(px, DEFAULT_COMP);
     expect(px[3]).toBe(128);
+  });
+});
+
+
+describe('无边记的内置档', () => {
+  it('是真正实测的那一份，不再沿用 Keynote', () => {
+    expect(FREEFORM_COMP.matrix).not.toEqual(DEFAULT_COMP.matrix);
+    expect(FREEFORM_COMP.samples?.length).toBe(117);
+  });
+
+  it('自带补光 50% —— 它和 Keynote 的前提条件不一样，切目标时必须跟着走', () => {
+    expect(FREEFORM_COMP.calibratedLift).toBe(0.5);
+    expect(DEFAULT_COMP.calibratedLift).toBe(1);
+  });
+
+  it('色域错配比 Keynote 温和：矩阵接近单位阵', () => {
+    const m = FREEFORM_COMP.matrix!;
+    // 非对角项（通道之间的混合）都很小
+    for (const i of [1, 2, 3, 5, 6, 7]) expect(Math.abs(m[i])).toBeLessThan(0.06);
+    // Keynote 那份不是这样 —— 它有个 -0.4 量级的项
+    expect(Math.max(...DEFAULT_COMP.matrix!.map(Math.abs))).toBeGreaterThan(1);
+  });
+
+  it('两个目标各是各的档，defaultProfiles 不再让它们共用', () => {
+    const p = defaultProfiles();
+    expect(p.keynote.samples).not.toBe(p.freeform.samples);
+    expect(p.freeform.calibratedAt).not.toContain('沿用');
   });
 });
