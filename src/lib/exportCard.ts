@@ -93,22 +93,37 @@ export async function exportChartCard(
   const disposables: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
   const { sides, radius, length } = params;
 
+  // 只有第 0 面贴色卡，其余面纯黑。
+  //
+  // 原来每个面都贴同一张色卡，看着更「完整」，但识别那一步是取截图里**所有**品红像素的
+  // 包围盒来定位色卡的 —— 只要没有严格正对，旁边那个面就会露出一条，它的品红边框
+  // 一并进了包围盒，整张取样网格横向撑歪，最后报「色卡取样对不上」。
+  // 面越少这个问题越狠：三棱柱稍微偏一点，旁边的面就露出一大片。
+  // 只留一个框，怎么转都不会有第二个框来干扰。
   for (let i = 0; i < sides; i++) {
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0 });
     const unlit = params.emissiveExport;
     const lift = unlit ? 1 : Math.max(0, Math.min(1, params.emissiveLift ?? 0));
-    if (lift > 0) {
-      mat.emissiveMap = tex;
-      mat.emissive.setRGB(lift, lift, lift);
+    let mat: THREE.MeshStandardMaterial;
+    if (i === 0) {
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0 });
+      if (lift > 0) {
+        mat.emissiveMap = tex;
+        mat.emissive.setRGB(lift, lift, lift);
+      }
+      if (unlit) mat.color.setRGB(0, 0, 0);
+      disposables.push(tex);
+    } else {
+      // 陪衬面：纯黑，不能带一点品红，否则又会被当成色卡边框
+      mat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9, metalness: 0 });
+      if (unlit) mat.color.setRGB(0, 0, 0);
     }
-    if (unlit) mat.color.setRGB(0, 0, 0);
     const geo = sideGeometry(i, prismSection(sides, radius), length);
     group.add(new THREE.Mesh(geo, mat));
-    disposables.push(tex, mat, geo);
+    disposables.push(mat, geo);
   }
 
   for (const right of [true, false]) {

@@ -187,6 +187,45 @@ const MISALIGNED =
 export type Sample = { ref: RGB; got: RGB };
 export type SampleResult = { ok: boolean; reason?: string; samples: Sample[] };
 
+type Pt = { x: number; y: number };
+
+/**
+ * 单位正方形 → 任意凸四边形的透视映射（Heckbert 的闭式解）。
+ *
+ * 为什么需要它：色卡是贴在 3D 棱柱上的，截图里那一面只要不是**严格**正对镜头就是个梯形。
+ * 原来是拿品红像素的包围盒去均分格子，等于假设它永远是正矩形 —— 实测偏转超过 10°、
+ * 俯仰超过 10° 就整体错位，直接报「取样对不上」。靠手转到 10° 以内基本靠运气，
+ * 这就是标定反复失败的真正原因。改成从四个角解透视，几十度都不带歪的。
+ *
+ * 角点顺序：p[0]→(0,0)、p[1]→(1,0)、p[2]→(1,1)、p[3]→(0,1)。
+ */
+function perspective(p: Pt[]): (u: number, v: number) => Pt {
+  const [p0, p1, p2, p3] = p;
+  const dx1 = p1.x - p2.x;
+  const dx2 = p3.x - p2.x;
+  const dy1 = p1.y - p2.y;
+  const dy2 = p3.y - p2.y;
+  const sx = p0.x - p1.x + p2.x - p3.x;
+  const sy = p0.y - p1.y + p2.y - p3.y;
+  const den = dx1 * dy2 - dx2 * dy1;
+  let g = 0;
+  let h = 0;
+  if (Math.abs(den) > 1e-9 && (Math.abs(sx) > 1e-9 || Math.abs(sy) > 1e-9)) {
+    g = (sx * dy2 - dx2 * sy) / den;
+    h = (dx1 * sy - sx * dy1) / den;
+  }
+  const a = p1.x - p0.x + g * p1.x;
+  const b = p3.x - p0.x + h * p3.x;
+  const c = p0.x;
+  const dd = p1.y - p0.y + g * p1.y;
+  const e = p3.y - p0.y + h * p3.y;
+  const f = p0.y;
+  return (u, v) => {
+    const w = g * u + h * v + 1;
+    return { x: (a * u + b * v + c) / w, y: (dd * u + e * v + f) / w };
+  };
+}
+
 /** 从 Keynote 截图里找到品红外框，按已知版式量出每个色块的实际颜色 */
 export function sampleChart(shot: ImageBitmap): SampleResult {
   const w = shot.width;
@@ -198,11 +237,18 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
   ctx.drawImage(shot, 0, 0);
   const d = ctx.getImageData(0, 0, w, h).data;
 
-  let x0 = w;
-  let y0 = h;
-  let x1 = -1;
-  let y1 = -1;
+  // 品红像素的四个「极点」。取 x+y / x−y 的极值，等于沿着四条 45° 方向找最外面的点 ——
+  // 对于一个被透视压成梯形的矩形，这四个点就是它的四个角。包围盒做不到这一点：
+  // 梯形的外接矩形比梯形本身大，格子按它均分必然整体偏。
   let count = 0;
+  let tl: Pt | null = null;
+  let br: Pt | null = null;
+  let tr: Pt | null = null;
+  let bl: Pt | null = null;
+  let minSum = Infinity;
+  let maxSum = -Infinity;
+  let minDif = Infinity;
+  let maxDif = -Infinity;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
@@ -211,47 +257,60 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
       const b = d[i + 2];
       if (r > 90 && b > 90 && g < 0.62 * Math.min(r, b)) {
         count++;
-        if (x < x0) x0 = x;
-        if (y < y0) y0 = y;
-        if (x > x1) x1 = x;
-        if (y > y1) y1 = y;
+        const sum = x + y;
+        const dif = x - y;
+        if (sum < minSum) { minSum = sum; tl = { x, y }; }
+        if (sum > maxSum) { maxSum = sum; br = { x, y }; }
+        if (dif > maxDif) { maxDif = dif; tr = { x, y }; }
+        if (dif < minDif) { minDif = dif; bl = { x, y }; }
       }
     }
   }
+  const x0 = tl && bl ? Math.min(tl.x, bl.x) : 0;
+  const y0 = tl && tr ? Math.min(tl.y, tr.y) : 0;
+  const x1 = tr && br ? Math.max(tr.x, br.x) : -1;
+  const y1 = bl && br ? Math.max(bl.y, br.y) : -1;
   if (count < w * h * 0.005 || x1 <= x0 || y1 <= y0) {
     return { ok: false, reason: '没在截图里找到色卡的品红外框，确认截图里能看到完整的色卡', samples: [] };
   }
 
   const bw = x1 - x0 + 1;
   const bh = y1 - y0 + 1;
-  const fx = bw * FRAME_RATIO;
-  const fy = bh * FRAME_RATIO;
-  const iw = bw - fx * 2;
-  const ih = bh - fy * 2;
-  const gx = bw * GUTTER_RATIO;
-  const gy = bh * GUTTER_RATIO;
-  const cw = (iw - gx * (COLS + 1)) / COLS;
-  const ch = (ih - gy * (ROWS + 1)) / ROWS;
-  if (cw < 3 || ch < 3) {
+  if (!tl || !tr || !br || !bl || bw < 40 || bh < 40) {
+    return { ok: false, reason: '截图里的色卡太小了，放大一点再截', samples: [] };
+  }
+  // 四个角 → 单位正方形。之后所有位置都在「色卡自己的坐标系」里算，再映射回截图，
+  // 梯形、旋转、非等比拉伸就全都自动被吃掉了。
+  const map = perspective([tl, tr, br, bl]);
+
+  // 色卡内部的版式，用 0..1 的比例表示（和 drawChart 里那套一一对应）
+  const iw = 1 - FRAME_RATIO * 2;
+  const ih = 1 - FRAME_RATIO * 2;
+  const cw = (iw - GUTTER_RATIO * (COLS + 1)) / COLS;
+  const ch = (ih - GUTTER_RATIO * (ROWS + 1)) / ROWS;
+  // 一个格子在截图上大概占几个像素 —— 太小就别量了，噪声会淹掉信号
+  if (cw * bw < 3 || ch * bh < 3) {
     return { ok: false, reason: '截图里的色卡太小了，放大一点再截', samples: [] };
   }
 
+  const N = 5; // 每个格子取 5×5 个点，落在中间 50% 里
   const samples: Sample[] = chartPatches().map((ref, i) => {
     const c = i % COLS;
     const r = (i / COLS) | 0;
-    const px = x0 + fx + gx + c * (cw + gx);
-    const py = y0 + fy + gy + r * (ch + gy);
-    // 只取色块中间 50%，避开边缘的抗锯齿和压缩噪点
-    const sx = Math.round(px + cw * 0.25);
-    const sy = Math.round(py + ch * 0.25);
-    const sw = Math.max(1, Math.round(cw * 0.5));
-    const sh = Math.max(1, Math.round(ch * 0.5));
+    const u0 = FRAME_RATIO + GUTTER_RATIO + c * (cw + GUTTER_RATIO);
+    const v0 = FRAME_RATIO + GUTTER_RATIO + r * (ch + GUTTER_RATIO);
     let sr = 0;
     let sg = 0;
     let sb = 0;
     let n = 0;
-    for (let y = sy; y < sy + sh; y++) {
-      for (let x = sx; x < sx + sw; x++) {
+    for (let a = 0; a < N; a++) {
+      for (let b2 = 0; b2 < N; b2++) {
+        // 只取色块中间 50%，避开边缘的抗锯齿和压缩噪点
+        const u = u0 + cw * (0.25 + (0.5 * (a + 0.5)) / N);
+        const v = v0 + ch * (0.25 + (0.5 * (b2 + 0.5)) / N);
+        const q = map(u, v);
+        const x = Math.round(q.x);
+        const y = Math.round(q.y);
         if (x < 0 || y < 0 || x >= w || y >= h) continue;
         const i2 = (y * w + x) * 4;
         sr += d[i2];
