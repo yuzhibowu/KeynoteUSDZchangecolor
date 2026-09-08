@@ -247,7 +247,16 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(shot, 0, 0);
-  const d = ctx.getImageData(0, 0, w, h).data;
+  return sampleChartPixels(ctx.getImageData(0, 0, w, h).data, w, h);
+}
+
+/**
+ * 取样的真身：只吃像素数组，不碰 DOM。
+ *
+ * 拆出来是为了能测 —— 这块（角点检测、透视校正、内区定位）是整个项目里返工最多的地方，
+ * 却一直零测试覆盖，只能靠人在浏览器里手动转角度试。现在测试可以直接合成像素喂进来。
+ */
+export function sampleChartPixels(d: Uint8ClampedArray, w: number, h: number): SampleResult {
 
   // 品红像素的四个「极点」。取 x+y / x−y 的极值，等于沿着四条 45° 方向找最外面的点 ——
   // 对于一个被透视压成梯形的矩形，这四个点就是它的四个角。包围盒做不到这一点：
