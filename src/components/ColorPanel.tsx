@@ -401,19 +401,31 @@ export function ColorPanel({
         r.samples.find((x) => x.ref[0] === 255 && x.ref[1] === 255 && x.ref[2] === 255) ??
         r.samples[WHITE_INDEX];
       const white = Math.round(Math.max(...whiteSample.got));
-      const prevRaw = localStorage.getItem('prism-usdz-exporter/white-probe');
+      // 白点记录**必须按目标分开存**。原来是一个全局键，于是在无边记标一次
+      // （补光 50%、纯白 247）就会把 Keynote 的记录冲掉，下次在 Keynote 标定时
+      // 拿它做对比，会得出「补光从 50% 加到 75%」这种前提错误的结论。
+      const probeKey = `prism-usdz-exporter/white-probe/${target}`;
+      const prevRaw = localStorage.getItem(probeKey);
       const prev = prevRaw ? (JSON.parse(prevRaw) as { lift: number; white: number }) : null;
       try {
-        localStorage.setItem('prism-usdz-exporter/white-probe', JSON.stringify({ lift, white }));
+        localStorage.setItem(probeKey, JSON.stringify({ lift, white }));
       } catch {
         /* 忽略 */
       }
+      const pct = (v: number) => `${Math.round(v * 100)}%`;
+      const up = prev && lift > prev.lift + 0.02;
+      const down = prev && lift < prev.lift - 0.02;
       let advice: string;
-      if (prev && lift > prev.lift + 0.02 && white <= prev.white + 2) {
-        advice = `纯白 ${white}，补光从 ${Math.round(prev.lift * 100)}% 加到 ${Math.round(lift * 100)}% 也没抬起来 —— 到硬顶了。把补光调回 ${Math.round(prev.lift * 100)}% 或更低再校一次，能少损失一些立体感`;
+      if (up && white <= prev.white + 2) {
+        advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 加到 ${pct(lift)} 也没抬起来 —— 到硬顶了。把补光调回 ${pct(prev.lift)} 或更低再校一次，能少损失一些立体感`;
+      } else if (down && white >= prev.white - 2) {
+        // 降补光而白点没掉 —— 纯赚：自发光不随角度变化，加得越多明暗越平
+        advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 降到 ${pct(lift)} 白点也没掉 —— 这一档更划算，立体感更好。还可以再往下试`;
+      } else if (down) {
+        advice = `纯白 ${white}（上次 ${pct(prev!.lift)} 时是 ${prev!.white}），降补光掉了 ${prev!.white - white} 阶。够用就留着，觉得暗就调回去`;
       } else if (white >= 252) {
         advice = `纯白能到 ${white}，上限够用`;
-      } else if (prev && lift > prev.lift && white > prev.white + 2) {
+      } else if (up && white > prev.white + 2) {
         advice = `纯白 ${white}（上次 ${prev.white}），还在涨，可以再往上调试试`;
       } else {
         advice = `纯白能到 ${white}。想再高就把补光往上调再校一次；如果调了不涨就是到顶了`;
