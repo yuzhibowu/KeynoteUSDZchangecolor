@@ -499,6 +499,10 @@ export function ColorPanel({
             <span>把截图拖进来，自动量出偏色。</span>
           </li>
         </ol>
+        {/* 结果紧跟在两个步骤下面。原来排在「成品截图微调」后面，隔了一整块，
+            上传完色卡截图的人根本翻不到，只会以为「传了没反应」 */}
+        {msg && <p className={`chart-msg${comp.matrix ? '' : ' warn'}`}>{msg}</p>}
+
         <div className="verify">
           <ChartDrop onPick={onVerifyShot} label="上传成品截图微调" />
           <span className="hint tight">
@@ -506,8 +510,6 @@ export function ColorPanel({
             把这个实测点锚死进校准。再导一次就精确命中。任何颜色都能这么修。
           </span>
         </div>
-
-        {msg && <p className={`hint tight${comp.matrix ? '' : ' warn'}`}>{msg}</p>}
         {samples && <Swatches samples={samples} />}
         <div className="profile-io">
           <span className="hint tight">

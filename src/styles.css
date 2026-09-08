@@ -409,6 +409,20 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 .ratio-row span { font-size: 13px; font-weight: 700; color: var(--label); }
 .ratio-row b { font-size: 12px; font-weight: 650; color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* 校准结果。原来只是一行灰色小字排在最底下，传完截图的人翻不到、以为没反应，
+   所以给它一条左边线和底色，和周围的说明文字区分开 */
+.chart-msg {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--ink);
+  background: var(--track);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+.chart-msg.warn { border-left-color: var(--danger); }
+
 /* ================= 按钮 ================= */
 
 .btn {
