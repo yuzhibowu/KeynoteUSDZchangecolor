@@ -120,12 +120,12 @@ describe('文件名', () => {
     const c: ColorComp = { ...DEFAULT_COMP, calibratedAt: '内置（117 格实测）' };
     const name = profileFileName(c);
     expect(name).not.toMatch(/[/\\:*?"<>|]/);
-    expect(name).toBe('keynote-color-profile-175格.json');
+    expect(name).toBe('keynote-color-profile-117格.json');
   });
 
   it('标定时间是日期时，拼成规整的时间戳', () => {
     const c: ColorComp = { ...DEFAULT_COMP, calibratedAt: '2026/9/5 13:41' };
-    expect(profileFileName(c)).toBe('keynote-color-profile-20260905-1341-175格.json');
+    expect(profileFileName(c)).toBe('keynote-color-profile-20260905-1341-117格.json');
   });
 });
 
