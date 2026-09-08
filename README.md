@@ -12,6 +12,8 @@ npm run build
 
 ## 文档
 
+- [UI.md](./UI.md) —— 界面规范：按钮的三档高度、滑块的确切规格、品牌字的位置和大小、
+  颜色变量表。做新工具或改界面之前先看这个
 - [HANDOFF.md](./HANDOFF.md) —— 交接文档：怎么跑、目录结构、设计约束、踩过的坑、当前状态
 - [KEYNOTE-COLOR.md](./KEYNOTE-COLOR.md) —— Keynote 对 USDZ 贴图做了什么、实测数据、
   走过的死路、最终的补偿方案
