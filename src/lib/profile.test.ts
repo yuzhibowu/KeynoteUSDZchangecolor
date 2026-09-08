@@ -116,16 +116,16 @@ describe('文件名', () => {
   });
 
   it('标定时间是中文标签时，不要从里面抠数字当时间戳', () => {
-    // 「内置（70 格实测）」里的 70 是格数不是日期，抠出来会拼成 -70-70格 这种怪名字
-    const c: ColorComp = { ...DEFAULT_COMP, calibratedAt: '内置（70 格实测）' };
+    // 「内置（117 格实测）」里的 117 是格数不是日期，抠出来会拼成 -117-175格 这种怪名字
+    const c: ColorComp = { ...DEFAULT_COMP, calibratedAt: '内置（117 格实测）' };
     const name = profileFileName(c);
     expect(name).not.toMatch(/[/\\:*?"<>|]/);
-    expect(name).toBe('keynote-color-profile-70格.json');
+    expect(name).toBe('keynote-color-profile-175格.json');
   });
 
   it('标定时间是日期时，拼成规整的时间戳', () => {
     const c: ColorComp = { ...DEFAULT_COMP, calibratedAt: '2026/9/5 13:41' };
-    expect(profileFileName(c)).toBe('keynote-color-profile-20260905-1341-70格.json');
+    expect(profileFileName(c)).toBe('keynote-color-profile-20260905-1341-175格.json');
   });
 });
 

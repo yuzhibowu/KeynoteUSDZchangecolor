@@ -134,9 +134,10 @@ describe('局部修正必须是插值，不能退回加权平均', () => {
 });
 
 describe('内置校准档的质量', () => {
-  it('是 70 格那一份，不是早期 24 格的', () => {
+  it('是 117 格那一份，不是早期 70 格 / 24 格的', () => {
     // 24 格那份暗部整段空白，深红开箱即用会差 33 阶
-    expect(BUILT_IN_PROFILE.samples.length).toBe(70);
+    // 117 格色卡 + 历次闭环微调留下的实测点
+    expect(BUILT_IN_PROFILE.samples.length).toBe(175);
     expect(DEFAULT_COMP.calibratedLift).toBe(1);
     expect(DEFAULT_COMP.calibratedUnlit).toBe(false);
   });
