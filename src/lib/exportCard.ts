@@ -93,41 +93,41 @@ export async function exportChartCard(
   const disposables: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
   const { sides, radius, length } = params;
 
-  // 只有第 0 面贴色卡，其余面纯黑。
-  //
-  // 原来每个面都贴同一张色卡，看着更「完整」，但识别那一步是取截图里**所有**品红像素的
-  // 包围盒来定位色卡的 —— 只要没有严格正对，旁边那个面就会露出一条，它的品红边框
-  // 一并进了包围盒，整张取样网格横向撑歪，最后报「色卡取样对不上」。
-  // 面越少这个问题越狠：三棱柱稍微偏一点，旁边的面就露出一大片。
-  // 只留一个框，怎么转都不会有第二个框来干扰。
+  /**
+   * 每个面都贴同一张色卡，材质参数和 viewer 里那份**逐字一致**。
+   *
+   * 曾经改成「只贴第 0 面、其余纯黑」，想借此避开旁边面的品红边框干扰角点检测。
+   * 那是白改：实测两种做法都在偏转 14° 崩掉，真正的解法是识别端的透视校正。
+   * 而它带来了一个真实的回归 —— Keynote 渲染 3D 是带环境反射的，周围面从
+   * 「明亮的色卡」变成纯黑之后，中间那一面跟着变暗，实测白点从 244 掉到 222。
+   * 标定是在这个偏暗的条件下做的，补偿量整体算歪，成品看着就发闷发黄。
+   *
+   * 教训写在这里：色卡棱柱的**一切**都必须和实际导出的模型一样 —— 几何、材质类型、
+   * 粗糙度、补光，还有周围有什么。测量条件和使用条件之间任何一点差异都会被当成偏色。
+   */
   for (let i = 0; i < sides; i++) {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    // viewer 用的是 MeshPhysicalMaterial，导出的成品也是它。色卡不能用 Standard。
+    const mat = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.9, metalness: 0 });
     const unlit = params.emissiveExport;
     const lift = unlit ? 1 : Math.max(0, Math.min(1, params.emissiveLift ?? 0));
-    let mat: THREE.MeshStandardMaterial;
-    if (i === 0) {
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.wrapS = THREE.ClampToEdgeWrapping;
-      tex.wrapT = THREE.ClampToEdgeWrapping;
-      mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0 });
-      if (lift > 0) {
-        mat.emissiveMap = tex;
-        mat.emissive.setRGB(lift, lift, lift);
-      }
-      if (unlit) mat.color.setRGB(0, 0, 0);
-      disposables.push(tex);
-    } else {
-      // 陪衬面：纯黑，不能带一点品红，否则又会被当成色卡边框
-      mat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.9, metalness: 0 });
-      if (unlit) mat.color.setRGB(0, 0, 0);
+    if (lift > 0) {
+      mat.emissiveMap = tex;
+      mat.emissive.setRGB(lift, lift, lift);
     }
+    if (unlit) mat.color.setRGB(0, 0, 0);
     const geo = sideGeometry(i, prismSection(sides, radius), length);
     group.add(new THREE.Mesh(geo, mat));
-    disposables.push(mat, geo);
+    disposables.push(tex, mat, geo);
   }
 
   for (const right of [true, false]) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x202020, roughness: 0.85, metalness: 0 });
+    // 端面也照 viewer 那份来（MeshPhysicalMaterial + 同样的粗糙度），
+    // 端面是深色还是浅色会改变整体的反射环境，进而改变色卡面量到的亮度
+    const mat = new THREE.MeshPhysicalMaterial({ color: 0x202020, roughness: 0.85, metalness: 0 });
     if (params.emissiveExport) {
       mat.emissive.set(0x202020);
       mat.color.setRGB(0, 0, 0);
