@@ -8,6 +8,7 @@ import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
 import { defaultProfiles, TARGETS, targetLabel, type TargetId } from '../lib/types';
+import { COVER_RADIUS, NEAR_ENOUGH, coverageOf, coverageVerdict, type CoverageReport } from '../lib/coverage';
 
 type Props = {
   comp: ColorComp;
@@ -38,6 +39,71 @@ async function decode(file: File): Promise<ImageBitmap> {
  * 左边是视口里那张（= Keynote 里应该长成的样子），右边是真正写进 usdz 的那张。
  * 顺便报一个「平均改了多少阶」—— 这是判断补偿到底有没有生效最直接的数字。
  */
+/**
+ * 当前这张贴图的颜色，有没有实测支撑。
+ *
+ * 排查「蓝色系画面发黄」花掉了一整轮来回，卡点就是没人能回答**为什么偏偏是这张图**。
+ * 答案其实是死的：那张图的主色离最近的锚点 63 阶，而局部修正的作用半径只有 18 阶，
+ * 整张图全靠全局公式外推。这个判断三秒就该给出来，所以把它摆在界面上。
+ */
+function Coverage({
+  store,
+  index,
+  tick,
+  comp,
+}: {
+  store: FaceTextureStore;
+  index: number;
+  tick: number;
+  comp: ColorComp;
+}) {
+  const [report, setReport] = useState<CoverageReport | null>(null);
+
+  useEffect(() => {
+    const src = store.canvases[index];
+    if (!src.width || !src.height) return setReport(null);
+    // 缩到小图再统计：代表色只关心分布，不需要逐个原始像素，2K 全量会卡住拖动
+    const N = 160;
+    const c = document.createElement('canvas');
+    c.width = N;
+    c.height = Math.max(1, Math.round((N * src.height) / src.width));
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return setReport(null);
+    try {
+      ctx.drawImage(src, 0, 0, c.width, c.height);
+      setReport(coverageOf(ctx.getImageData(0, 0, c.width, c.height).data, comp));
+    } catch {
+      setReport(null);
+    }
+  }, [store, index, tick, comp]);
+
+  if (!report) return null;
+  const v = coverageVerdict(report);
+  // 按「离锚点最远」排，最该关心的排前面
+  const worst = [...report.probes].sort((a, b) => b.nearest - a.nearest).slice(0, 6);
+  return (
+    <div className="coverage">
+      <span className="slider-head">
+        <span>这张图的颜色覆盖</span>
+      </span>
+      <p className={`cover-verdict ${v.level}`}>{v.text}</p>
+      <div className="cover-list">
+        {worst.map((p, i) => (
+          <div className="cover-item" key={i}>
+            <i style={{ background: `rgb(${p.color.join(',')})` }} />
+            <b className={p.ok ? '' : 'far'}>{Math.round(p.nearest)} 阶</b>
+          </div>
+        ))}
+      </div>
+      <p className="hint tight">
+        每格是画面里的一个代表色，数字是它到最近实测点的距离。
+        {Math.round(COVER_RADIUS)} 阶以内有实测点直接兜底；超过 {NEAR_ENOUGH} 阶就跑出了
+        实测范围，只能靠外推，是最容易偏色的地方（标红）。
+      </p>
+    </div>
+  );
+}
+
 function BeforeAfter({
   store,
   index,
@@ -498,6 +564,9 @@ export function ColorPanel({
         <summary>{comp.matrix ? '重新校准（一般不用）' : `校准 ${label}`}</summary>
         {selected !== null && hasImage && (
           <BeforeAfter store={store} index={selected} tick={tick} comp={comp} />
+        )}
+        {selected !== null && hasImage && (
+          <Coverage store={store} index={selected} tick={tick} comp={comp} />
         )}
       <Slider
           label="补光（换取更亮的颜色上限）"

@@ -187,7 +187,7 @@ const pwEval = (t: number, y: number[]) => {
 /**
  * 局部修正的作用半径（归一化 RGB 距离）。0.07 约合 18 阶。
  */
-const LOCAL_SIGMA = 0.07;
+export const LOCAL_SIGMA = 0.07;
 
 /**
  * 岭正则项。λ→0 时修正场会严格穿过每一个实测点，但截图量出来的颜色本身带 ±1 阶噪声

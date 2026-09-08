@@ -423,6 +423,35 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 }
 .chart-msg.warn { border-left-color: var(--danger); }
 
+/* 颜色覆盖诊断：一句结论 + 一排代表色 */
+.coverage { margin-top: 12px; }
+.cover-verdict {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--ok, var(--ink));
+  background: var(--track);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.cover-verdict.good { border-left-color: #34c759; }
+.cover-verdict.warn { border-left-color: #ff9f0a; }
+.cover-verdict.bad { border-left-color: var(--danger); }
+.cover-list { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.cover-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* 色块给一圈描边：暗色系的代表色贴在暗底上本来就看不出边界 */
+.cover-item i { display: block; height: 24px; border: 1px solid var(--line); }
+.cover-item b {
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 跑出实测范围的那几个 —— 偏色最可能出在这里 */
+.cover-item b.far { color: var(--danger); }
+
 /* ================= 按钮 ================= */
 
 .btn {
