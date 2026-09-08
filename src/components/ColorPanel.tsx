@@ -141,7 +141,7 @@ function Swatches({ samples }: { samples: Sample[] }) {
  * 找出画面里占比最大的那块实色，忽略接近黑的背景。
  * 用 5 bit 量化聚类，再在簇内取精确均值 —— 直接按 8 bit 计数会被抗锯齿和压缩噪点打散。
  */
-function colorClusters(bmp: ImageBitmap): { c: [number, number, number]; n: number }[] {
+function colorClusters(bmp: ImageBitmap, max = 5): { c: [number, number, number]; n: number }[] {
   const w = Math.min(900, bmp.width);
   const h = Math.max(1, Math.round((w * bmp.height) / bmp.width));
   const c = document.createElement('canvas');
@@ -157,7 +157,7 @@ function colorClusters(bmp: ImageBitmap): { c: [number, number, number]; n: numb
     bins.set(k, (bins.get(k) ?? 0) + 1);
   }
   const min = (w * h) / 50;
-  const keys = [...bins.entries()].filter(([, n]) => n >= min).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const keys = [...bins.entries()].filter(([, n]) => n >= min).sort((a, b) => b[1] - a[1]).slice(0, max);
   return keys.map(([key, n]) => {
     let sr = 0;
     let sg = 0;
@@ -177,6 +177,43 @@ function colorClusters(bmp: ImageBitmap): { c: [number, number, number]; n: numb
 
 const dist = (a: number[], b: number[]) =>
   Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+
+const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+
+export type Cluster = { c: [number, number, number]; n: number };
+
+/**
+ * 把贴图里的代表色和截图里的色块配对。
+ *
+ * 难点在于「颜色本身已经被 Keynote 改过了」，所以不能按颜色近似去匹配 ——
+ * 一块被推成亮青的蓝，和原图里另一块本来就偏青的颜色，看着比它自己更像。
+ *
+ * 可靠的不变量是**面积占比**：Keynote 改颜色但不改几何，贴图里占三成的那个颜色，
+ * 在成品截图里还是占约三成。所以两边各按占比降序排，一一对上。
+ * 再用亮度做一次一致性校验：Keynote 的响应是单调的（亮的还是亮），配对之后
+ * 两边的亮度排名不该发生大幅倒挂，倒挂的那几对多半是配错了，宁可丢掉。
+ *
+ * 为什么非要多点：局部修正的作用半径只有 18 阶，而一张渐变图的颜色跨度轻松上 200 阶。
+ * 只锚主色一个点，顶多修好其中一小段，剩下的照旧走全局公式 —— 这就是「微调完还是偏」
+ * 的原因。
+ */
+export function pairClusters(want: Cluster[], shot: Cluster[]): { want: Cluster; got: Cluster }[] {
+  const k = Math.min(want.length, shot.length);
+  if (k === 0) return [];
+  const a = [...want].sort((x, y) => y.n - x.n).slice(0, k);
+  const b = [...shot].sort((x, y) => y.n - x.n).slice(0, k);
+  const pairs = a.map((w, i) => ({ want: w, got: b[i] }));
+  if (pairs.length < 3) return pairs;
+  // 亮度排名一致性：两边各自按亮度排名，名次差得太离谱的丢掉
+  const rank = (pick: (p: { want: Cluster; got: Cluster }) => Cluster) => {
+    const sorted = [...pairs].sort((p, q) => lum(pick(p).c) - lum(pick(q).c));
+    return new Map(sorted.map((p, i) => [p, i]));
+  };
+  const rw = rank((p) => p.want);
+  const rg = rank((p) => p.got);
+  const limit = Math.max(1, Math.floor(pairs.length / 2));
+  return pairs.filter((p) => Math.abs((rw.get(p) ?? 0) - (rg.get(p) ?? 0)) <= limit);
+}
 
 /**
  * 可以点、也可以把文件拖上去的按钮。
@@ -374,39 +411,47 @@ export function ColorPanel({
     setMsg('正在量成品截图…');
     try {
       if (selected === null || !hasImage) return setMsg('先选中一个贴了图的面');
-      const wantList = colorClusters(await createImageBitmap(store.canvases[selected]));
+      const K = 8; // 一次最多锚这么多个颜色
+      const wantList = colorClusters(await createImageBitmap(store.canvases[selected]), K);
       if (wantList.length === 0) return setMsg('当前面的贴图里找不到主色');
-      const want = wantList[0].c;
-      const shots = colorClusters(await decode(file));
+      let shots = colorClusters(await decode(file), K + 2);
       if (shots.length === 0) return setMsg('截图里找不到成片的实色区域，把模型截大一点');
-      // 截图里往往同时有「参考原图」和「成品模型」两块。参考那块的颜色等于目标色，
-      // 成品才是要量的 —— 所以挑离目标最远的那块，而不是面积最大的那块。
-      let pick = shots[0];
-      if (shots.length > 1) {
-        const nearest = shots.reduce((a, b) => (dist(a.c, want) <= dist(b.c, want) ? a : b));
-        const others = shots.filter((s) => s !== nearest);
-        if (dist(nearest.c, want) < 8 && others.length) {
-          pick = others.reduce((a, b) => (a.n >= b.n ? a : b));
-        } else {
-          pick = shots.reduce((a, b) => (a.n >= b.n ? a : b));
-        }
+
+      // 截图里可能同时有「参考原图」和「成品模型」。参考那块的颜色等于目标色，
+      // 它没有测量价值（它没经过 Keynote 的 3D 渲染），先把这类剔掉。
+      const refLike = shots.filter((sh) => wantList.some((wv) => dist(sh.c, wv.c) < 8));
+      if (refLike.length && shots.length - refLike.length >= 2) {
+        shots = shots.filter((sh) => !refLike.includes(sh));
       }
-      const got = pick.c;
-      const hex = `#${want.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-      const written = applyToHex(hex, comp);
-      const wm = /^#([0-9a-f]{6})$/i.exec(written)!;
-      const n = parseInt(wm[1], 16);
-      const ref: [number, number, number] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+
+      const pairs = pairClusters(wantList, shots);
+      if (pairs.length === 0) return setMsg('配不上颜色。把截图裁成只剩模型那一块再试');
+
+      // 每一对：目标色 → 按当前校准该写进贴图的值（ref），以及成品实测（got）
+      const fresh = pairs.map((p) => {
+        const hex = `#${p.want.c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+        const wm = /^#([0-9a-f]{6})$/i.exec(applyToHex(hex, comp))!;
+        const n = parseInt(wm[1], 16);
+        return {
+          ref: [(n >> 16) & 255, (n >> 8) & 255, n & 255] as [number, number, number],
+          got: p.got.c,
+        };
+      });
       // 只替换几乎重合的旧锚点。历史锚点要留着 —— 单个点只能告诉模型「这里偏多少」，
       // 附近有两三个点它才学得到局部斜率，否则每轮都会停在差几阶的地方。
       const rest = (comp.samples ?? []).filter(
-        (s) => Math.abs(s.ref[0] - ref[0]) + Math.abs(s.ref[1] - ref[1]) + Math.abs(s.ref[2] - ref[2]) > 2,
+        (s) => !fresh.some((f) => dist(s.ref, f.ref) <= 2),
       );
-      patch({ samples: [...rest, { ref, got }] });
-      const diff = want.map((v, i) => got[i] - v);
+      patch({ samples: [...rest, ...fresh] });
+
+      const worst = fresh.reduce(
+        (m, f, i) => Math.max(m, dist(pairs[i].want.c, f.got) / 3),
+        0,
+      );
       setMsg(
-        `已锚定：目标 ${want.join(',')}，成品实测 ${got.join(',')}（差 ${diff.join(',')}）。` +
-          `截图里识别到 ${shots.length} 块实色${shots.length > 1 ? '，已排除和目标一致的那块（参考图）' : ''}。现在重新导出一次`,
+        `已锚定 ${fresh.length} 个颜色（这张图的明暗都覆盖到了）· 最大偏差约 ${worst.toFixed(0)} 阶` +
+          (refLike.length ? ' · 已排除截图里的参考图那一块' : '') +
+          '。现在重新导出一次',
       );
     } catch (e) {
       setMsg(`量取失败：${e instanceof Error ? e.message : String(e)}`);
@@ -510,8 +555,9 @@ export function ColorPanel({
         <div className="verify">
           <ChartDrop onPick={onVerifyShot} label="上传成品截图微调" />
           <span className="hint tight">
-            微调：把<b>成品</b>在 {label} 里的截图拖进来（不是色卡），工具会量出实际颜色，
-            把这个实测点锚死进校准。再导一次就精确命中。任何颜色都能这么修。
+            微调：把<b>成品</b>在 {label} 里的截图拖进来（不是色卡），工具会量出这张图里
+            一批覆盖明暗的颜色，全部锚死进校准。再导一次就精确命中。
+            截图尽量<b>只留模型那一块</b>，配对靠的是各块颜色的面积占比。
           </span>
         </div>
         {samples && <Swatches samples={samples} />}
