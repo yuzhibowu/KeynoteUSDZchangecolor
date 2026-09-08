@@ -35,10 +35,22 @@ export const ROWS = 9;
  * 而补偿值往往正好落在这种盲区里。把实际要用的值放进色卡，模型就能在真正
  * 需要精度的地方拿到真实数据。
  */
+/**
+ * 灰阶级数。**别在别处写死它的长度或某一格的下标。**
+ *
+ * 踩过一次：白点探测写的是 `samples[5]`，那是灰阶还只有 6 级
+ * （0/51/102/153/204/255）时的写法，第 6 格正好是纯白。后来加密到 8 级，
+ * 255 挪到了下标 7，而那句话没跟着改，于是它一直在报 182 那一格的读数，
+ * 还附赠一句「想再高就把补光往上调」—— 补光调到 100% 那个数也不会动，
+ * 因为它压根不是白点。查这个坑花了两轮。
+ */
+export const GRAYS: number[] = [0, 36, 73, 109, 146, 182, 219, 255];
+/** 纯白那一格在 chartPatches() 里的下标 —— 灰阶排在最前面，所以就是最后一级 */
+export const WHITE_INDEX = GRAYS.length - 1;
+
 const BASE_PATCHES: RGB[] = (() => {
   const out: RGB[] = [];
-  // 灰阶 8 级
-  for (const v of [0, 36, 73, 109, 146, 182, 219, 255]) out.push([v, v, v]);
+  for (const v of GRAYS) out.push([v, v, v]);
   // 色彩立方体 4×4×4，去掉四个中性点（灰阶那行已有）。
   // 3×3×3 的 128 阶间距太粗，高饱和色全落在样本之间的空档里；85 阶密一档。
   const CUBE = [0, 85, 170, 255];
@@ -101,8 +113,8 @@ function getChartExtra(): RGB[] {
  * 最后一格永远放一个和第 4 格相同的灰 —— 一头一尾放同一个颜色，
  * 量出来对不上就说明取样错位了。灰阶自检只覆盖第一行，最后一行的错位得靠它抓。
  */
-const ALIGN_CHECK: RGB = [146, 146, 146];
-const ALIGN_REF_INDEX = 4; // 灰阶第 5 格 = 146
+const ALIGN_REF_INDEX = 4; // 灰阶第 5 格
+const ALIGN_CHECK: RGB = [GRAYS[ALIGN_REF_INDEX], GRAYS[ALIGN_REF_INDEX], GRAYS[ALIGN_REF_INDEX]];
 
 export function chartPatches(): RGB[] {
   const extra = getChartExtra();
@@ -367,7 +379,7 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
   });
 
   // 自检一：灰阶那一行必须单调递增，不单调说明第一行就错位了
-  const grays = samples.slice(0, 8).map((s) => (s.got[0] + s.got[1] + s.got[2]) / 3);
+  const grays = samples.slice(0, GRAYS.length).map((s) => (s.got[0] + s.got[1] + s.got[2]) / 3);
   for (let i = 1; i < grays.length; i++) {
     if (grays[i] < grays[i - 1] - 12) {
       return { ok: false, reason: MISALIGNED, samples: [] };

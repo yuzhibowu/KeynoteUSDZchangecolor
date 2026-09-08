@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { applyLift, makeCapMaterial, makeFaceMaterial } from './material';
 import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
 
@@ -128,11 +129,9 @@ export class PrismViewer {
     this.scene.add(this.pivot);
     this.pivot.add(this.prism);
 
-    // 用 MeshPhysicalMaterial 而不是 Standard：清漆和折射率只有它才会被
-    // USDZExporter 写进文件（导出器里那段是 isMeshPhysicalMaterial 才走的）。
-    // 它是 Standard 的超集，默认值下渲染结果完全一样。
-    this.capRightMat = new THREE.MeshPhysicalMaterial({ color: 0xd9d9de, roughness: 0.85, metalness: 0 });
-    this.capLeftMat = new THREE.MeshPhysicalMaterial({ color: 0xd9d9de, roughness: 0.85, metalness: 0 });
+    // 材质参数全部来自 lib/material —— 色卡棱柱用的是同一份，不能在这里另写一套
+    this.capRightMat = makeCapMaterial(0xd9d9de);
+    this.capLeftMat = makeCapMaterial(0xd9d9de);
     this.capRightMat.name = 'cap_right';
     this.capLeftMat.name = 'cap_left';
     this.capRight = new THREE.Mesh(new THREE.BufferGeometry(), this.capRightMat);
@@ -144,11 +143,7 @@ export class PrismViewer {
     this.prism.add(this.capRight, this.capLeft);
 
     for (let i = 0; i < MAX_SIDES; i++) {
-      const mat = new THREE.MeshPhysicalMaterial({
-        map: store.textures[i],
-        roughness: 0.9, // 高粗糙度：压制高光对贴图颜色的干扰
-        metalness: 0.0,
-      });
+      const mat = makeFaceMaterial(store.textures[i]);
       mat.name = `face_${i}`;
       const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
       mesh.name = `face_${i}`;
@@ -157,11 +152,7 @@ export class PrismViewer {
       // 同一个面的内面：法线朝里，挂它自己那张贴图。
       // 正反两面各贴一张图（像卡片），所以必须是两个 mesh 两个材质 ——
       // USD 的 doubleSided 只能让同一张图两面都看得见，做不到正反不同。
-      const innerMat = new THREE.MeshPhysicalMaterial({
-        map: store.textures[innerSlot(i)],
-        roughness: 0.9,
-        metalness: 0.0,
-      });
+      const innerMat = makeFaceMaterial(store.textures[innerSlot(i)]);
       innerMat.name = `face_${i}_inner`;
       const innerMesh = new THREE.Mesh(new THREE.BufferGeometry(), innerMat);
       innerMesh.name = `face_${i}_inner`;
@@ -310,23 +301,10 @@ export class PrismViewer {
         this.paintSolid(m, this.edgeColor(), this.exportMode);
       } else {
         // 补光 > 0 时也要挂 emissiveMap，加法那一项才能逐像素跟着贴图走
-        const wantEmissiveMap = lift > 0 ? this.store.textures[i] : null;
-        if (m.emissiveMap !== wantEmissiveMap) {
-          m.emissiveMap = wantEmissiveMap;
-          m.needsUpdate = true;
-        }
-        m.emissive.setRGB(lift, lift, lift);
-        m.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+        applyLift(m, this.store.textures[i], lift, unlit);
       }
 
-      const im = this.innerMaterials[i];
-      const wantInnerEmissive = lift > 0 ? this.store.textures[innerSlot(i)] : null;
-      if (im.emissiveMap !== wantInnerEmissive) {
-        im.emissiveMap = wantInnerEmissive;
-        im.needsUpdate = true;
-      }
-      im.emissive.setRGB(lift, lift, lift);
-      im.color.setRGB(unlit ? 0 : 1, unlit ? 0 : 1, unlit ? 0 : 1);
+      applyLift(this.innerMaterials[i], this.store.textures[innerSlot(i)], lift, unlit);
     }
     // 「没有端面」就是把两头的盖子藏掉 —— 隐藏的对象不会被写进 usdz
     // （导出器走的是 traverseVisible，visible = false 的 mesh 根本不会被遍历到）

@@ -3,7 +3,7 @@ import { applyToHex, applyToImageData, type ColorComp } from '../lib/color';
 
 /** 累积的实测样本上限 —— 局部修正建表是 n³ 的，攒太多会拖慢导出 */
 const MAX_SAMPLES = 400;
-import { COLS, fitChart, sampleChart, type Sample } from '../lib/chart';
+import { COLS, WHITE_INDEX, fitChart, sampleChart, type Sample } from '../lib/chart';
 import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
@@ -293,16 +293,11 @@ export function ColorPanel({
       });
       // 纯白能到多少决定了颜色上限。但上限未必能靠补光一直抬 —— Keynote 的色调曲线
       // 有个硬顶，到了之后再加补光白点也不动，只会白白压平立体感。所以要和上一次比。
-      // 白点必须**按 ref 找**，不能写死索引。
-      // 这里原来是 samples[5] —— 那是灰阶还只有 6 级（0/51/102/153/204/255）时的写法，
-      // 那时候第 6 格正好是纯白。后来灰阶加密到 8 级，255 挪到了 samples[7]，
-      // 而索引没跟着改，于是这句话一直在报「182 那一格」的读数（约 222）。
-      // 后果不只是显示错：它下面那段建议会催着人去加补光，而补光加到 100% 那个数字
-      // 也不会动 —— 因为它本来就不是白点。真被这个坑了两轮。
-      const whiteSample = r.samples.find(
-        (x) => x.ref[0] === 255 && x.ref[1] === 255 && x.ref[2] === 255,
-      );
-      const white = Math.round(Math.max(...(whiteSample ?? r.samples[r.samples.length - 1]).got));
+      // 白点按 ref 找，下标只当兜底 —— 写死下标正是上一个 bug 的根源（见 chart.ts 的 GRAYS）
+      const whiteSample =
+        r.samples.find((x) => x.ref[0] === 255 && x.ref[1] === 255 && x.ref[2] === 255) ??
+        r.samples[WHITE_INDEX];
+      const white = Math.round(Math.max(...whiteSample.got));
       const prevRaw = localStorage.getItem('prism-usdz-exporter/white-probe');
       const prev = prevRaw ? (JSON.parse(prevRaw) as { lift: number; white: number }) : null;
       try {

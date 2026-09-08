@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { applyLift, makeCapMaterial, makeFaceMaterial } from './material';
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
 import { drawChart, setChartExtra, pickCovering, EXTRA_SLOTS, type RGB } from './chart';
 import { isIdentity, solveWritten } from './color';
@@ -105,36 +106,35 @@ export async function exportChartCard(
    * 教训写在这里：色卡棱柱的**一切**都必须和实际导出的模型一样 —— 几何、材质类型、
    * 粗糙度、补光，还有周围有什么。测量条件和使用条件之间任何一点差异都会被当成偏色。
    */
+  const unlit = params.emissiveExport;
+  const lift = unlit ? 1 : Math.max(0, Math.min(1, params.emissiveLift ?? 0));
+
   for (let i = 0; i < sides; i++) {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
-    // viewer 用的是 MeshPhysicalMaterial，导出的成品也是它。色卡不能用 Standard。
-    const mat = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.9, metalness: 0 });
-    const unlit = params.emissiveExport;
-    const lift = unlit ? 1 : Math.max(0, Math.min(1, params.emissiveLift ?? 0));
-    if (lift > 0) {
-      mat.emissiveMap = tex;
-      mat.emissive.setRGB(lift, lift, lift);
-    }
-    if (unlit) mat.color.setRGB(0, 0, 0);
+    const mat = makeFaceMaterial(tex);
+    applyLift(mat, tex, lift, unlit);
     const geo = sideGeometry(i, prismSection(sides, radius), length);
     group.add(new THREE.Mesh(geo, mat));
     disposables.push(tex, mat, geo);
   }
 
-  for (const right of [true, false]) {
-    // 端面也照 viewer 那份来（MeshPhysicalMaterial + 同样的粗糙度），
-    // 端面是深色还是浅色会改变整体的反射环境，进而改变色卡面量到的亮度
-    const mat = new THREE.MeshPhysicalMaterial({ color: 0x202020, roughness: 0.85, metalness: 0 });
-    if (params.emissiveExport) {
-      mat.emissive.set(0x202020);
-      mat.color.setRGB(0, 0, 0);
+  // 端面：颜色和「要不要端面」都跟着实际参数走。
+  // 原来这里写死深灰 0x202020、而且永远带端面 —— 但用户的模型端面默认是浅灰、
+  // 还可以整个镂空。端面是深是浅、在不在，都会改变棱柱内部的反射环境，
+  // 进而改变色卡那一面量到的亮度，于是把「我自己造的差异」当成 Keynote 的偏色测了进去。
+  if (params.capMode !== 'none') {
+    for (const right of [true, false]) {
+      const hex = right ? params.capColorRight : params.separateCaps ? params.capColorLeft : params.capColorRight;
+      const mat = makeCapMaterial(hex);
+      applyLift(mat, null, lift, unlit);
+      if (unlit) mat.emissive.set(hex);
+      const geo = capGeometry(prismSection(sides, radius), length, right);
+      group.add(new THREE.Mesh(geo, mat));
+      disposables.push(mat, geo);
     }
-    const geo = capGeometry(prismSection(sides, radius), length, right);
-    group.add(new THREE.Mesh(geo, mat));
-    disposables.push(mat, geo);
   }
 
   group.updateMatrixWorld(true);

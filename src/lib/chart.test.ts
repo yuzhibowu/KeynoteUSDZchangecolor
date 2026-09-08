@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chartPatches, fitChart, pickCovering, pwInvert, CURVE_K, COLS, ROWS, EXTRA_SLOTS, BASE_COUNT, type RGB } from './chart';
+import { chartPatches, fitChart, pickCovering, pwInvert, CURVE_K, COLS, ROWS, EXTRA_SLOTS, BASE_COUNT, GRAYS, WHITE_INDEX, type RGB } from './chart';
 import { fakeKeynote255, fakeChartSamples } from './testing/fakeKeynote';
 
 const lum = (c: RGB) => 0.3 * c[0] + 0.6 * c[1] + 0.1 * c[2];
@@ -199,5 +199,25 @@ describe('假 Keynote 本身要像真的', () => {
 
   it('饱和色的某个通道会被夹到 0', () => {
     expect(fakeKeynote255(253, 190, 46)[2]).toBe(0);
+  });
+});
+
+describe('版式常量不能被写死的下标绕过', () => {
+  // 白点探测曾经写死 samples[5]，灰阶从 6 级加密到 8 级之后它就一直在报错误的格子，
+  // 还附赠一句「把补光往上调」——调到 100% 那个数也不动，因为它压根不是白点。
+  it('WHITE_INDEX 指向的确实是纯白', () => {
+    expect(GRAYS[WHITE_INDEX]).toBe(255);
+    expect(chartPatches()[WHITE_INDEX]).toEqual([255, 255, 255]);
+  });
+
+  it('灰阶排在色卡最前面，而且严格递增', () => {
+    const p = chartPatches();
+    GRAYS.forEach((v, i) => expect(p[i]).toEqual([v, v, v]));
+    for (let i = 1; i < GRAYS.length; i++) expect(GRAYS[i]).toBeGreaterThan(GRAYS[i - 1]);
+  });
+
+  it('对齐校验格和它对应的那级灰同色 —— 一头一尾比对才能抓到错位', () => {
+    const p = chartPatches();
+    expect(p[p.length - 1]).toEqual(p[4]);
   });
 });
