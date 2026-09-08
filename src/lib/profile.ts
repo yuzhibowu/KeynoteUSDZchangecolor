@@ -9,11 +9,20 @@ import { CURVE_K } from './chart';
 import { DEFAULT_COMP, type ColorComp, type Triple } from './color';
 
 const FORMAT = 'prism-usdz-color-profile';
-const VERSION = 1;
+const VERSION = 2;
 
 export type ProfileFile = {
   format: string;
   version: number;
+  /**
+   * 这份档是给哪个目标 App 标的。
+   *
+   * v1 没有这个字段，导出的文件名还一律写死 keynote- 前缀 —— 于是一份无边记的档
+   * 看着就像 Keynote 的，装错了颜色会莫名其妙全偏，而且这是最难查的那类问题
+   * （数据本身完全合法，只是测的不是这个渲染器）。v2 起记下来，导入时对不上就拦一道。
+   * 读 v1 的老档时这里是 undefined，按「不知道」处理，只提示不拦。
+   */
+  target?: string;
   exportedAt: string;
   calibratedAt: string | null;
   /** 这份档是在多少补光下测的 —— 补光一变响应曲线就变了，装回去时要一起还原 */
@@ -27,10 +36,11 @@ export type ProfileFile = {
   samples: number[];
 };
 
-export function serializeProfile(c: ColorComp): ProfileFile {
+export function serializeProfile(c: ColorComp, target?: string): ProfileFile {
   return {
     format: FORMAT,
     version: VERSION,
+    target,
     exportedAt: new Date().toISOString(),
     calibratedAt: c.calibratedAt,
     lift: c.calibratedLift,
@@ -43,7 +53,15 @@ export function serializeProfile(c: ColorComp): ProfileFile {
 }
 
 export type ParseResult =
-  | { ok: true; comp: Partial<ColorComp>; lift: number | null; unlit: boolean | null; sampleCount: number }
+  | {
+      ok: true;
+      comp: Partial<ColorComp>;
+      lift: number | null;
+      unlit: boolean | null;
+      sampleCount: number;
+      /** 这份档标的是哪个目标；v1 的老档没有这个字段，是 null */
+      target: string | null;
+    }
   | { ok: false; reason: string };
 
 /**
@@ -106,6 +124,7 @@ export function parseProfile(text: string): ParseResult {
   return {
     ok: true,
     sampleCount: samples.length,
+    target: typeof d.target === 'string' ? d.target : null,
     lift: typeof d.lift === 'number' ? d.lift : null,
     unlit: typeof d.unlit === 'boolean' ? d.unlit : null,
     comp: {
@@ -122,16 +141,19 @@ export function parseProfile(text: string): ParseResult {
 }
 
 /**
- * 导出时的文件名：带上标定时间和格数，方便存好几份对照。
+ * 导出时的文件名：带上目标、标定时间和格数，方便存好几份对照。
  *
- * 标定时间可能是「2026/9/5 13:41」这样的日期，也可能是「内置（70 格实测）」这样的标签。
- * 只有前者才拿来做时间戳 —— 否则会从标签里抠出个「70」，拼出 `-70-70格` 这种怪名字。
+ * 目标一定要进文件名。原来一律写死 keynote- 前缀，于是一份无边记的档看着就像
+ * Keynote 的，很容易装错 —— 而装错之后颜色会莫名其妙全偏，最难查。
+ *
+ * 标定时间可能是「2026/9/5 13:41」这样的日期，也可能是「内置（117 格实测）」这样的标签。
+ * 只有前者才拿来做时间戳 —— 否则会从标签里抠出个数字，拼出 `-117-175格` 这种怪名字。
  */
-export function profileFileName(c: ColorComp): string {
+export function profileFileName(c: ColorComp, target = 'keynote'): string {
   const at = c.calibratedAt ?? '';
   const m = /(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{2})/.exec(at);
   const pad = (v: string) => v.padStart(2, '0');
   const stamp = m ? `${m[1]}${pad(m[2])}${pad(m[3])}-${pad(m[4])}${m[5]}` : '';
   const n = (c.samples ?? []).length;
-  return `keynote-color-profile${stamp ? '-' + stamp : ''}-${n}格.json`;
+  return `${target}-color-profile${stamp ? '-' + stamp : ''}-${n}格.json`;
 }

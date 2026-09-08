@@ -432,13 +432,13 @@ export function ColorPanel({
   /** 把当前校准档存成文件 —— 标定是有成本的，成果不该锁在一个浏览器里 */
   const onExportProfile = () => {
     if (!comp.matrix) return setMsg('现在没有校准数据可以导出');
-    const blob = new Blob([JSON.stringify(serializeProfile(comp), null, 1)], {
+    const blob = new Blob([JSON.stringify(serializeProfile(comp, target), null, 1)], {
       type: 'application/json',
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = profileFileName(comp);
+    a.download = profileFileName(comp, target);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -450,6 +450,14 @@ export function ColorPanel({
   const onImportProfile = async (file: File) => {
     const res = parseProfile(await file.text());
     if (!res.ok) return setMsg(`导入失败：${res.reason}`);
+    // 档里记着它是给哪个目标标的。装错目标是最难查的一类问题 —— 数据本身完全合法，
+    // 只是测的不是这个渲染器，颜色会莫名其妙全偏。所以对不上就直接拦住，不给它装进去。
+    if (res.target && res.target !== target) {
+      return setMsg(
+        `这份档是给「${targetLabel(res.target as TargetId)}」标的，当前目标是「${label}」，没有导入。` +
+          `先切到对应的目标再导，或者确认你真的要把它用在这里`,
+      );
+    }
     patch(res.comp);
     const notes: string[] = [];
     if (res.unlit !== null && res.unlit !== unlit) {
@@ -463,6 +471,7 @@ export function ColorPanel({
     setSamples(null);
     setMsg(
       `已导入校准档 · ${res.sampleCount} 个实测点` +
+        (res.target ? '' : '（这份档没记目标，请自行确认是给这个 App 标的）') +
         (res.comp.calibratedAt ? ` · 标定于 ${res.comp.calibratedAt}` : '') +
         (notes.length ? ` · ${notes.join('，')}` : ''),
     );

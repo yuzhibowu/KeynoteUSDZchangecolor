@@ -153,3 +153,30 @@ describe('导入的档必须真的能用', () => {
     expect(solveWritten(157, 19, 0, tuned)).not.toEqual(solveWritten(157, 19, 0, restored));
   });
 });
+
+describe('校准档要记住自己属于哪个目标', () => {
+  // 装错目标是最难查的一类问题：数据完全合法，只是测的不是这个渲染器，
+  // 颜色会莫名其妙全偏。所以档里必须记下来，文件名也要带上。
+  const round = (target?: string) =>
+    parseProfile(JSON.stringify(serializeProfile(DEFAULT_COMP, target)));
+
+  it('导出时写进去，解析时读回来', () => {
+    const r = round('freeform');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.target).toBe('freeform');
+  });
+
+  it('没写目标的老档（v1）不报错，按「不知道」处理', () => {
+    const raw = JSON.parse(JSON.stringify(serializeProfile(DEFAULT_COMP)));
+    delete raw.target;
+    raw.version = 1;
+    const r = parseProfile(JSON.stringify(raw));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.target).toBe(null);
+  });
+
+  it('文件名带上目标 —— 一份无边记的档不该叫 keynote-', () => {
+    expect(profileFileName(DEFAULT_COMP, 'freeform').startsWith('freeform-')).toBe(true);
+    expect(profileFileName(DEFAULT_COMP, 'keynote').startsWith('keynote-')).toBe(true);
+  });
+});
