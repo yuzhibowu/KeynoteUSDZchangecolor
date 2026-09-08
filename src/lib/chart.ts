@@ -14,11 +14,20 @@ export type RGB = [number, number, number];
 const FRAME: RGB = [255, 0, 255];
 const FRAME_RATIO = 0.05; // 外框厚度占整张卡宽度的比例
 const GUTTER_RATIO = 0.012; // 色块之间的黑缝
-export const COLS = 10;
-export const ROWS = 7;
+/**
+ * 13 × 9 = 117 格。比例 1.44，和棱柱侧面的 1.41 几乎一样，格子不会被拉扁。
+ *
+ * 原来是 10 × 7 = 70 格，色彩立方体只有 3×3×3 —— 相邻样本差 128 阶，
+ * 高饱和区整段没有实测支撑。实测下来这是「蓝色系画面在 Keynote 里发黄」的根源：
+ * 一张蓝图的主色离最近的锚点有 60 阶开外，而局部修正的作用半径只有 18 阶，
+ * 等于整张图全靠 27 个参数的全局公式外推，而 Keynote 在蓝色区间的行为极陡且不一致
+ * （0,0,128 被推成 29,45,230，红绿从 0 抬到 29/45；隔壁 0,128,255 的红反而被压到 0）。
+ */
+export const COLS = 13;
+export const ROWS = 9;
 
 /**
- * 前 50 个是固定的基准色；剩下的格子是动态的 —— 导出色卡时会填入
+ * 前 BASE_COUNT 个是固定的基准色；剩下的格子是动态的 —— 导出色卡时会填入
  * 「你自己图片里的代表色经过补偿之后要写进贴图的实际值」。
  *
  * 这一行很关键：24 个通用色块在色彩空间里很稀疏，黄色系只有一个样本，
@@ -30,10 +39,12 @@ const BASE_PATCHES: RGB[] = (() => {
   const out: RGB[] = [];
   // 灰阶 8 级
   for (const v of [0, 36, 73, 109, 146, 182, 219, 255]) out.push([v, v, v]);
-  // 色彩立方体 3×3×3，去掉三个中性点（灰阶那行已有）
-  for (const r of [0, 128, 255])
-    for (const g of [0, 128, 255])
-      for (const b of [0, 128, 255]) {
+  // 色彩立方体 4×4×4，去掉四个中性点（灰阶那行已有）。
+  // 3×3×3 的 128 阶间距太粗，高饱和色全落在样本之间的空档里；85 阶密一档。
+  const CUBE = [0, 85, 170, 255];
+  for (const r of CUBE)
+    for (const g of CUBE)
+      for (const b of CUBE) {
         if (r === g && g === b) continue;
         out.push([r, g, b]);
       }
@@ -57,8 +68,11 @@ const DEFAULT_EXTRA: RGB[] = [
   [190, 175, 200], [130, 145, 160], [95, 105, 115], [60, 68, 76],
 ];
 
-/** 除去 50 个固定基准色块和最后那个对齐校验格，剩下的都给动态探针 */
-export const EXTRA_SLOTS = COLS * ROWS - 50 - 1;
+/** 固定基准色块的个数 —— 别写死，立方体一加密它就变了 */
+export const BASE_COUNT = BASE_PATCHES.length;
+
+/** 除去固定基准色块和最后那个对齐校验格，剩下的都给动态探针 */
+export const EXTRA_SLOTS = COLS * ROWS - BASE_COUNT - 1;
 
 const EXTRA_KEY = 'prism-usdz-exporter/chart-extra';
 

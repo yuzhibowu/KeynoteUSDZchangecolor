@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chartPatches, fitChart, pickCovering, pwInvert, CURVE_K, COLS, ROWS, EXTRA_SLOTS, type RGB } from './chart';
+import { chartPatches, fitChart, pickCovering, pwInvert, CURVE_K, COLS, ROWS, EXTRA_SLOTS, BASE_COUNT, type RGB } from './chart';
 import { fakeKeynote255, fakeChartSamples } from './testing/fakeKeynote';
 
 const lum = (c: RGB) => 0.3 * c[0] + 0.6 * c[1] + 0.1 * c[2];
@@ -10,7 +10,7 @@ describe('色卡版面', () => {
   });
 
   it('固定色块 + 动态探针 + 对齐格 = 总格数', () => {
-    expect(50 + EXTRA_SLOTS + 1).toBe(COLS * ROWS);
+    expect(BASE_COUNT + EXTRA_SLOTS + 1).toBe(COLS * ROWS);
   });
 
   it('宽高比要贴近棱柱侧面，否则格子被拉扁、取样会偏', () => {
