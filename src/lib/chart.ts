@@ -279,15 +279,59 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
   if (!tl || !tr || !br || !bl || bw < 40 || bh < 40) {
     return { ok: false, reason: '截图里的色卡太小了，放大一点再截', samples: [] };
   }
-  // 四个角 → 单位正方形。之后所有位置都在「色卡自己的坐标系」里算，再映射回截图，
-  // 梯形、旋转、非等比拉伸就全都自动被吃掉了。
-  const map = perspective([tl, tr, br, bl]);
 
-  // 色卡内部的版式，用 0..1 的比例表示（和 drawChart 里那套一一对应）
-  const iw = 1 - FRAME_RATIO * 2;
-  const ih = 1 - FRAME_RATIO * 2;
-  const cw = (iw - GUTTER_RATIO * (COLS + 1)) / COLS;
-  const ch = (ih - GUTTER_RATIO * (ROWS + 1)) / ROWS;
+  /**
+   * 内区（黑底那一块）的四个角。**不要**从外框往里按 FRAME_RATIO 推算 ——
+   * 那假设了「外框厚度永远是整张卡的 5%」，而人截图时经常会把外框裁掉一部分，
+   * 四边还裁得不一样多。实测一张真实截图：左框只剩 2.3%、上框 3.8%，
+   * 按 5% 推进去整张网格偏了半个格子，直接报「取样对不上」。
+   * 内区边界是品红和黑底的交界，肉眼和算法都看得见，跟外框留多宽无关。
+   */
+  const outer = [tl, tr, br, bl];
+  const inside = (x: number, y: number) => {
+    for (let i = 0; i < 4; i++) {
+      const a = outer[i];
+      const b = outer[(i + 1) % 4];
+      if ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) < 0) return false;
+    }
+    return true;
+  };
+  let itl: Pt | null = null;
+  let ibr: Pt | null = null;
+  let itr: Pt | null = null;
+  let ibl: Pt | null = null;
+  let iMinSum = Infinity;
+  let iMaxSum = -Infinity;
+  let iMinDif = Infinity;
+  let iMaxDif = -Infinity;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = (y * w + x) * 4;
+      const r = d[i];
+      const g = d[i + 1];
+      const b = d[i + 2];
+      if (r > 90 && b > 90 && g < 0.62 * Math.min(r, b)) continue; // 还是外框
+      if (!inside(x, y)) continue;
+      const sum = x + y;
+      const dif = x - y;
+      if (sum < iMinSum) { iMinSum = sum; itl = { x, y }; }
+      if (sum > iMaxSum) { iMaxSum = sum; ibr = { x, y }; }
+      if (dif > iMaxDif) { iMaxDif = dif; itr = { x, y }; }
+      if (dif < iMinDif) { iMinDif = dif; ibl = { x, y }; }
+    }
+  }
+  if (!itl || !itr || !ibr || !ibl) {
+    return { ok: false, reason: '色卡里面是空的，确认截图里色卡完整', samples: [] };
+  }
+
+  // 内区四角 → 单位正方形。之后所有位置都在「内区自己的坐标系」里算，再映射回截图，
+  // 梯形、旋转、非等比拉伸、外框被裁，全都自动被吃掉。
+  const map = perspective([itl, itr, ibr, ibl]);
+
+  // 格缝相对**内区**的比例（drawChart 里 gx 是相对整张卡算的，这里要换算过来）
+  const GU = GUTTER_RATIO / (1 - FRAME_RATIO * 2);
+  const cw = (1 - GU * (COLS + 1)) / COLS;
+  const ch = (1 - GU * (ROWS + 1)) / ROWS;
   // 一个格子在截图上大概占几个像素 —— 太小就别量了，噪声会淹掉信号
   if (cw * bw < 3 || ch * bh < 3) {
     return { ok: false, reason: '截图里的色卡太小了，放大一点再截', samples: [] };
@@ -297,8 +341,8 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
   const samples: Sample[] = chartPatches().map((ref, i) => {
     const c = i % COLS;
     const r = (i / COLS) | 0;
-    const u0 = FRAME_RATIO + GUTTER_RATIO + c * (cw + GUTTER_RATIO);
-    const v0 = FRAME_RATIO + GUTTER_RATIO + r * (ch + GUTTER_RATIO);
+    const u0 = GU + c * (cw + GU);
+    const v0 = GU + r * (ch + GU);
     let sr = 0;
     let sg = 0;
     let sb = 0;
