@@ -269,16 +269,33 @@ export function pairClusters(want: Cluster[], shot: Cluster[]): { want: Cluster;
   const a = [...want].sort((x, y) => y.n - x.n).slice(0, k);
   const b = [...shot].sort((x, y) => y.n - x.n).slice(0, k);
   const pairs = a.map((w, i) => ({ want: w, got: b[i] }));
-  if (pairs.length < 3) return pairs;
-  // 亮度排名一致性：两边各自按亮度排名，名次差得太离谱的丢掉
+  const onlyMain = pairs.slice(0, 1); // 配不出可信的多点时，退回「只锚主色」这个保守行为
+  if (pairs.length < 3) return onlyMain;
+
+  // 校验一：先剔掉偏差离群的那几对。
+  // 配错的那一对往往是「这块的颜色」被对到了「另一块的颜色」上，偏差显著大于其他对。
+  // 它必须**第一个**被拿掉 —— 名次校验对离群点极其脆弱：一个错点会把其余所有点的
+  // 亮度名次整体推移一位，于是「名次必须一致」会把好的点也一起误杀（实测过）。
+  const devOf = (p: { want: Cluster; got: Cluster }) => dist(p.want.c, p.got.c);
+  const devs = pairs.map(devOf).sort((x, y) => x - y);
+  const mid = devs[Math.floor(devs.length / 2)];
+  let kept = pairs.filter((p) => devOf(p) <= Math.max(60, mid * 2.5));
+  if (kept.length < 3) return onlyMain;
+
+  // 校验二：在剩下的里，亮度名次必须**严格**一致。
+  // 目标渲染器的响应是单调的（亮的还是亮），名次一旦错位就说明配错了。
+  // 这里原来容许名次差到一半，等于没过滤 —— 8 个点时容许差 4 名，几乎什么都拦不住，
+  // 错点进了校准，局部修正（它是精确穿过每个锚点的）就被拽出陡坑，
+  // 平滑渐变经过它断成一块块 —— 用户实际遇到过：微调完背景全是马赛克。
   const rank = (pick: (p: { want: Cluster; got: Cluster }) => Cluster) => {
-    const sorted = [...pairs].sort((p, q) => lum(pick(p).c) - lum(pick(q).c));
+    const sorted = [...kept].sort((p, q) => lum(pick(p).c) - lum(pick(q).c));
     return new Map(sorted.map((p, i) => [p, i]));
   };
   const rw = rank((p) => p.want);
   const rg = rank((p) => p.got);
-  const limit = Math.max(1, Math.floor(pairs.length / 2));
-  return pairs.filter((p) => Math.abs((rw.get(p) ?? 0) - (rg.get(p) ?? 0)) <= limit);
+  kept = kept.filter((p) => rw.get(p) === rg.get(p));
+
+  return kept.length >= 3 ? kept : onlyMain;
 }
 
 /**
@@ -498,7 +515,7 @@ export function ColorPanel({
     setMsg('正在量成品截图…');
     try {
       if (selected === null || !hasImage) return setMsg('先选中一个贴了图的面');
-      const K = 8; // 一次最多锚这么多个颜色
+      const K = 6; // 一次最多锚这么多个颜色（宁可少而准）
       const wantList = colorClusters(await createImageBitmap(store.canvases[selected]), K);
       if (wantList.length === 0) return setMsg('当前面的贴图里找不到主色');
       let shots = colorClusters(await decode(file), K + 2);
