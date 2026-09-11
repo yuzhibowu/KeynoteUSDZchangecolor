@@ -11,7 +11,7 @@ import { applyTheme, isDark, loadTheme, type Theme } from './lib/theme';
 import { exportChartCard } from './lib/exportCard';
 import { isIdentity, type ColorComp } from './lib/color';
 import { load, save } from './lib/storage';
-import { clearFace, loadFaces, saveFace } from './lib/imageStore';
+import { clearAllFaces, clearFace, loadFaces, saveFace } from './lib/imageStore';
 import type { PrismViewer } from './lib/viewer';
 import {
   DEFAULT_PARAMS,
@@ -487,6 +487,26 @@ export default function App() {
     patchFace({ ...DEFAULT_TRANSFORM, source: null, sourceName: null, sourceKey: sourceKey.current++ });
   }, [patchFace, selected]);
 
+  /**
+   * 一次清掉所有面的图。
+   *
+   * 「移除图片」只清当前这一面 —— 但拖一批图进来会依次铺到好几个面上，
+   * 只清一面之后剩下的从别的角度还看得见，像擦不掉的残留，而且刷新也还在。
+   */
+  const handleClearAll = useCallback(() => {
+    void clearAllFaces();
+    setFaces((prev) =>
+      prev.map((f) => ({
+        ...f,
+        ...DEFAULT_TRANSFORM,
+        source: null,
+        sourceName: null,
+        sourceKey: sourceKey.current++,
+      })),
+    );
+    setStatus('所有面的图片都清掉了');
+  }, []);
+
   const handleExportChart = useCallback(async () => {
     try {
       const { blob, name } = await exportChartCard(params, store.canvases);
@@ -622,6 +642,7 @@ export default function App() {
           frozen={frozen}
           onResetFace={handleResetFace}
           onClearFace={handleClearFace}
+          onClearAll={handleClearAll}
           onTestFill={onTestFill}
         />
         )}

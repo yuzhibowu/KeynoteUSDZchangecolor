@@ -65,3 +65,20 @@ export async function loadFaces(): Promise<StoredFace[]> {
     }
   });
 }
+
+/**
+ * 清掉所有面的贴图。
+ *
+ * 「移除图片」只管当前选中的那一个槽位，那是对的 —— 但一次拖进来的多张图会被
+ * 依次分配到好几个面上，只清一个之后剩下的还留在模型上，从别的角度看过去就是
+ * 一条擦不掉的残留，刷新也还在（图存在 IndexedDB 里）。所以要有一个一次清干净的入口。
+ */
+export async function clearAllFaces() {
+  const db = await open();
+  if (!db) return;
+  try {
+    db.transaction(STORE, 'readwrite').objectStore(STORE).clear();
+  } catch {
+    /* 忽略 */
+  }
+}

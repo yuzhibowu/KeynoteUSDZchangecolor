@@ -16,6 +16,7 @@ type Props = {
   frozen: string | null;
   onResetFace: () => void;
   onClearFace: () => void;
+  onClearAll: () => void;
   onTestFill: () => void;
 };
 
@@ -31,6 +32,7 @@ export function Viewport({
   frozen,
   onResetFace,
   onClearFace,
+  onClearAll,
   onTestFill,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -58,6 +60,8 @@ export function Viewport({
 
   const dropping = dropFace !== undefined;
   const hasImage = selected !== null && !!faces[selected]?.source;
+  // 「移除图片」只管当前这一面，剩下的面从别的角度还看得见 —— 所以再给一个一次清干净的入口
+  const hasAnyImage = faces.some((f) => !!f.source);
 
   return (
     <div
@@ -108,6 +112,14 @@ export function Viewport({
         </button>
         <button className="btn" onClick={onClearFace} disabled={!hasImage}>
           移除图片
+        </button>
+        <button
+          className="btn"
+          onClick={onClearAll}
+          disabled={!hasAnyImage}
+          title="把所有面上的图片一次清掉 —— 一批图会被依次铺到多个面上，只移除当前这一面的话，剩下的从别的角度还看得见"
+        >
+          全部移除
         </button>
         <button
           className="btn"
