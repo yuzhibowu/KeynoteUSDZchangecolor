@@ -3,7 +3,7 @@ import { applyLift, makeCapMaterial, makeFaceMaterial } from './material';
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
 import { drawChart, setChartExtra, pickCovering, EXTRA_SLOTS, type RGB } from './chart';
 import { isIdentity, solveWritten } from './color';
-import { capGeometry, prismSection, sideGeometry } from './geometry';
+import { capGeometry, cardGeometry, prismSection, sideGeometry } from './geometry';
 import { MAX_SIDES, type Params } from './types';
 
 /**
@@ -109,6 +109,37 @@ export async function exportChartCard(
   const unlit = params.emissiveExport;
   const lift = unlit ? 1 : Math.max(0, Math.min(1, params.emissiveLift ?? 0));
 
+  /**
+   * 卡片模式下色卡也必须是卡片，不是棱柱。
+   *
+   * 这条曾经漏掉：不管当前是什么模型，色卡永远按棱柱导。可卡片的背面和四条窄边
+   * 都跟着正面走（边色默认取正面平均色），Keynote 的环境反射会把这些面的颜色
+   * 染到正面上 —— 实测一张铜色卡片在 Keynote 里比棱柱标出来的档「更暗更橙」，
+   * 差 20~40 阶，两份档都对不上，标多少次都白标。
+   * 正反两面都贴色卡、边色取色卡平均色，几何（厚度、圆角、比例）和实际导出的一样。
+   */
+  if (params.modelType === 'card') {
+    const height = params.length / params.aspect;
+    const { front, back, band } = cardGeometry(params.length, height, params.thickness, params.corner);
+    for (const geo of [front, back]) {
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      const mat = makeFaceMaterial(tex);
+      applyLift(mat, tex, lift, unlit);
+      group.add(new THREE.Mesh(geo, mat));
+      disposables.push(tex, mat, geo);
+    }
+    const edge = params.edgeAuto ? averageHex(canvas) : params.capColorRight;
+    const mat = makeCapMaterial(edge);
+    applyLift(mat, null, lift, unlit);
+    if (unlit) mat.emissive.set(edge);
+    group.add(new THREE.Mesh(band, mat));
+    disposables.push(mat, band);
+    return finish(group, disposables);
+  }
+
   for (let i = 0; i < sides; i++) {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -137,6 +168,34 @@ export async function exportChartCard(
     }
   }
 
+  return finish(group, disposables);
+}
+
+/** 和 viewer 里 averageColor 同一口径：整张缩到 32×32 取平均，含透明像素 */
+function averageHex(src: HTMLCanvasElement): string {
+  const N = 32;
+  const c = document.createElement('canvas');
+  c.width = N;
+  c.height = N;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(src, 0, 0, N, N);
+  const d = ctx.getImageData(0, 0, N, N).data;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    r += d[i];
+    g += d[i + 1];
+    b += d[i + 2];
+  }
+  const n = d.length / 4;
+  return '#' + [r / n, g / n, b / n].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('');
+}
+
+async function finish(
+  group: THREE.Group,
+  disposables: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[],
+): Promise<{ blob: Blob; name: string }> {
   group.updateMatrixWorld(true);
   const buffer = await new USDZExporter().parseAsync(group, {
     maxTextureSize: 1024,

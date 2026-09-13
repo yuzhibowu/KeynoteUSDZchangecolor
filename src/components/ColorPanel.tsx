@@ -21,6 +21,8 @@ type Props = {
   hasImage: boolean;
   tick: number;
   onExportChart: () => void;
+  /** 色卡跟着当前模型走：卡片模式导出的是卡片形状的色卡 */
+  shapeLabel: string;
   unlit: boolean;
   setUnlit: (v: boolean) => void;
   lift: number;
@@ -362,6 +364,7 @@ export function ColorPanel({
   hasImage,
   tick,
   onExportChart,
+  shapeLabel,
   unlit,
   setUnlit,
   lift,
@@ -643,10 +646,10 @@ export function ColorPanel({
         <ol className="steps">
           <li>
             <button className="btn" onClick={onExportChart}>
-              导出色卡棱柱
+              导出色卡{shapeLabel}
             </button>
             <span>
-              和你实际用的同款棱柱，只是贴了色卡。拖进 {label}，转到正对着你的那个面截图，
+              和你实际用的同款{shapeLabel}，只是贴了色卡。拖进 {label}，转到正对着你的那个面截图，
               要能看到完整的粉色边框。
             </span>
           </li>
