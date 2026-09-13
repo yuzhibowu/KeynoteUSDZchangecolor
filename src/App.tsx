@@ -9,6 +9,7 @@ import { download, exportUsdz, formatBytes } from './lib/exportUsdz';
 import { yieldToBrowser } from './lib/yieldToBrowser';
 import { applyTheme, isDark, loadTheme, type Theme } from './lib/theme';
 import { exportChartCard } from './lib/exportCard';
+import { trimToAlpha } from './lib/fitImage';
 import { isIdentity, type ColorComp } from './lib/color';
 import { load, save } from './lib/storage';
 import { clearAllFaces, clearFace, loadFaces, saveFace } from './lib/imageStore';
@@ -34,6 +35,9 @@ import {
   MODES,
   type Mode,
   type TargetId,
+  radiusFor,
+  CARD_FRONT,
+  CARD_BACK,
 } from './lib/types';
 
 /** 一次拖进多张图时，最多能排到哪个槽位（正面、反面、端面各是独立的一组） */
@@ -175,10 +179,11 @@ export default function App() {
     let alive = true;
     loadFaces().then(async (stored) => {
       if (!alive || stored.length === 0) return;
-      const decoded: { index: number; bmp: ImageBitmap; name: string }[] = [];
+      const decoded: { index: number; bmp: ImageBitmap; name: string; trimmed: boolean; cornerPx?: number }[] = [];
       for (const s of stored) {
         try {
-          decoded.push({ index: s.index, bmp: await decode(s.blob as File), name: s.name });
+          const fit = await prepareSource(await decode(s.blob as File), s.index);
+          decoded.push({ index: s.index, bmp: fit.bmp, name: s.name, trimmed: fit.trimmed, cornerPx: fit.cornerPx });
         } catch {
           /* 坏数据跳过 */
         }
@@ -188,7 +193,14 @@ export default function App() {
         const next = prev.slice();
         for (const d of decoded) {
           if (d.index < 0 || d.index >= MAX_SLOTS) continue;
-          next[d.index] = { ...next[d.index], source: d.bmp, sourceKey: sourceKey.current++, sourceName: d.name };
+          next[d.index] = {
+            ...next[d.index],
+            source: d.bmp,
+            sourceKey: sourceKey.current++,
+            sourceName: d.name,
+            trimmed: d.trimmed,
+            cornerPx: d.cornerPx,
+          };
         }
         return next;
       });
@@ -371,14 +383,84 @@ export default function App() {
     [selected],
   );
 
+  // 回调里要看「最新」的参数，不能闭包住旧的 —— 拖图和读档都是异步的
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+
+  /**
+   * 卡片「适应」：正反两面的图先把透明留白裁掉，再顺手量出圆角。
+   * 别的模式、别的槽位原样返回。裁过的图记上 trimmed，切换开关时不重复裁。
+   */
+  const prepareSource = useCallback(
+    async (bmp: ImageBitmap, idx: number): Promise<{ bmp: ImageBitmap; trimmed: boolean; cornerPx?: number }> => {
+      const p = paramsRef.current;
+      const wants = p.modelType === 'card' && p.fitFront && (idx === CARD_FRONT || idx === CARD_BACK);
+      if (!wants) return { bmp, trimmed: false };
+      const r = await trimToAlpha(bmp);
+      return { bmp: r.bmp, trimmed: true, cornerPx: r.info?.cornerPx };
+    },
+    [],
+  );
+
+  // 「适应」打开时，已经贴上去但还没裁过的正反面补裁一次
+  const frontKey = faces[CARD_FRONT]?.sourceKey;
+  const backKey = faces[CARD_BACK]?.sourceKey;
+  useEffect(() => {
+    if (params.modelType !== 'card' || !params.fitFront) return;
+    let alive = true;
+    (async () => {
+      const updates: { idx: number; bmp: ImageBitmap; cornerPx?: number }[] = [];
+      for (const idx of [CARD_FRONT, CARD_BACK]) {
+        const f = faces[idx];
+        if (!f?.source || f.trimmed) continue;
+        const r = await trimToAlpha(f.source);
+        updates.push({ idx, bmp: r.bmp, cornerPx: r.info?.cornerPx });
+      }
+      if (!alive || updates.length === 0) return;
+      setFaces((prev) => {
+        const next = prev.slice();
+        for (const u of updates) {
+          next[u.idx] = { ...next[u.idx], source: u.bmp, sourceKey: sourceKey.current++, trimmed: true, cornerPx: u.cornerPx };
+        }
+        return next;
+      });
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.modelType, params.fitFront, frontKey, backKey]);
+
+  // 「适应」：卡片的比例和圆角跟着正面那张图走（以正面为准）
+  useEffect(() => {
+    if (params.modelType !== 'card' || !params.fitFront) return;
+    const f = faces[CARD_FRONT];
+    if (!f?.source || !f.trimmed) return;
+    const aspect = f.source.width / f.source.height;
+    // 圆角：图片像素 → 模型米。卡片宽 = params.length 米，对应图片宽 source.width 像素
+    const corner = ((f.cornerPx ?? 0) * params.length) / f.source.width;
+    if (Math.abs(aspect - params.aspect) < 1e-4 && Math.abs(corner - params.corner) < 1e-6) return;
+    setParams((prev) => ({
+      ...prev,
+      aspect,
+      aspectW: undefined,
+      aspectH: undefined,
+      corner,
+      radius: radiusFor(prev.length, aspect, prev.sides),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.modelType, params.fitFront, params.length, frontKey, faces[CARD_FRONT]?.trimmed]);
+
   const assignFiles = useCallback(async (files: File[], startIndex: number) => {
     const sorted = [...files].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
     );
-    const loaded: { name: string; bmp: ImageBitmap; file: File }[] = [];
-    for (const f of sorted) {
+    const loaded: { name: string; bmp: ImageBitmap; file: File; trimmed: boolean; cornerPx?: number }[] = [];
+    for (const [k, f] of sorted.entries()) {
       try {
-        loaded.push({ name: f.name, bmp: await decode(f), file: f });
+        const raw = await decode(f);
+        const fit = await prepareSource(raw, startIndex + k);
+        loaded.push({ name: f.name, bmp: fit.bmp, file: f, trimmed: fit.trimmed, cornerPx: fit.cornerPx });
       } catch {
         setStatus(`${f.name} 解码失败，跳过`);
       }
@@ -400,6 +482,8 @@ export default function App() {
           source: it.bmp,
           sourceKey: sourceKey.current++,
           sourceName: it.name,
+          trimmed: it.trimmed,
+          cornerPx: it.cornerPx,
         };
       });
       return next;
@@ -408,7 +492,33 @@ export default function App() {
     setSelected(Math.min(startIndex, limit - 1));
     const overflow = startIndex + loaded.length - limit;
     setStatus(overflow > 0 ? `有 ${overflow} 张图没地方放，已忽略` : null);
-  }, []);
+  }, [prepareSource]);
+
+  // ⌘V / Ctrl+V：剪贴板里的图片直接贴到当前选中的那一面。
+  // 焦点在输入框里时不抢（那是在粘贴文字）。没选中面就贴到第 0 面。
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const it of items) {
+        if (it.kind !== 'file' || !it.type.startsWith('image/')) continue;
+        const f = it.getAsFile();
+        if (f) files.push(f);
+      }
+      if (files.length === 0) return;
+      e.preventDefault();
+      const idx = selected ?? 0;
+      // 剪贴板里的文件通常叫 image.png，给它一个能区分的名字
+      const named = files.map((f, i) => new File([f], f.name || `剪贴板-${Date.now().toString(36)}-${i}.png`, { type: f.type }));
+      const where = paramsRef.current.modelType === 'card' ? (idx === CARD_BACK ? '背面' : '正面') : `第 ${idx + 1} 面`;
+      void assignFiles(named, idx).then(() => setStatus(`已把剪贴板里的图贴到${where}`));
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [assignFiles, selected]);
 
   const fillTestBlocks = useCallback(async () => {
     const imgs = await makeTestImages(params.sides);

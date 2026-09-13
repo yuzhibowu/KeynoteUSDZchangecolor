@@ -1,4 +1,5 @@
 import { type ColorComp } from './color';
+import { DEFAULT_MATERIAL, MATERIALS } from './material';
 import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, PROFILE_KEYS, TARGETS, defaultProfiles, profileKey, type FaceTransform, type Params, type ProfileKey, type TargetId } from './types';
 
 /**
@@ -73,13 +74,9 @@ export function load(): Persisted | null {
       ? (parsed.params!.target as TargetId)
       : 'keynote';
     params.color = profiles[profileKey(params.target, params.modelType)];
-    // 材质那一套已经砍掉了。当初点材质按钮会把补光归零 —— 那是为了看质感，
-    // 现在质感没了，补光得还回来，不然颜色一直是暗的、还找不到原因。
-    if ('material' in (parsed.params ?? {})) {
-      params.emissiveLift = DEFAULT_PARAMS.emissiveLift;
-      params.emissiveExport = DEFAULT_PARAMS.emissiveExport;
-      delete (params as Record<string, unknown>).material;
-    }
+    // 材质回来了（第二次）。老存档里 material 是 'paper1' / 'metal3' 这类旧 id，
+    // 认不得的一律落回「纸张」—— 它就是校准条件，别让一个旧 id 把颜色带偏。
+    if (!MATERIALS.some((m) => m.id === params.material)) params.material = DEFAULT_MATERIAL;
     const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),

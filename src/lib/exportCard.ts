@@ -137,13 +137,13 @@ export async function exportChartCard(
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.ClampToEdgeWrapping;
       tex.wrapT = THREE.ClampToEdgeWrapping;
-      const mat = makeFaceMaterial(tex);
+      const mat = makeFaceMaterial(tex, params.material);
       applyLift(mat, tex, lift, unlit);
       group.add(new THREE.Mesh(geo, mat));
       disposables.push(tex, mat, geo);
     }
     const edge = params.edgeAuto ? averageHex(canvas) : params.capColorRight;
-    const mat = makeCapMaterial(edge);
+    const mat = makeCapMaterial(edge, params.material);
     applyLift(mat, null, lift, unlit);
     if (unlit) mat.emissive.set(edge);
     group.add(new THREE.Mesh(band, mat));
@@ -156,7 +156,7 @@ export async function exportChartCard(
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
-    const mat = makeFaceMaterial(tex);
+    const mat = makeFaceMaterial(tex, params.material);
     applyLift(mat, tex, lift, unlit);
     const geo = sideGeometry(i, prismSection(sides, radius), length);
     group.add(new THREE.Mesh(geo, mat));
@@ -170,7 +170,7 @@ export async function exportChartCard(
   if (params.capMode !== 'none') {
     for (const right of [true, false]) {
       const hex = right ? params.capColorRight : params.separateCaps ? params.capColorLeft : params.capColorRight;
-      const mat = makeCapMaterial(hex);
+      const mat = makeCapMaterial(hex, params.material);
       applyLift(mat, null, lift, unlit);
       if (unlit) mat.emissive.set(hex);
       const geo = capGeometry(prismSection(sides, radius), length, right);

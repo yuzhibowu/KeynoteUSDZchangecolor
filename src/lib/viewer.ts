@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { applyLift, makeCapMaterial, makeFaceMaterial } from './material';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { applyLift, applyMaterialPreset, makeCapMaterial, makeFaceMaterial } from './material';
 import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
 
@@ -46,6 +47,8 @@ const DEFAULT_SPIN = 0.22;
 export class PrismViewer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
+  /** 预览用的环境贴图：金属 / 玻璃没有环境什么都反射不出来，一片黑。只给预览，导出器不写它 */
+  private envMap: THREE.Texture | null = null;
   readonly camera: THREE.PerspectiveCamera;
   /** 承载旋转的分组：相机固定不动，转的是它 */
   readonly pivot = new THREE.Group();
@@ -201,6 +204,7 @@ export class PrismViewer {
     el.removeEventListener('wheel', this.onWheel, { capture: true } as EventListenerOptions);
     this.sideMeshes.forEach((m) => m.geometry.dispose());
     this.sideMaterials.forEach((m) => m.dispose());
+    this.envMap?.dispose();
     this.capRight.geometry.dispose();
     this.capLeft.geometry.dispose();
     this.renderer.dispose();
@@ -294,8 +298,18 @@ export class PrismViewer {
     // 所以开关一打开，视口里看到的就是 Keynote 里会看到的。
     const unlit = params.emissiveExport;
     const lift = this.liftNow();
+    // 材质预设跟着 params.material 走：侧面、内面、端面、卡片窄边一套（导出走 syncSideMaterials 同样会套）
+    const preview = !this.exportMode;
+    applyMaterialPreset(this.capRightMat, params.material, true, preview);
+    applyMaterialPreset(this.capLeftMat, params.material, true, preview);
+    this.applyEnv(this.capRightMat);
+    this.applyEnv(this.capLeftMat);
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
+      applyMaterialPreset(m, params.material, isCardEdge(params, i), preview);
+      applyMaterialPreset(this.innerMaterials[i], params.material, false, preview);
+      this.applyEnv(m);
+      this.applyEnv(this.innerMaterials[i]);
       if (isCardEdge(params, i)) {
         // 卡片的窄边：纯色。默认跟着正面贴图的平均色走 —— 红卡片的侧边不该是灰的
         this.paintSolid(m, this.edgeColor(), this.exportMode);
@@ -545,12 +559,40 @@ export class PrismViewer {
    * 补光（自发光）只在导出时挂上 —— 视口的三条光和 Keynote 不是一套，
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
+  private environment(): THREE.Texture {
+    if (!this.envMap) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      pmrem.dispose();
+    }
+    return this.envMap;
+  }
+
+  /** 纸张不挂环境（保持和校准时一模一样的预览），别的材质挂上才看得出质感 */
+  private applyEnv(m: THREE.MeshPhysicalMaterial) {
+    const want = this.state!.params.material === 'paper' ? null : this.environment();
+    if (m.envMap !== want) {
+      m.envMap = want;
+      m.needsUpdate = true;
+    }
+  }
+
   syncSideMaterials() {
     const p = this.state!.params;
     const unlit = p.emissiveExport;
     const lift = this.liftNow();
+    // 材质预设：侧面、内面、端面、卡片窄边都跟着 params.material 走，视口和导出一套
+    const preview = !this.exportMode;
+    applyMaterialPreset(this.capRightMat, p.material, true, preview);
+    applyMaterialPreset(this.capLeftMat, p.material, true, preview);
+    this.applyEnv(this.capRightMat);
+    this.applyEnv(this.capLeftMat);
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
+      applyMaterialPreset(m, p.material, isCardEdge(p, i), preview);
+      applyMaterialPreset(this.innerMaterials[i], p.material, false, preview);
+      this.applyEnv(m);
+      this.applyEnv(this.innerMaterials[i]);
       // 挂当前的 map，不是 store 里那张。导出时 exportUsdz 会先把 map 换成一批全新的
       // texture 对象（为了不让 Keynote 按名字缓存旧贴图），如果这里仍然挂 store 的那张，
       // diffuse 和 emissive 就指向两个不同的 texture —— USDZExporter 按 source.id 建表，

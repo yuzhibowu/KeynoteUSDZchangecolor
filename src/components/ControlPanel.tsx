@@ -23,6 +23,7 @@ import {
   type TargetId,
 } from '../lib/types';
 import type { ColorComp } from '../lib/color';
+import { MATERIALS } from '../lib/material';
 
 type Props = {
   params: Params;
@@ -99,7 +100,7 @@ export function ControlPanel({
    * 整行输入框会直接消失，字还没敲完框就没了。点任何一个预设才会退出自定义。
    */
   const isCustomAspect =
-    params.aspectW !== undefined || params.aspectH !== undefined;
+    !params.fitFront && (params.aspectW !== undefined || params.aspectH !== undefined);
 
   /**
    * 改宽或改高。传 null 表示这一格不动。
@@ -290,16 +291,22 @@ export function ControlPanel({
                   suffix=" px"
                   onChange={(v) => patch({ thickness: fromPx(v) })}
                 />
-                <Slider
-                  label="圆角"
-                  reset={toPx(DEFAULT_PARAMS.corner)}
-                  value={toPx(params.corner)}
-                  min={0}
-                  max={Math.round(toPx(Math.min(params.length, params.length / params.aspect)) / 2)}
-                  step={1}
-                  suffix=" px"
-                  onChange={(v) => patch({ corner: fromPx(v) })}
-                />
+                {params.fitFront ? (
+                  <p className="hint tight">
+                    圆角 {toPx(params.corner)} px —— 「适应」开着，跟着正面图片的圆角走。想手调就把画面比例换成别的预设。
+                  </p>
+                ) : (
+                  <Slider
+                    label="圆角"
+                    reset={toPx(DEFAULT_PARAMS.corner)}
+                    value={toPx(params.corner)}
+                    min={0}
+                    max={Math.round(toPx(Math.min(params.length, params.length / params.aspect)) / 2)}
+                    step={1}
+                    suffix=" px"
+                    onChange={(v) => patch({ corner: fromPx(v) })}
+                  />
+                )}
                 <div className="color-row">
                   <input
                     type="color"
@@ -336,13 +343,25 @@ export function ControlPanel({
                 <span>画面比例</span>
               </span>
               <div className="opts four">
+                {/* 卡片：「适应」= 比例和圆角都按正面那张 PNG 的不透明区域来，透明留白自动裁掉 */}
+                {!isPrism && (
+                  <button
+                    type="button"
+                    className="opt"
+                    aria-pressed={params.fitFront}
+                    title="比例和圆角跟着正面图片走，透明留白自动裁掉"
+                    onClick={() => patchGeom({ fitFront: true, aspectW: undefined, aspectH: undefined })}
+                  >
+                    适应
+                  </button>
+                )}
                 {ASPECTS.map((a) => (
                   <button
                     key={a.label}
                     type="button"
                     className="opt"
-                    aria-pressed={!isCustomAspect && Math.abs(params.aspect - a.ratio) < 1e-4}
-                    onClick={() => patchGeom({ aspect: a.ratio, aspectW: undefined, aspectH: undefined })}
+                    aria-pressed={!params.fitFront && !isCustomAspect && Math.abs(params.aspect - a.ratio) < 1e-4}
+                    onClick={() => patchGeom({ fitFront: false, aspect: a.ratio, aspectW: undefined, aspectH: undefined })}
                   >
                     {a.label}
                   </button>
@@ -352,16 +371,23 @@ export function ControlPanel({
                 <button
                   type="button"
                   className="opt"
-                  aria-pressed={isCustomAspect}
+                  aria-pressed={!params.fitFront && isCustomAspect}
                   onClick={() => {
-                    if (isCustomAspect) return;
+                    if (!params.fitFront && isCustomAspect) return;
                     const w = Math.round(params.aspect * 100);
-                    patchGeom({ aspect: params.aspect, aspectW: w, aspectH: 100 });
+                    patchGeom({ fitFront: false, aspect: params.aspect, aspectW: w, aspectH: 100 });
                   }}
                 >
                   自定义
                 </button>
               </div>
+              {!isPrism && params.fitFront && (
+                <p className="hint tight">
+                  {face?.source && params.modelType === 'card'
+                    ? `按正面图片：${params.aspect.toFixed(3)}（透明留白已裁掉）`
+                    : '贴上正面图片后，比例和圆角自动跟着它走'}
+                </p>
+              )}
               {isCustomAspect && (
                 <div className="ratio-row">
                   <input
@@ -385,6 +411,30 @@ export function ControlPanel({
                 </div>
               )}
             </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>材质</h2>
+          <div className="stack">
+            <div className="opts four">
+              {MATERIALS.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="opt"
+                  aria-pressed={params.material === m.id}
+                  onClick={() => patch({ material: m.id })}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <p className="hint tight">
+              {params.material === 'paper'
+                ? '「纸张」就是颜色校准时用的材质，颜色最准。'
+                : '颜色校准是按「纸张」标的，这个材质在 Keynote 里颜色会有偏差；想要精确，就在这个材质下重新做一次密集标定。补光越高，质感越看不出来。'}
+            </p>
           </div>
         </section>
 

@@ -23,24 +23,103 @@ export const CAP_ROUGHNESS = 0.85;
 export const METALNESS = 0;
 
 /**
+ * 材质预设。**「纸张」就是校准档标定时用的那一套**（粗糙 0.9 / 0.85、金属度 0、无清漆），
+ * 是默认值，颜色校准只对它精确。
+ *
+ * 之前砍掉过材质（见 git 632301e）：补光是靠自发光抬亮度上限的，自发光的面不受光，
+ * 金属和光泽出不来；关掉补光才看得到质感，颜色精度就没了。用户明确要求恢复，
+ * 所以恢复，但两条底线：纸张 = 校准条件不动；别的材质在界面上明说「颜色会偏，
+ * 想精确就在这个材质下重做密集标定」。
+ *
+ * 玻璃靠 opacity + 低粗糙 + 清漆近似 —— USDZExporter 只写 opacity / ior / clearcoat，
+ * 不写 transmission，Keynote 也认不了 transmission。
+ */
+export type MaterialId = 'paper' | 'plastic' | 'metal' | 'glass';
+
+export type MaterialPreset = {
+  id: MaterialId;
+  label: string;
+  roughness: number;
+  capRoughness: number;
+  metalness: number;
+  clearcoat: number;
+  clearcoatRoughness: number;
+  opacity: number;
+  ior: number;
+};
+
+export const MATERIALS: MaterialPreset[] = [
+  { id: 'paper', label: '纸张', roughness: 0.9, capRoughness: 0.85, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, opacity: 1, ior: 1.5 },
+  { id: 'plastic', label: '塑料', roughness: 0.4, capRoughness: 0.4, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.15, opacity: 1, ior: 1.5 },
+  { id: 'metal', label: '金属', roughness: 0.3, capRoughness: 0.3, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, opacity: 1, ior: 1.5 },
+  { id: 'glass', label: '玻璃', roughness: 0.05, capRoughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03, opacity: 0.6, ior: 1.5 },
+];
+
+export const DEFAULT_MATERIAL: MaterialId = 'paper';
+
+export function materialPreset(id: MaterialId | undefined): MaterialPreset {
+  return MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
+}
+
+/** 把预设写到一个现成的材质上（视口里材质对象是复用的，参数变了就地改） */
+/**
+ * `preview`：视口里要看到玻璃的半透明，得开 transparent；导出时必须关 ——
+ * USDZExporter 看到 transparent 就把 opacity 接到贴图的 alpha 上（不透明 PNG 就是 1，
+ * 玻璃感全没了），关掉它才会老老实实写 inputs:opacity = 0.6 这个常数。
+ */
+export function applyMaterialPreset(
+  mat: THREE.MeshPhysicalMaterial,
+  id: MaterialId | undefined,
+  cap = false,
+  preview = false,
+) {
+  const m = materialPreset(id);
+  const roughness = cap ? m.capRoughness : m.roughness;
+  const transparent = preview && m.opacity < 1;
+  if (
+    mat.roughness === roughness &&
+    mat.metalness === m.metalness &&
+    mat.clearcoat === m.clearcoat &&
+    mat.clearcoatRoughness === m.clearcoatRoughness &&
+    mat.opacity === m.opacity &&
+    mat.ior === m.ior &&
+    mat.transparent === transparent
+  ) {
+    return;
+  }
+  mat.roughness = roughness;
+  mat.metalness = m.metalness;
+  mat.clearcoat = m.clearcoat;
+  mat.clearcoatRoughness = m.clearcoatRoughness;
+  mat.opacity = m.opacity;
+  mat.ior = m.ior;
+  mat.transparent = transparent;
+  mat.needsUpdate = true;
+}
+
+/**
  * 一律用 MeshPhysicalMaterial，不用 Standard。
  * 清漆和折射率只有它才会被 USDZExporter 写进文件（导出器里那段是
  * isMeshPhysicalMaterial 才走的）。它是 Standard 的超集，默认值下渲染完全一样。
  */
-export function makeFaceMaterial(map?: THREE.Texture | null): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
+export function makeFaceMaterial(map?: THREE.Texture | null, material?: MaterialId): THREE.MeshPhysicalMaterial {
+  const mat = new THREE.MeshPhysicalMaterial({
     map: map ?? null,
     roughness: FACE_ROUGHNESS,
     metalness: METALNESS,
   });
+  applyMaterialPreset(mat, material, false);
+  return mat;
 }
 
-export function makeCapMaterial(color: THREE.ColorRepresentation): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
+export function makeCapMaterial(color: THREE.ColorRepresentation, material?: MaterialId): THREE.MeshPhysicalMaterial {
+  const mat = new THREE.MeshPhysicalMaterial({
     color,
     roughness: CAP_ROUGHNESS,
     metalness: METALNESS,
   });
+  applyMaterialPreset(mat, material, true);
+  return mat;
 }
 
 /**
