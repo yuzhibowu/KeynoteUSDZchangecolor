@@ -36,3 +36,11 @@ describe('reviveComp：存档里的校准档怎么补全', () => {
     expect(reviveComp('keynote', { on: true, matrix: null }).matrix).toEqual(DEFAULT_COMP.matrix);
   });
 });
+
+describe('档按目标 × 模型类型分槽', () => {
+  it('卡片槽位的出厂档是卡片那份，和棱柱不是同一份', async () => {
+    const { CARD_COMP } = await import('./color');
+    expect(reviveComp('keynote:card', undefined).matrix).toEqual(CARD_COMP.matrix);
+    expect(reviveComp('keynote', undefined).matrix).not.toEqual(CARD_COMP.matrix);
+  });
+});

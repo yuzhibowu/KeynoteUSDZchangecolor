@@ -1,4 +1,4 @@
-import { DEFAULT_COMP, FREEFORM_COMP, type ColorComp } from './color';
+import { CARD_COMP, DEFAULT_COMP, FREEFORM_COMP, type ColorComp } from './color';
 import { cardSection, prismSection, type Section } from './geometry';
 
 export const MAX_SIDES = 12;
@@ -162,8 +162,8 @@ export type Params = {
   emissiveLift: number;
   /** 导出给哪个 App 用 —— 决定套哪份校准档 */
   target: TargetId;
-  /** 每个目标 App 各一份校准档；color 是当前生效的那一份 */
-  profiles: Record<TargetId, ColorComp>;
+  /** 每个「目标 App × 模型类型」各一份校准档；color 是当前生效的那一份 */
+  profiles: Record<ProfileKey, ColorComp>;
   color: ColorComp; // 导出时烘进贴图的颜色预补偿
 };
 
@@ -190,12 +190,29 @@ export function targetLabel(id: TargetId): string {
   return TARGETS.find((t) => t.id === id)?.label ?? id;
 }
 
-export function defaultProfiles(): Record<TargetId, ColorComp> {
+/**
+ * 校准档的槽位：目标 App × 模型类型。
+ *
+ * 模型类型也是校准条件的一部分 —— 卡片的背面和窄边都跟着正面走，环境反射把正面染得
+ * 比棱柱「更暗更橙」20~40 阶，拿棱柱档给卡片用怎么标都对不上。所以卡片单独一份。
+ * 棱柱那份沿用老键名（'keynote' / 'freeform'），旧存档不用迁移。
+ */
+export const PROFILE_KEYS = ['keynote', 'freeform', 'keynote:card', 'freeform:card'] as const;
+export type ProfileKey = (typeof PROFILE_KEYS)[number];
+
+export function profileKey(target: TargetId, modelType: ModelType): ProfileKey {
+  return modelType === 'card' ? `${target}:card` : target;
+}
+
+export function defaultProfiles(): Record<ProfileKey, ColorComp> {
   // 两个目标各有一份真正实测的出厂档，不再互相沿用。
-  // 它们的补光条件不一样（Keynote 拉满、无边记 50%），切目标时要跟着走 —— 见 App 里的 setTarget。
+  // 它们的补光条件不一样，切目标时要跟着走 —— 见 App 里的 setTarget。
   return {
     keynote: DEFAULT_COMP,
     freeform: FREEFORM_COMP,
+    'keynote:card': CARD_COMP,
+    // 无边记还没按卡片实测过，先用它的棱柱档顶着（无边记的环境反射本来就温和得多）
+    'freeform:card': FREEFORM_COMP,
   };
 }
 

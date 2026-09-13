@@ -188,6 +188,7 @@ export function ControlPanel({
             tick={tick}
             onExportChart={onExportChart}
             shapeLabel={params.modelType === 'card' ? '卡片' : '棱柱'}
+            modelType={params.modelType}
             unlit={params.emissiveExport}
             setUnlit={(v) => patch({ emissiveExport: v })}
             lift={params.emissiveLift ?? 0}
@@ -515,6 +516,7 @@ export function ControlPanel({
           tick={tick}
           onExportChart={onExportChart}
           shapeLabel={params.modelType === 'card' ? '卡片' : '棱柱'}
+          modelType={params.modelType}
           unlit={params.emissiveExport}
           setUnlit={(v) => patch({ emissiveExport: v })}
           lift={params.emissiveLift ?? 0}

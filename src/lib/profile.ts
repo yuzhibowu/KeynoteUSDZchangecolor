@@ -23,6 +23,8 @@ export type ProfileFile = {
    * 读 v1 的老档时这里是 undefined，按「不知道」处理，只提示不拦。
    */
   target?: string;
+  /** 按哪种模型标的：'prism' | 'card'。卡片和棱柱的响应差 20~40 阶，v2 老档没有这一项 */
+  shape?: string;
   exportedAt: string;
   calibratedAt: string | null;
   /** 这份档是在多少补光下测的 —— 补光一变响应曲线就变了，装回去时要一起还原 */
@@ -36,11 +38,12 @@ export type ProfileFile = {
   samples: number[];
 };
 
-export function serializeProfile(c: ColorComp, target?: string): ProfileFile {
+export function serializeProfile(c: ColorComp, target?: string, shape?: string): ProfileFile {
   return {
     format: FORMAT,
     version: VERSION,
     target,
+    shape,
     exportedAt: new Date().toISOString(),
     calibratedAt: c.calibratedAt,
     lift: c.calibratedLift,
@@ -61,6 +64,8 @@ export type ParseResult =
       sampleCount: number;
       /** 这份档标的是哪个目标；v1 的老档没有这个字段，是 null */
       target: string | null;
+      /** 按哪种模型标的；老档没有，是 null */
+      shape: string | null;
     }
   | { ok: false; reason: string };
 
@@ -125,6 +130,7 @@ export function parseProfile(text: string): ParseResult {
     ok: true,
     sampleCount: samples.length,
     target: typeof d.target === 'string' ? d.target : null,
+    shape: typeof d.shape === 'string' ? d.shape : null,
     lift: typeof d.lift === 'number' ? d.lift : null,
     unlit: typeof d.unlit === 'boolean' ? d.unlit : null,
     comp: {
@@ -149,11 +155,13 @@ export function parseProfile(text: string): ParseResult {
  * 标定时间可能是「2026/9/5 13:41」这样的日期，也可能是「内置（117 格实测）」这样的标签。
  * 只有前者才拿来做时间戳 —— 否则会从标签里抠出个数字，拼出 `-117-175格` 这种怪名字。
  */
-export function profileFileName(c: ColorComp, target = 'keynote'): string {
+export function profileFileName(c: ColorComp, target = 'keynote', shape = 'prism'): string {
   const at = c.calibratedAt ?? '';
   const m = /(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{2})/.exec(at);
   const pad = (v: string) => v.padStart(2, '0');
   const stamp = m ? `${m[1]}${pad(m[2])}${pad(m[3])}-${pad(m[4])}${m[5]}` : '';
   const n = (c.samples ?? []).length;
-  return `${target}-color-profile${stamp ? '-' + stamp : ''}-${n}格.json`;
+  // 卡片档在文件名里标出来，棱柱保持原样，老文件名不变
+  const kind = shape === 'card' ? '-card' : '';
+  return `${target}${kind}-color-profile${stamp ? '-' + stamp : ''}-${n}格.json`;
 }

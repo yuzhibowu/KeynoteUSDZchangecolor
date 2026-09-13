@@ -1,5 +1,5 @@
 import { type ColorComp } from './color';
-import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, TARGETS, defaultProfiles, type FaceTransform, type Params, type TargetId } from './types';
+import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, PROFILE_KEYS, TARGETS, defaultProfiles, profileKey, type FaceTransform, type Params, type ProfileKey, type TargetId } from './types';
 
 /**
  * 存档键带版本号。参数结构变了（长度/粗细改成像素、分辨率换档位、端面多了镂空、
@@ -18,7 +18,7 @@ type Persisted = { params: Params; transforms: (FaceTransform & { hidden?: boole
  * 想彻底不补偿只有一个入口：把 on 关掉。
  * 别的目标本来就可能没校准过，空着是正常状态，不能拿 Keynote 的档去顶。
  */
-export function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorComp {
+export function reviveComp(id: ProfileKey, raw: Partial<ColorComp> | undefined): ColorComp {
   // 每个目标的出厂默认都从 defaultProfiles 拿，别在这儿再写一份
   const base = defaultProfiles()[id];
   const merged = { ...base, ...(raw ?? {}) };
@@ -63,16 +63,16 @@ export function load(): Persisted | null {
     const parsed = JSON.parse(raw) as Partial<Persisted>;
     const params = { ...DEFAULT_PARAMS, ...(parsed.params ?? {}) };
     // 每个目标 App 一份校准档，逐份补齐字段（嵌套对象浅合并会把新加的字段丢掉）
-    const saved: Partial<Record<TargetId, Partial<ColorComp>>> = parsed.params?.profiles ?? {};
+    const saved: Partial<Record<ProfileKey, Partial<ColorComp>>> = parsed.params?.profiles ?? {};
     const profiles = defaultProfiles();
-    for (const t of TARGETS) {
-      profiles[t.id] = reviveComp(t.id, saved[t.id]);
+    for (const k of PROFILE_KEYS) {
+      profiles[k] = reviveComp(k, saved[k]);
     }
     params.profiles = profiles;
     params.target = TARGETS.some((t) => t.id === parsed.params?.target)
       ? (parsed.params!.target as TargetId)
       : 'keynote';
-    params.color = profiles[params.target];
+    params.color = profiles[profileKey(params.target, params.modelType)];
     // 材质那一套已经砍掉了。当初点材质按钮会把补光归零 —— 那是为了看质感，
     // 现在质感没了，补光得还回来，不然颜色一直是暗的、还找不到原因。
     if ('material' in (parsed.params ?? {})) {

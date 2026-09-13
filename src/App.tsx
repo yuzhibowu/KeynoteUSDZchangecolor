@@ -30,6 +30,7 @@ import {
   type FaceTransform,
   type Params,
   targetLabel,
+  profileKey,
   MODES,
   type Mode,
   type TargetId,
@@ -69,6 +70,23 @@ async function makeTestImages(count: number): Promise<{ bmp: ImageBitmap; blob: 
     out.push({ bmp: await createImageBitmap(c), blob });
   }
   return out;
+}
+
+
+/**
+ * 把当前这份档收进它的槽位，再把 next 对应槽位的那份取出来生效。
+ * 补光和「关掉灯光」跟着档一起走 —— 它们是校准的前提条件，不是偏好。
+ */
+function switchProfile(next: Params, prev: Params): Params {
+  const profiles = { ...prev.profiles, [profileKey(prev.target, prev.modelType)]: prev.color };
+  const color = profiles[profileKey(next.target, next.modelType)];
+  return {
+    ...next,
+    profiles,
+    color,
+    emissiveLift: color.calibratedLift ?? next.emissiveLift,
+    emissiveExport: color.calibratedUnlit ?? next.emissiveExport,
+  };
 }
 
 export default function App() {
@@ -114,13 +132,24 @@ export default function App() {
     return () => clearTimeout(id);
   }, [status]);
 
-  const patch = useCallback((p: Partial<Params>) => setParams((prev) => ({ ...prev, ...p })), []);
+  const patch = useCallback(
+    (p: Partial<Params>) =>
+      setParams((prev) => {
+        const next = { ...prev, ...p };
+        // 换模型类型 = 换校准档：卡片和棱柱各一份（见 types 里的 profileKey）
+        if (p.modelType !== undefined && p.modelType !== prev.modelType) {
+          return switchProfile(next, prev);
+        }
+        return next;
+      }),
+    [],
+  );
   // 改校准要同时写进「当前生效的那份」和「当前目标的存档」，两边不能走散
   const patchColor = useCallback(
     (c: Partial<ColorComp>) =>
       setParams((prev) => {
         const color = { ...prev.color, ...c };
-        return { ...prev, color, profiles: { ...prev.profiles, [prev.target]: color } };
+        return { ...prev, color, profiles: { ...prev.profiles, [profileKey(prev.target, prev.modelType)]: color } };
       }),
     [],
   );
@@ -138,19 +167,7 @@ export default function App() {
    * 而用户根本不知道该把补光调到多少。
    */
   const setTarget = useCallback((target: TargetId) => {
-    setParams((prev) => {
-      if (prev.target === target) return prev;
-      const profiles = { ...prev.profiles, [prev.target]: prev.color };
-      const next = profiles[target];
-      return {
-        ...prev,
-        target,
-        profiles,
-        color: next,
-        emissiveLift: next.calibratedLift ?? prev.emissiveLift,
-        emissiveExport: next.calibratedUnlit ?? prev.emissiveExport,
-      };
-    });
+    setParams((prev) => (prev.target === target ? prev : switchProfile({ ...prev, target }, prev)));
   }, []);
 
   // 刷新之后把上次的贴图捞回来（图片存在 IndexedDB 里，localStorage 塞不下）

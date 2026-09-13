@@ -7,7 +7,7 @@ import { COLS, WHITE_INDEX, fitChart, sampleChart, type Sample } from '../lib/ch
 import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import { defaultProfiles, TARGETS, targetLabel, type TargetId } from '../lib/types';
+import { defaultProfiles, profileKey, TARGETS, targetLabel, type ModelType, type TargetId } from '../lib/types';
 import { COVER_RADIUS, NEAR_ENOUGH, coverageOf, coverageVerdict, type CoverageReport } from '../lib/coverage';
 
 type Props = {
@@ -23,6 +23,8 @@ type Props = {
   onExportChart: () => void;
   /** 色卡跟着当前模型走：卡片模式导出的是卡片形状的色卡 */
   shapeLabel: string;
+  /** 当前模型类型 —— 档按「目标 × 模型类型」分槽，导入时也要核对 */
+  modelType: ModelType;
   unlit: boolean;
   setUnlit: (v: boolean) => void;
   lift: number;
@@ -365,6 +367,7 @@ export function ColorPanel({
   tick,
   onExportChart,
   shapeLabel,
+  modelType,
   unlit,
   setUnlit,
   lift,
@@ -386,23 +389,13 @@ export function ColorPanel({
         ref: s.ref as [number, number, number],
         got: s.got.map((v) => Math.round(v)) as [number, number, number],
       }));
-      // 标定结果是**累积**的，不是覆盖。色卡每次只有 19 个动态格跟着当前图片走，
-      // 换一张色调不同的图，新格子测的是新颜色 —— 把上次测过的留着，标过的颜色就越攒越多，
-      // 不用每换一张图就从头标一次。
-      // 但补光/灯光开关一变，整条响应曲线就变了，旧数据全部作废，必须重来。
-      const sameCond = comp.calibratedLift === lift && comp.calibratedUnlit === unlit;
-      const kept = sameCond
-        ? (comp.samples ?? []).filter((o) =>
-            fresh.every(
-              (n) =>
-                Math.abs(n.ref[0] - o.ref[0]) +
-                  Math.abs(n.ref[1] - o.ref[1]) +
-                  Math.abs(n.ref[2] - o.ref[2]) >
-                12,
-            ),
-          )
-        : [];
-      // 留个上限：局部修正建表是 n³ 的，攒太多会拖慢导出
+      // 整张色卡重标 = 一轮新的、完整的基准，**不沿用上一份档里的锚点**。
+      // 曾经是累积的（想把历次动态探针攒起来），结果 2026-09-13 栽了：上一份档是量错的
+      // （说 178,178,218 → 185,178,218 几乎不变），48 个旧锚点原样带进新档，和同一轮色卡
+      // 182,182,182 → 222,222,222 自相矛盾，浅灰一带被旧点拉歪。旧锚点到底是不是同一条件下
+      // 测的，代码判不出来（补光、灯光开关一样也可能是错的），只有清空才稳。
+      // 想攒点：标完之后用「成品截图微调」往这份新档上加。
+      const kept: { ref: [number, number, number]; got: [number, number, number] }[] = [];
       const merged = [...kept, ...fresh].slice(-MAX_SAMPLES);
       patch({
         on: true,
@@ -464,13 +457,13 @@ export function ColorPanel({
   /** 把当前校准档存成文件 —— 标定是有成本的，成果不该锁在一个浏览器里 */
   const onExportProfile = () => {
     if (!comp.matrix) return setMsg('现在没有校准数据可以导出');
-    const blob = new Blob([JSON.stringify(serializeProfile(comp, target), null, 1)], {
+    const blob = new Blob([JSON.stringify(serializeProfile(comp, target, modelType), null, 1)], {
       type: 'application/json',
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = profileFileName(comp, target);
+    a.download = profileFileName(comp, target, modelType);
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -490,6 +483,13 @@ export function ColorPanel({
           `先切到对应的目标再导，或者确认你真的要把它用在这里`,
       );
     }
+    // 模型类型同理：卡片档和棱柱档差 20~40 阶，装错了颜色整体偏。老档没记这一项，只提示不拦。
+    if (res.shape && res.shape !== modelType) {
+      return setMsg(
+        `这份档是按「${res.shape === 'card' ? '卡片' : '棱柱'}」标的，当前是「${shapeLabel}」，没有导入。` +
+          `先切到对应的模型类型再导`,
+      );
+    }
     patch(res.comp);
     const notes: string[] = [];
     if (res.unlit !== null && res.unlit !== unlit) {
@@ -504,6 +504,7 @@ export function ColorPanel({
     setMsg(
       `已导入校准档 · ${res.sampleCount} 个实测点` +
         (res.target ? '' : '（这份档没记目标，请自行确认是给这个 App 标的）') +
+        (res.shape ? '' : '（这份档没记模型类型，请自行确认是按当前形状标的）') +
         (res.comp.calibratedAt ? ` · 标定于 ${res.comp.calibratedAt}` : '') +
         (notes.length ? ` · ${notes.join('，')}` : ''),
     );
@@ -683,8 +684,8 @@ export function ColorPanel({
             <ChartDrop onPick={onImportProfile} label="导入校准档" accept="application/json,.json" />
           </div>
         </div>
-        {/* 两个目标各有一份真正实测的出厂档，补光条件也各不相同 */}
-        <button className="btn" onClick={() => patch(defaultProfiles()[target])}>
+        {/* 出厂档按「目标 × 模型类型」分，卡片和棱柱不是同一份 */}
+        <button className="btn" onClick={() => patch(defaultProfiles()[profileKey(target, modelType)])}>
           恢复内置校准
         </button>
       </details>
