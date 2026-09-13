@@ -48,7 +48,7 @@ export class PrismViewer {
   readonly scene = new THREE.Scene();
   /** 预览用的环境贴图：金属 / 玻璃没有环境什么都反射不出来，一片黑。只给预览，导出器不写它 */
   private envMap: THREE.Texture | null = null;
-  private envBlur = -1;
+  private envKey = '';
   private directLights: THREE.DirectionalLight[] = [];
   private directBase: number[] = [];
   readonly camera: THREE.PerspectiveCamera;
@@ -565,16 +565,18 @@ export class PrismViewer {
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
   /**
-   * 预览用的「软影棚」环境：自己画的等距柱状图 —— 上亮下暗的大渐变，加一条很宽很柔的光带。
+   * 预览用的「软影棚」环境：自己画的等距柱状图 —— 上亮下暗的底渐变，加**一块可定位的大柔光**。
    *
-   * 不用 RoomEnvironment：它是个带几块极亮小灯板的房间（HDR 数值很高），卡片是一整块平面，
-   * 镜面只反射一个方向，正对灯板时整张卡一起爆白，几根滑杆怎么压都压不出 Keynote 那种
-   * 从头到尾平滑的铜色渐变。Keynote 的环境是大而柔、没有热点的。
+   * 不用 RoomEnvironment：它是个带几块极亮小灯板的房间，卡片是一整块平面，镜面只反射
+   * 一个方向，正对灯板时整张一起爆白。也不用环绕一圈的水平光带（上一版），那和 Keynote
+   * 的布光对不上。从 Keynote 截图反推：主光是一块贴着镜头、略高略偏右的大面积柔光
+   * （见 DEFAULT_PREVIEW_TUNE 的注释）。
    *
-   * `soft` 是光带的宽度（0 窄、1 很宽），也就是面板上的「环境光源模糊」。
+   * 视口相机固定在 +Z 看向原点，所以「相对镜头」= 相对世界 +Z。three 的等距柱状图：
+   * u = atan2(z, x) / 2π + 0.5，v = asin(y) / π + 0.5，+Z 落在 u = 0.75。
    */
-  private environment(soft: number): THREE.Texture {
-    if (!this.envMap || this.envBlur !== soft) {
+  private environment(key: string, elevDeg: number, azimDeg: number, wDeg: number, hDeg: number): THREE.Texture {
+    if (!this.envMap || this.envKey !== key) {
       this.envMap?.dispose();
       const W = 512;
       const H = 256;
@@ -583,20 +585,32 @@ export class PrismViewer {
       c.height = H;
       const ctx = c.getContext('2d')!;
       const img = ctx.createImageData(W, H);
-      const width = 0.08 + 0.35 * soft; // 光带的角宽（以 v 计，0..1 对应 180°）
+      const el = (elevDeg * Math.PI) / 180;
+      const az = (azimDeg * Math.PI) / 180;
+      // 主光中心方向：从 +Z（镜头那边）抬 el、向 +X 转 az
+      const L = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
+      // 主光是椭圆的：在它自己的局部坐标里量横向 / 纵向偏角，各用各的宽度
+      const up0 = new THREE.Vector3(0, 1, 0);
+      const right = new THREE.Vector3().crossVectors(up0, L).normalize(); // 光的「横向」
+      const up = new THREE.Vector3().crossVectors(L, right).normalize(); // 光的「纵向」
+      const sw = (wDeg * Math.PI) / 180;
+      const sh = (hDeg * Math.PI) / 180;
+      const dir = new THREE.Vector3();
       for (let y = 0; y < H; y++) {
-        const v = y / (H - 1); // 0 = 天顶，1 = 地面
-        // 大渐变：天顶 1.0 → 地面 0.35，中间平滑
-        const base = 1.0 - 0.65 * (1 - Math.cos(v * Math.PI)) * 0.5;
-        // 一条柔光带，落在仰角 35° 左右（v≈0.3），高斯型，宽度可调
-        const band = 0.55 * Math.exp(-((v - 0.3) ** 2) / (2 * width * width));
-        const lum = Math.min(1, base + band);
+        const v = y / (H - 1); // three 的 v：0 = 地面，1 = 天顶
+        const phi = (v - 0.5) * Math.PI; // 仰角
+        // 底渐变：天顶 0.9 → 地面 0.3
+        const base = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(phi));
         for (let x = 0; x < W; x++) {
-          // 水平方向轻微起伏，让平面上能看出一点点流动，但没有任何热点
           const u = x / W;
-          const ripple = 1 - 0.06 * (0.5 - 0.5 * Math.cos(u * Math.PI * 4));
-          const val = Math.round(255 * Math.min(1, lum * ripple));
-          const i = (y * W + x) * 4;
+          const theta = (u - 0.5) * 2 * Math.PI; // atan2(z, x)
+          dir.set(Math.cos(theta) * Math.cos(phi), Math.sin(phi), Math.sin(theta) * Math.cos(phi));
+          const dAz = Math.atan2(dir.dot(right), Math.max(1e-6, dir.dot(L)));
+          const dEl = Math.asin(Math.max(-1, Math.min(1, dir.dot(up))));
+          const behind = dir.dot(L) < 0 ? 0 : 1; // 背面半球不发光
+          const light = 0.7 * behind * Math.exp(-((dAz * dAz) / (2 * sw * sw) + (dEl * dEl) / (2 * sh * sh)));
+          const val = Math.round(255 * Math.min(1, base + light));
+          const i = ((H - 1 - y) * W + x) * 4; // 画布 y 向下，贴图 v 向上
           img.data[i] = val;
           img.data[i + 1] = val;
           img.data[i + 2] = val;
@@ -611,7 +625,7 @@ export class PrismViewer {
       this.envMap = pmrem.fromEquirectangular(tex).texture;
       pmrem.dispose();
       tex.dispose();
-      this.envBlur = soft;
+      this.envKey = key;
     }
     return this.envMap;
   }
@@ -624,7 +638,16 @@ export class PrismViewer {
   private applyEnv(m: THREE.MeshPhysicalMaterial) {
     const p = this.state!.params;
     const tune = p.previewTune;
-    const want = p.material === 'paper' ? null : this.environment(tune.blur);
+    const want =
+      p.material === 'paper'
+        ? null
+        : this.environment(
+            `${tune.elev}|${tune.azim}|${tune.sizeW}|${tune.sizeH}`,
+            tune.elev,
+            tune.azim,
+            tune.sizeW,
+            tune.sizeH,
+          );
     if (m.envMap !== want) {
       m.envMap = want;
       m.needsUpdate = true;

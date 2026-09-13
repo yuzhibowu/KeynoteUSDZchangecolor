@@ -79,8 +79,10 @@ export function load(): Persisted | null {
     if (!MATERIALS.some((m) => m.id === params.material)) params.material = DEFAULT_MATERIAL;
     // 嵌套对象浅合并会把新加的字段丢掉，逐份补齐
     params.previewTune = { ...DEFAULT_PREVIEW_TUNE, ...(parsed.params?.previewTune ?? {}) };
-    // 换成软影棚环境之前存的调校值（blur 0.04 / direct 1）是给旧环境配的，落回新默认
-    if (params.previewTune.blur < 0.1 && params.previewTune.direct >= 0.99) params.previewTune = DEFAULT_PREVIEW_TUNE;
+    // 主光的参数结构改过两次（光带宽度 → 圆盘半径 → 椭圆宽高）；缺字段的旧值一律落回默认
+    if (typeof params.previewTune.sizeW !== 'number' || typeof params.previewTune.elev !== 'number') {
+      params.previewTune = DEFAULT_PREVIEW_TUNE;
+    }
     const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),

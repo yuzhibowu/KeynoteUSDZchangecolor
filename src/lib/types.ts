@@ -187,15 +187,36 @@ export type Params = {
 export type PreviewTune = {
   /** 环境贴图强度（反射有多亮） */
   env: number;
-  /** 环境贴图模糊（PMREM 的 sigma：光源越糊，高光越柔） */
-  blur: number;
+  /** 主光横向角半径（度）：越大左右摆动时反光扫得越久 */
+  sizeW: number;
+  /** 主光纵向角半径（度）：越大上下俯仰时反光留得越久 */
+  sizeH: number;
+  /** 主光相对镜头轴线的仰角（度，正 = 在上方） */
+  elev: number;
+  /** 主光相对镜头轴线的方位（度，正 = 在右侧） */
+  azim: number;
   /** 三盏直射光的倍率（硬高光主要来自它们） */
   direct: number;
   /** 色调映射曝光；0 = 不做色调映射 */
   exposure: number;
 };
 
-export const DEFAULT_PREVIEW_TUNE: PreviewTune = { env: 1, blur: 0.5, direct: 0.3, exposure: 0 };
+/**
+ * 默认值是从两张 Keynote 截图反推的：
+ * - 卡片转到 X 351.1° / Y 355.8° 时反光最亮。镜面反射把偏转角加倍，所以主光中心在
+ *   镜头轴线上方约 18°、右侧约 8°。
+ * - 左右摆到 Y 344.4°（反射偏了 31°）还有一大片亮，上下却只在 X ≈ -9° 附近才亮：
+ *   主光横向很宽、纵向偏窄 —— 一块横放的大柔光箱，横向角半径约 35°、纵向约 15°。
+ */
+export const DEFAULT_PREVIEW_TUNE: PreviewTune = {
+  env: 1,
+  sizeW: 35,
+  sizeH: 15,
+  elev: 18,
+  azim: 8,
+  direct: 0.3,
+  exposure: 0,
+};
 
 export const DEFAULT_TRANSFORM: FaceTransform = {
   offsetX: 0,

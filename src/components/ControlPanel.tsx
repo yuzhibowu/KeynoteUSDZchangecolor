@@ -444,8 +444,9 @@ export function ControlPanel({
                   <b>预览调校（只影响视口，不进文件）。</b>把反光调到和 Keynote 里一样柔和，
                   然后把这行数值发给我：
                   <code>
-                    {' '}env {params.previewTune.env.toFixed(2)} · blur {params.previewTune.blur.toFixed(2)} · direct{' '}
-                    {params.previewTune.direct.toFixed(2)} · exposure {params.previewTune.exposure.toFixed(2)}
+                    {' '}env {params.previewTune.env.toFixed(2)} · elev {params.previewTune.elev} · azim {params.previewTune.azim} · sizeW{' '}
+                    {params.previewTune.sizeW} · sizeH {params.previewTune.sizeH} · direct {params.previewTune.direct.toFixed(2)} · exposure{' '}
+                    {params.previewTune.exposure.toFixed(2)}
                   </code>
                 </p>
                 <Slider
@@ -458,13 +459,44 @@ export function ControlPanel({
                   onChange={(v) => patch({ previewTune: { ...params.previewTune, env: v } })}
                 />
                 <Slider
-                  label="环境光带宽度"
-                  reset={DEFAULT_PREVIEW_TUNE.blur}
-                  value={params.previewTune.blur}
-                  min={0}
-                  max={1}
-                  step={0.02}
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, blur: v } })}
+                  label="主光仰角（正 = 镜头上方）"
+                  reset={DEFAULT_PREVIEW_TUNE.elev}
+                  value={params.previewTune.elev}
+                  min={-60}
+                  max={80}
+                  step={1}
+                  suffix="°"
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, elev: v } })}
+                />
+                <Slider
+                  label="主光方位（正 = 镜头右侧）"
+                  reset={DEFAULT_PREVIEW_TUNE.azim}
+                  value={params.previewTune.azim}
+                  min={-90}
+                  max={90}
+                  step={1}
+                  suffix="°"
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, azim: v } })}
+                />
+                <Slider
+                  label="主光横向宽度（角半径）"
+                  reset={DEFAULT_PREVIEW_TUNE.sizeW}
+                  value={params.previewTune.sizeW}
+                  min={3}
+                  max={80}
+                  step={1}
+                  suffix="°"
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, sizeW: v } })}
+                />
+                <Slider
+                  label="主光纵向高度（角半径）"
+                  reset={DEFAULT_PREVIEW_TUNE.sizeH}
+                  value={params.previewTune.sizeH}
+                  min={3}
+                  max={80}
+                  step={1}
+                  suffix="°"
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, sizeH: v } })}
                 />
                 <Slider
                   label="直射光强度"
