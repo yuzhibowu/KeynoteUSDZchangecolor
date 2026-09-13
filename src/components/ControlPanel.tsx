@@ -458,7 +458,7 @@ export function ControlPanel({
                   onChange={(v) => patch({ previewTune: { ...params.previewTune, env: v } })}
                 />
                 <Slider
-                  label="环境光源模糊"
+                  label="环境光带宽度"
                   reset={DEFAULT_PREVIEW_TUNE.blur}
                   value={params.previewTune.blur}
                   min={0}

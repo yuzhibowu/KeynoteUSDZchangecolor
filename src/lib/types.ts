@@ -195,7 +195,7 @@ export type PreviewTune = {
   exposure: number;
 };
 
-export const DEFAULT_PREVIEW_TUNE: PreviewTune = { env: 1, blur: 0.04, direct: 1, exposure: 0 };
+export const DEFAULT_PREVIEW_TUNE: PreviewTune = { env: 1, blur: 0.5, direct: 0.3, exposure: 0 };
 
 export const DEFAULT_TRANSFORM: FaceTransform = {
   offsetX: 0,

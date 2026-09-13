@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { applyLift, applyMaterialPreset, makeCapMaterial, makeFaceMaterial } from './material';
 import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
@@ -565,14 +564,54 @@ export class PrismViewer {
    * 补光（自发光）只在导出时挂上 —— 视口的三条光和 Keynote 不是一套，
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
-  /** 环境贴图按当前的模糊度生成；模糊度变了就重做（PMREM 的 sigma 决定光源有多糊） */
-  private environment(blur: number): THREE.Texture {
-    if (!this.envMap || this.envBlur !== blur) {
+  /**
+   * 预览用的「软影棚」环境：自己画的等距柱状图 —— 上亮下暗的大渐变，加一条很宽很柔的光带。
+   *
+   * 不用 RoomEnvironment：它是个带几块极亮小灯板的房间（HDR 数值很高），卡片是一整块平面，
+   * 镜面只反射一个方向，正对灯板时整张卡一起爆白，几根滑杆怎么压都压不出 Keynote 那种
+   * 从头到尾平滑的铜色渐变。Keynote 的环境是大而柔、没有热点的。
+   *
+   * `soft` 是光带的宽度（0 窄、1 很宽），也就是面板上的「环境光源模糊」。
+   */
+  private environment(soft: number): THREE.Texture {
+    if (!this.envMap || this.envBlur !== soft) {
       this.envMap?.dispose();
+      const W = 512;
+      const H = 256;
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const ctx = c.getContext('2d')!;
+      const img = ctx.createImageData(W, H);
+      const width = 0.08 + 0.35 * soft; // 光带的角宽（以 v 计，0..1 对应 180°）
+      for (let y = 0; y < H; y++) {
+        const v = y / (H - 1); // 0 = 天顶，1 = 地面
+        // 大渐变：天顶 1.0 → 地面 0.35，中间平滑
+        const base = 1.0 - 0.65 * (1 - Math.cos(v * Math.PI)) * 0.5;
+        // 一条柔光带，落在仰角 35° 左右（v≈0.3），高斯型，宽度可调
+        const band = 0.55 * Math.exp(-((v - 0.3) ** 2) / (2 * width * width));
+        const lum = Math.min(1, base + band);
+        for (let x = 0; x < W; x++) {
+          // 水平方向轻微起伏，让平面上能看出一点点流动，但没有任何热点
+          const u = x / W;
+          const ripple = 1 - 0.06 * (0.5 - 0.5 * Math.cos(u * Math.PI * 4));
+          const val = Math.round(255 * Math.min(1, lum * ripple));
+          const i = (y * W + x) * 4;
+          img.data[i] = val;
+          img.data[i + 1] = val;
+          img.data[i + 2] = val;
+          img.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      const tex = new THREE.CanvasTexture(c);
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
       const pmrem = new THREE.PMREMGenerator(this.renderer);
-      this.envMap = pmrem.fromScene(new RoomEnvironment(), blur).texture;
+      this.envMap = pmrem.fromEquirectangular(tex).texture;
       pmrem.dispose();
-      this.envBlur = blur;
+      tex.dispose();
+      this.envBlur = soft;
     }
     return this.envMap;
   }
