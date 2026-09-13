@@ -83,6 +83,11 @@ export class PrismViewer {
   private spin = DEFAULT_SPIN;
   private curYaw = DEFAULT_YAW;
   private curSpin = DEFAULT_SPIN;
+  /**
+   * 精确姿态：照着 Keynote「3D 旋转」面板的 X/Y/Z 角度摆。设了它就不走 yaw/spin，
+   * 一拖拽就清掉。用来和 Keynote 在同一个姿态下对比反光。
+   */
+  private pose: THREE.Quaternion | null = null;
   private canonical = false; // 导出期间把旋转临时归零
   /**
    * 补光只在导出时生效。视口里三条光和 Keynote 不是一套，再叠补光会显得过曝，
@@ -281,10 +286,30 @@ export class PrismViewer {
   };
 
   private applyRotation() {
-    Q_A.setFromAxisAngle(AXIS_Y, this.curYaw);
-    Q_B.setFromAxisAngle(AXIS_X, this.curSpin);
-    this.pivot.quaternion.copy(Q_A).multiply(Q_B);
+    if (this.pose) {
+      this.pivot.quaternion.copy(this.pose);
+    } else {
+      Q_A.setFromAxisAngle(AXIS_Y, this.curYaw);
+      Q_B.setFromAxisAngle(AXIS_X, this.curSpin);
+      this.pivot.quaternion.copy(Q_A).multiply(Q_B);
+    }
     this.pivot.updateMatrixWorld(true);
+  }
+
+  /**
+   * 按 Keynote 面板的 X/Y/Z（度）摆姿态。符号和 Keynote 对过：X 351°（-9°）顶边往后仰、
+   * Y 352°（-8°）右侧靠近镜头、Z 357°（-3°）右侧往下沉 —— three 的 XYZ 欧拉角同号就是这个效果。
+   */
+  setPose(xDeg: number, yDeg: number, zDeg: number) {
+    const d = Math.PI / 180;
+    this.pose = new THREE.Quaternion().setFromEuler(new THREE.Euler(xDeg * d, yDeg * d, zDeg * d, 'XYZ'));
+    this.applyRotation();
+  }
+
+  clearPose() {
+    if (!this.pose) return;
+    this.pose = null;
+    this.applyRotation();
   }
 
   update(next: ViewerState) {
@@ -461,6 +486,7 @@ export class PrismViewer {
   }
 
   resetRotation() {
+    this.pose = null;
     this.yaw = shortestTo(this.yaw, DEFAULT_YAW);
     this.spin = shortestTo(this.spin, DEFAULT_SPIN);
     this.zoom = 1;
@@ -799,6 +825,7 @@ export class PrismViewer {
       const dy = e.clientY - this.drag.lastY;
       this.drag.lastX = e.clientX;
       this.drag.lastY = e.clientY;
+      this.pose = null;
       this.yaw += dx * 0.0075;
       // 饼饼给的判据（照着截图定的，别再改）：顶上是绿面、正面是红面时，
       // 往下拖 → 绿面转下来正对镜头；往上拖 → 红面转回来正对镜头。

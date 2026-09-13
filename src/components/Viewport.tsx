@@ -20,6 +20,34 @@ type Props = {
   onTestFill: () => void;
 };
 
+function PoseInput({ viewerRef }: { viewerRef: React.MutableRefObject<PrismViewer | null> }) {
+  const [v, setV] = useState({ x: '0', y: '0', z: '0' });
+  const apply = (next: typeof v) => {
+    setV(next);
+    const n = (s: string) => {
+      const k = Number(s);
+      return Number.isFinite(k) ? k : 0;
+    };
+    viewerRef.current?.setPose(n(next.x), n(next.y), n(next.z));
+  };
+  return (
+    <span className="pose" title="照着 Keynote「3D 旋转」面板里的 X / Y / Z 角度填，视口就摆成同一个姿态">
+      {(['x', 'y', 'z'] as const).map((k) => (
+        <label key={k}>
+          {k.toUpperCase()}
+          <input
+            type="number"
+            step={0.1}
+            value={v[k]}
+            onChange={(e) => apply({ ...v, [k]: e.target.value })}
+          />
+          °
+        </label>
+      ))}
+    </span>
+  );
+}
+
 export function Viewport({
   store,
   params,
@@ -104,6 +132,10 @@ export function Viewport({
         <button className="btn" onClick={() => viewerRef.current?.resetRotation()}>
           重置角度
         </button>
+      </div>
+      {/* 精确姿态：照着 Keynote「3D 旋转」面板填 X/Y/Z，两边在同一个姿态下比反光。单独一行，别挤按钮 */}
+      <div className="stage-tools top">
+        <PoseInput viewerRef={viewerRef} />
       </div>
       {/* 贴图操作也贴边放，右下角一排 —— 侧栏里那一段就不再重复了 */}
       <div className="stage-tools right">
