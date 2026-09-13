@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { applyToHex, applyToImageData, type ColorComp } from '../lib/color';
 
-/** 累积的实测样本上限 —— 局部修正建表是 n³ 的，攒太多会拖慢导出 */
-const MAX_SAMPLES = 400;
-import { COLS, WHITE_INDEX, fitChart, sampleChart, type Sample } from '../lib/chart';
+/**
+ * 实测样本上限 —— 局部修正建表是 n³ 的。密集标定一次就是 1100 多个点，
+ * 实测建表约 0.7 s（只在校准变了之后算一次），2000 以内都扛得住。
+ */
+const MAX_SAMPLES = 2000;
+import { COLS, DENSE_PAGES, DENSE_TOTAL, WHITE_INDEX, fitChart, sampleChart, type Sample } from '../lib/chart';
 import { Slider } from './Slider';
 import { parseProfile, profileFileName, serializeProfile } from '../lib/profile';
 import type { FaceTextureStore } from '../lib/faceTexture';
@@ -20,7 +23,7 @@ type Props = {
   selected: number | null;
   hasImage: boolean;
   tick: number;
-  onExportChart: () => void;
+  onExportChart: (densePage?: number) => void;
   /** 色卡跟着当前模型走：卡片模式导出的是卡片形状的色卡 */
   shapeLabel: string;
   /** 当前模型类型 —— 档按「目标 × 模型类型」分槽，导入时也要核对 */
@@ -376,79 +379,152 @@ export function ColorPanel({
   const [samples, setSamples] = useState<Sample[] | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  /**
+   * 密集标定的进度：三张色卡各自的实测，收齐才合成。存在 localStorage 里，
+   * 关掉页面再回来还在；按「目标 × 模型类型」分开，补光/灯光一变就作废。
+   */
+  const denseKey = `prism-usdz-exporter/dense/${profileKey(target, modelType)}`;
+  type DenseSession = { lift: number; unlit: boolean; pages: Record<string, Sample[]> };
+  const readDense = (): DenseSession | null => {
+    try {
+      const raw = localStorage.getItem(denseKey);
+      if (!raw) return null;
+      const d = JSON.parse(raw) as DenseSession;
+      return d && d.pages ? d : null;
+    } catch {
+      return null;
+    }
+  };
+  const [denseDone, setDenseDone] = useState<number[]>(() => {
+    const d = readDense();
+    return d ? Object.keys(d.pages).map(Number) : [];
+  });
+  const writeDense = (d: DenseSession | null) => {
+    try {
+      if (d) localStorage.setItem(denseKey, JSON.stringify(d));
+      else localStorage.removeItem(denseKey);
+    } catch {
+      /* 忽略 */
+    }
+    setDenseDone(d ? Object.keys(d.pages).map(Number) : []);
+  };
+  // 切了目标或模型类型，进度显示要跟着换那一份
+  useEffect(() => {
+    const d = readDense();
+    setDenseDone(d ? Object.keys(d.pages).map(Number) : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [denseKey]);
+
+  /** 一批实测 → 拟合 → 写进档。普通色卡和密集色卡最后都走这里 */
+  const applyCalibration = (measured: Sample[], label: string) => {
+    const fit = fitChart(measured);
+    if (!fit) return setMsg('可用色块太少，解不出来。确认截图里色卡完整。');
+    setSamples(measured);
+    const fresh = measured.map((s) => ({
+      ref: s.ref as [number, number, number],
+      got: s.got.map((v) => Math.round(v)) as [number, number, number],
+    }));
+    // 整张色卡重标 = 一轮新的、完整的基准，**不沿用上一份档里的锚点**。
+    // 曾经是累积的（想把历次动态探针攒起来），结果 2026-09-13 栽了：上一份档是量错的
+    // （说 178,178,218 → 185,178,218 几乎不变），48 个旧锚点原样带进新档，和同一轮色卡
+    // 182,182,182 → 222,222,222 自相矛盾，浅灰一带被旧点拉歪。旧锚点到底是不是同一条件下
+    // 测的，代码判不出来（补光、灯光开关一样也可能是错的），只有清空才稳。
+    // 想攒点：标完之后用「成品截图微调」往这份新档上加。
+    const merged = fresh.slice(-MAX_SAMPLES);
+    patch({
+      on: true,
+      matrix: fit.matrix,
+      offset: fit.offset,
+      curve: fit.curve,
+      samples: merged,
+      calibratedAt: label,
+      calibratedUnlit: unlit,
+      calibratedLift: lift,
+    });
+    // 纯白能到多少决定了颜色上限。但上限未必能靠补光一直抬 —— Keynote 的色调曲线
+    // 有个硬顶，到了之后再加补光白点也不动，只会白白压平立体感。所以要和上一次比。
+    // 白点按 ref 找，下标只当兜底 —— 写死下标正是上一个 bug 的根源（见 chart.ts 的 GRAYS）
+    const whiteSample =
+      measured.find((x) => x.ref[0] === 255 && x.ref[1] === 255 && x.ref[2] === 255) ??
+      measured[WHITE_INDEX];
+    const white = Math.round(Math.max(...whiteSample.got));
+    // 白点记录**必须按目标分开存**。原来是一个全局键，于是在无边记标一次
+    // （补光 50%、纯白 247）就会把 Keynote 的记录冲掉，下次在 Keynote 标定时
+    // 拿它做对比，会得出「补光从 50% 加到 75%」这种前提错误的结论。
+    const probeKey = `prism-usdz-exporter/white-probe/${target}`;
+    const prevRaw = localStorage.getItem(probeKey);
+    const prev = prevRaw ? (JSON.parse(prevRaw) as { lift: number; white: number }) : null;
+    try {
+      localStorage.setItem(probeKey, JSON.stringify({ lift, white }));
+    } catch {
+      /* 忽略 */
+    }
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    const up = prev && lift > prev.lift + 0.02;
+    const down = prev && lift < prev.lift - 0.02;
+    let advice: string;
+    if (up && white <= prev.white + 2) {
+      advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 加到 ${pct(lift)} 也没抬起来 —— 到硬顶了。把补光调回 ${pct(prev.lift)} 或更低再校一次，能少损失一些立体感`;
+    } else if (down && white >= prev.white - 2) {
+      // 降补光而白点没掉 —— 纯赚：自发光不随角度变化，加得越多明暗越平
+      advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 降到 ${pct(lift)} 白点也没掉 —— 这一档更划算，立体感更好。还可以再往下试`;
+    } else if (down) {
+      advice = `纯白 ${white}（上次 ${pct(prev!.lift)} 时是 ${prev!.white}），降补光掉了 ${prev!.white - white} 阶。够用就留着，觉得暗就调回去`;
+    } else if (white >= 252) {
+      advice = `纯白能到 ${white}，上限够用`;
+    } else if (up && white > prev.white + 2) {
+      advice = `纯白 ${white}（上次 ${prev.white}），还在涨，可以再往上调试试`;
+    } else {
+      advice = `纯白能到 ${white}。想再高就把补光往上调再校一次；如果调了不涨就是到顶了`;
+    }
+    setMsg(`校准完成 · 残差 ${(fit.rms * 255).toFixed(1)} 阶 · 已标定 ${merged.length} 个颜色 · ${advice}`);
+  };
+
   const onChartShot = async (file: File) => {
     setMsg('正在识别色卡…');
     setSamples(null);
     try {
       const r = sampleChart(await decode(file));
       if (!r.ok) return setMsg(r.reason ?? '识别失败');
-      const fit = fitChart(r.samples);
-      if (!fit) return setMsg('可用色块太少，解不出来。确认截图里色卡完整。');
-      setSamples(r.samples);
-      const fresh = r.samples.map((s) => ({
-        ref: s.ref as [number, number, number],
-        got: s.got.map((v) => Math.round(v)) as [number, number, number],
+      const stamp = new Date().toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
+
+      if (r.densePage === undefined) return applyCalibration(r.samples, stamp);
+
+      // 密集色卡：先攒，三张收齐再合成
+      const prev = readDense();
+      // 补光/灯光开关和之前收的那几张不一样 —— 那几张作废，从这一张重新开始
+      const same = prev && Math.abs(prev.lift - lift) < 0.001 && prev.unlit === unlit;
+      const pages: Record<string, Sample[]> = { ...(same ? prev!.pages : {}), [r.densePage]: r.samples };
+      const session: DenseSession = { lift, unlit, pages };
+      const have = Object.keys(pages).map(Number).sort();
+      if (have.length < DENSE_PAGES) {
+        writeDense(session);
+        const missing = Array.from({ length: DENSE_PAGES }, (_, i) => i).filter((i) => !pages[i]);
+        return setMsg(
+          `密集色卡第 ${r.densePage + 1} 张已收 · 已收 ${have.length}/${DENSE_PAGES}` +
+            (prev && !same ? '（补光或灯光和之前收的不一样，之前收的已作废）' : '') +
+            ` · 还差第 ${missing.map((i) => i + 1).join('、')} 张：导出、拖进 ${label}、截图、传回来`,
+        );
+      }
+      // 收齐：按 ref 去重（灰阶每张都有），同一个 ref 取平均
+      const acc = new Map<string, { ref: Sample['ref']; sum: [number, number, number]; n: number }>();
+      for (const i of have) {
+        for (const s of pages[i]) {
+          const k = s.ref.join(',');
+          const e = acc.get(k) ?? { ref: s.ref, sum: [0, 0, 0], n: 0 };
+          e.sum[0] += s.got[0];
+          e.sum[1] += s.got[1];
+          e.sum[2] += s.got[2];
+          e.n++;
+          acc.set(k, e);
+        }
+      }
+      const all: Sample[] = [...acc.values()].map((e) => ({
+        ref: e.ref,
+        got: [e.sum[0] / e.n, e.sum[1] / e.n, e.sum[2] / e.n] as Sample['got'],
       }));
-      // 整张色卡重标 = 一轮新的、完整的基准，**不沿用上一份档里的锚点**。
-      // 曾经是累积的（想把历次动态探针攒起来），结果 2026-09-13 栽了：上一份档是量错的
-      // （说 178,178,218 → 185,178,218 几乎不变），48 个旧锚点原样带进新档，和同一轮色卡
-      // 182,182,182 → 222,222,222 自相矛盾，浅灰一带被旧点拉歪。旧锚点到底是不是同一条件下
-      // 测的，代码判不出来（补光、灯光开关一样也可能是错的），只有清空才稳。
-      // 想攒点：标完之后用「成品截图微调」往这份新档上加。
-      const kept: { ref: [number, number, number]; got: [number, number, number] }[] = [];
-      const merged = [...kept, ...fresh].slice(-MAX_SAMPLES);
-      patch({
-        on: true,
-        matrix: fit.matrix,
-        offset: fit.offset,
-        curve: fit.curve,
-        samples: merged,
-        calibratedAt: new Date().toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' }),
-        calibratedUnlit: unlit,
-        calibratedLift: lift,
-      });
-      // 纯白能到多少决定了颜色上限。但上限未必能靠补光一直抬 —— Keynote 的色调曲线
-      // 有个硬顶，到了之后再加补光白点也不动，只会白白压平立体感。所以要和上一次比。
-      // 白点按 ref 找，下标只当兜底 —— 写死下标正是上一个 bug 的根源（见 chart.ts 的 GRAYS）
-      const whiteSample =
-        r.samples.find((x) => x.ref[0] === 255 && x.ref[1] === 255 && x.ref[2] === 255) ??
-        r.samples[WHITE_INDEX];
-      const white = Math.round(Math.max(...whiteSample.got));
-      // 白点记录**必须按目标分开存**。原来是一个全局键，于是在无边记标一次
-      // （补光 50%、纯白 247）就会把 Keynote 的记录冲掉，下次在 Keynote 标定时
-      // 拿它做对比，会得出「补光从 50% 加到 75%」这种前提错误的结论。
-      const probeKey = `prism-usdz-exporter/white-probe/${target}`;
-      const prevRaw = localStorage.getItem(probeKey);
-      const prev = prevRaw ? (JSON.parse(prevRaw) as { lift: number; white: number }) : null;
-      try {
-        localStorage.setItem(probeKey, JSON.stringify({ lift, white }));
-      } catch {
-        /* 忽略 */
-      }
-      const pct = (v: number) => `${Math.round(v * 100)}%`;
-      const up = prev && lift > prev.lift + 0.02;
-      const down = prev && lift < prev.lift - 0.02;
-      let advice: string;
-      if (up && white <= prev.white + 2) {
-        advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 加到 ${pct(lift)} 也没抬起来 —— 到硬顶了。把补光调回 ${pct(prev.lift)} 或更低再校一次，能少损失一些立体感`;
-      } else if (down && white >= prev.white - 2) {
-        // 降补光而白点没掉 —— 纯赚：自发光不随角度变化，加得越多明暗越平
-        advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 降到 ${pct(lift)} 白点也没掉 —— 这一档更划算，立体感更好。还可以再往下试`;
-      } else if (down) {
-        advice = `纯白 ${white}（上次 ${pct(prev!.lift)} 时是 ${prev!.white}），降补光掉了 ${prev!.white - white} 阶。够用就留着，觉得暗就调回去`;
-      } else if (white >= 252) {
-        advice = `纯白能到 ${white}，上限够用`;
-      } else if (up && white > prev.white + 2) {
-        advice = `纯白 ${white}（上次 ${prev.white}），还在涨，可以再往上调试试`;
-      } else {
-        advice = `纯白能到 ${white}。想再高就把补光往上调再校一次；如果调了不涨就是到顶了`;
-      }
-      const grew = merged.length - fresh.length;
-      setMsg(
-        `校准完成 · 残差 ${(fit.rms * 255).toFixed(1)} 阶 · 已标定 ${merged.length} 个颜色` +
-          (grew > 0 ? `（含上次留下的 ${grew} 个）` : '') +
-          ` · ${advice}`,
-      );
+      writeDense(null);
+      applyCalibration(all, `密集 ${all.length} 格 · ${stamp}`);
     } catch (e) {
       setMsg(`识别失败：${e instanceof Error ? e.message : String(e)}`);
     }
@@ -646,7 +722,7 @@ export function ColorPanel({
         </p>
         <ol className="steps">
           <li>
-            <button className="btn" onClick={onExportChart}>
+            <button className="btn" onClick={() => onExportChart()}>
               导出色卡{shapeLabel}
             </button>
             <span>
@@ -659,7 +735,31 @@ export function ColorPanel({
             <span>把截图拖进来，自动量出偏色。</span>
           </li>
         </ol>
-        {/* 结果紧跟在两个步骤下面。原来排在「成品截图微调」后面，隔了一整块，
+        <div className="dense">
+          <span className="hint tight">
+            <b>密集标定（一次到位）。</b>把整个色域量透：{DENSE_TOTAL} 个颜色、相邻只差 28 阶，
+            分 {DENSE_PAGES} 张色卡。每张都走上面两步（导出 → 拖进 {label} → 截图 → 传回「上传色卡截图」），
+            三张收齐自动合成一份档。之后换任何图都直接导，不用再标。
+          </span>
+          <div className="profile-btns">
+            {Array.from({ length: DENSE_PAGES }, (_, i) => (
+              <button
+                key={i}
+                className={`btn${denseDone.includes(i) ? ' done' : ''}`}
+                onClick={() => onExportChart(i)}
+                title={denseDone.includes(i) ? '这一张已经收到截图了' : undefined}
+              >
+                {denseDone.includes(i) ? '✓ ' : ''}导出第 {i + 1} 张
+              </button>
+            ))}
+            {denseDone.length > 0 && (
+              <button className="btn" onClick={() => writeDense(null)}>
+                清空进度（{denseDone.length}/{DENSE_PAGES}）
+              </button>
+            )}
+          </div>
+        </div>
+        {/* 结果紧跟在步骤下面。原来排在「成品截图微调」后面，隔了一整块，
             上传完色卡截图的人根本翻不到，只会以为「传了没反应」 */}
         {msg && <p className={`chart-msg${comp.matrix ? '' : ' warn'}`}>{msg}</p>}
 

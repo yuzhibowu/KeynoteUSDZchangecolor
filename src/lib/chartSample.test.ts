@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COLS, ROWS, chartPatches, sampleChartPixels, type RGB } from './chart';
+import { COLS, ROWS, DENSE_COLS, DENSE_ROWS, DENSE_PAGES, GRAYS, chartPatches, densePatches, sampleChartPixels, type RGB } from './chart';
 
 /**
  * 色卡识别的回归测试。
@@ -54,8 +54,10 @@ function render(
   h: number,
   corners: Pt[],
   patches: RGB[],
-  opts: { crop?: number } = {},
+  opts: { crop?: number; cols?: number; rows?: number } = {},
 ): Uint8ClampedArray {
+  const COLS = opts.cols ?? 13;
+  const ROWS = opts.rows ?? 9;
   const d = new Uint8ClampedArray(w * h * 4);
   const map = mapTo(corners);
   // 外框被裁掉多少：crop=0 画面里是整张卡，crop=0.6 表示外框被裁掉 60%
@@ -168,5 +170,53 @@ describe('色卡识别', () => {
     bad[7] = patches[0];
     const res = sampleChartPixels(render(W, H, full(W, H), bad), W, H);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe('密集色卡', () => {
+  const W = 1800;
+  const H = Math.round((W * DENSE_ROWS) / DENSE_COLS);
+  const keynote = (c: RGB): RGB => [
+    Math.min(255, Math.round(c[0] * 1.1 + 10)),
+    Math.round(c[1] * 0.9 + 12),
+    Math.min(255, Math.round(c[2] * 1.05 + 5)),
+  ];
+
+  it('三张都能认出是第几页，颜色量准，灰阶/标记/校验格不进档', () => {
+    for (let page = 0; page < DENSE_PAGES; page++) {
+      const patches = densePatches(page);
+      const shown = patches.map(keynote);
+      const res = sampleChartPixels(render(W, H, full(W, H), shown, { cols: DENSE_COLS, rows: DENSE_ROWS }), W, H);
+      expect(res.ok).toBe(true);
+      expect(res.densePage).toBe(page);
+      expect(res.samples.length).toBe(DENSE_COLS * DENSE_ROWS - 2);
+      const body = patches.filter((_, i) => i !== GRAYS.length && i !== patches.length - 1);
+      res.samples.forEach((s, i) => {
+        expect(s.ref).toEqual(body[i]);
+        const want = keynote(body[i]);
+        for (let k = 0; k < 3; k++) expect(Math.abs(s.got[k] - want[k])).toBeLessThanOrEqual(2);
+      });
+    }
+  });
+
+  it('梯形也认得出页码', () => {
+    const corners: Pt[] = [
+      { x: 0, y: 0 }, { x: W - 1, y: H * 0.12 },
+      { x: W - 1, y: H * 0.88 }, { x: 0, y: H - 1 },
+    ];
+    const patches = densePatches(2);
+    const res = sampleChartPixels(render(W, H, corners, patches.map(keynote), { cols: DENSE_COLS, rows: DENSE_ROWS }), W, H);
+    expect(res.ok).toBe(true);
+    expect(res.densePage).toBe(2);
+  });
+
+  it('普通色卡不会被误认成密集页', () => {
+    const patches = chartPatches();
+    const Wn = 1300;
+    const Hn = Math.round((Wn * ROWS) / COLS);
+    const res = sampleChartPixels(render(Wn, Hn, full(Wn, Hn), patches.map(keynote)), Wn, Hn);
+    expect(res.ok).toBe(true);
+    expect(res.densePage).toBeUndefined();
+    expect(res.samples.length).toBe(COLS * ROWS);
   });
 });

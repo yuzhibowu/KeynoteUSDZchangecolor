@@ -524,11 +524,15 @@ export default function App() {
     setStatus('所有面的图片都清掉了');
   }, []);
 
-  const handleExportChart = useCallback(async () => {
+  const handleExportChart = useCallback(async (densePage?: number) => {
     try {
-      const { blob, name } = await exportChartCard(params, store.canvases);
+      const { blob, name } = await exportChartCard(params, store.canvases, densePage);
       download(blob, name);
-      setStatus(`色卡已导出：拖进${targetLabel(params.target)}，正对着截一张图，再回来上传`);
+      setStatus(
+        densePage === undefined
+          ? `色卡已导出：拖进${targetLabel(params.target)}，正对着截一张图，再回来上传`
+          : `密集色卡第 ${densePage + 1} 张已导出：拖进${targetLabel(params.target)}，正对着截图，拖回「上传色卡截图」`,
+      );
     } catch (err) {
       setStatus(`色卡导出失败：${err instanceof Error ? err.message : String(err)}`);
     }

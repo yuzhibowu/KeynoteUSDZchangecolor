@@ -683,6 +683,10 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 .verify .chart-drop { margin-bottom: 7px; }
 
 .profile-io { margin: 12px 0; padding: 12px; border: 1px solid var(--line); }
+/* 密集标定：三张色卡的进度按钮，收到截图的那张打勾并压暗 */
+.dense { margin: 12px 0; padding: 12px; border: 1px solid var(--line); }
+.dense .profile-btns { flex-wrap: wrap; }
+.dense .btn.done { opacity: 0.55; }
 .profile-btns { display: flex; gap: 8px; margin-top: 10px; }
 .profile-btns > * { flex: 1; margin: 0; }
 

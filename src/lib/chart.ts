@@ -166,8 +166,12 @@ export function pickCovering(hist: Map<number, number>, n: number): RGB[] {
 }
 
 export function drawChart(canvas: HTMLCanvasElement, size = 1024) {
+  drawGrid(canvas, size, COLS, ROWS, chartPatches());
+}
+
+function drawGrid(canvas: HTMLCanvasElement, size: number, cols: number, rows: number, patches: RGB[]) {
   const w = size;
-  const h = Math.round((size * ROWS) / COLS);
+  const h = Math.round((size * rows) / cols);
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
@@ -183,21 +187,88 @@ export function drawChart(canvas: HTMLCanvasElement, size = 1024) {
   // 两个方向必须各用各的维度，否则取样位置会整体偏移（踩过这个坑）
   const gx = w * GUTTER_RATIO;
   const gy = h * GUTTER_RATIO;
-  const cw = (iw - gx * (COLS + 1)) / COLS;
-  const ch = (ih - gy * (ROWS + 1)) / ROWS;
-  chartPatches().forEach((p, i) => {
-    const c = i % COLS;
-    const r = (i / COLS) | 0;
+  const cw = (iw - gx * (cols + 1)) / cols;
+  const ch = (ih - gy * (rows + 1)) / rows;
+  patches.forEach((p, i) => {
+    const c = i % cols;
+    const r = (i / cols) | 0;
     ctx.fillStyle = `rgb(${p.join(',')})`;
     ctx.fillRect(fx + gx + c * (cw + gx), fy + gy + r * (ch + gy), cw, ch);
   });
+}
+
+// ---- 密集色卡：一次把整个色域量透 ----
+
+/**
+ * 密集标定：10×10×10 的色彩立方体（相邻 28 阶，局部修正半径 18 阶完全兜得住）
+ * 加记忆色、暗部补点，再用低饱和区的半步点把余下的格子填满 —— 现实素材（肤色、金属、
+ * 木纹、纸张）几乎都住在低饱和区，那里多测一点最划算。
+ *
+ * 一张放不下，分 DENSE_PAGES 张，每张 24×16 = 384 格。每张开头是同一条灰阶（自检用），
+ * 接着一格**页码标记**（纯红 / 纯绿 / 纯蓝 —— Keynote 再怎么推色，主通道也还是主通道），
+ * 末尾一格对齐校验。三张收齐才合成一份档，缺一张就等着。
+ *
+ * 为什么不干脆一张 1000 多格：截图里一格就剩十几个像素，抗锯齿和纹理过滤把中心都吃掉了。
+ */
+export const DENSE_COLS = 24;
+export const DENSE_ROWS = 16;
+export const DENSE_PAGES = 3;
+const DENSE_MARKERS: RGB[] = [[255, 0, 0], [0, 255, 0], [0, 0, 255]];
+const DENSE_SLOTS = DENSE_COLS * DENSE_ROWS - GRAYS.length - 2;
+
+const DENSE_PATCHES: RGB[] = (() => {
+  const out: RGB[] = [];
+  const seen = new Set<string>();
+  const push = (c: RGB) => {
+    const k = c.join(',');
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(c);
+  };
+  for (const v of GRAYS) seen.add(`${v},${v},${v}`); // 灰阶每页都有，不再重复
+  const STEP = 255 / 9;
+  const lv = Array.from({ length: 10 }, (_, i) => Math.round(i * STEP));
+  for (const r of lv) for (const g of lv) for (const b of lv) push([r, g, b]);
+  for (const c of BASE_PATCHES) push(c);
+  // 半步点：格点之间的中点，只取低饱和区（最大最小通道差 ≤ 64），按离中性轴由近到远
+  const half = Array.from({ length: 9 }, (_, i) => Math.round((i + 0.5) * STEP));
+  const cand: RGB[] = [];
+  for (const r of half) for (const g of half) for (const b of half) {
+    if (Math.max(r, g, b) - Math.min(r, g, b) <= 64) cand.push([r, g, b]);
+  }
+  cand.sort((a, b) => Math.max(...a) - Math.min(...a) - (Math.max(...b) - Math.min(...b)));
+  for (const c of cand) {
+    if (out.length >= DENSE_SLOTS * DENSE_PAGES) break;
+    push(c);
+  }
+  return out;
+})();
+
+/** 第 page 张密集色卡上的全部格子（含灰阶、页码标记、对齐校验） */
+export function densePatches(page: number): RGB[] {
+  const body = DENSE_PATCHES.slice(page * DENSE_SLOTS, (page + 1) * DENSE_SLOTS);
+  while (body.length < DENSE_SLOTS) body.push([128, 128, 128]);
+  return [...GRAYS.map((v) => [v, v, v] as RGB), DENSE_MARKERS[page], ...body, ALIGN_CHECK];
+}
+
+/** 密集色卡总共实测多少个颜色（不含灰阶、标记和校验格） */
+export const DENSE_TOTAL = DENSE_PATCHES.length;
+
+export function drawDenseChart(canvas: HTMLCanvasElement, page: number, size = 2048) {
+  drawGrid(canvas, size, DENSE_COLS, DENSE_ROWS, densePatches(page));
 }
 
 const MISALIGNED =
   '色卡取样对不上。请重新点「导出色卡棱柱」拿一张新色卡（排版更新过，旧色卡不能用），正对着重截一张图';
 
 export type Sample = { ref: RGB; got: RGB };
-export type SampleResult = { ok: boolean; reason?: string; samples: Sample[] };
+export type SampleResult = {
+  ok: boolean;
+  reason?: string;
+  samples: Sample[];
+  /** 识别为密集色卡的第几张（0 起）；普通色卡没有这一项 */
+  densePage?: number;
+};
 
 type Pt = { x: number; y: number };
 
@@ -257,6 +328,39 @@ export function sampleChart(shot: ImageBitmap): SampleResult {
  * 却一直零测试覆盖，只能靠人在浏览器里手动转角度试。现在测试可以直接合成像素喂进来。
  */
 export function sampleChartPixels(d: Uint8ClampedArray, w: number, h: number): SampleResult {
+  // 先按密集色卡试：密集页的开头是灰阶 + 页码标记，标记格的主通道认得出是哪一页；
+  // 普通色卡用密集网格去量，对齐校验格必然对不上，会自然落到下面那条路。
+  const dense = sampleGrid(d, w, h, DENSE_COLS, DENSE_ROWS, densePatches(0));
+  if (dense.ok) {
+    const m = dense.samples[GRAYS.length].got;
+    const page = DENSE_MARKERS.findIndex((mk) => {
+      const dom = mk.indexOf(255);
+      return m[dom] > 150 && m[dom] > 1.6 * Math.max(...m.filter((_, i) => i !== dom));
+    });
+    if (page >= 0) {
+      // 用对应页的真实 ref 重新配对（上面是拿第 0 页的 ref 量的，位置一样、ref 不同）
+      const refs = densePatches(page);
+      const samples = dense.samples.map((s, i) => ({ ref: refs[i], got: s.got }));
+      // 标记格和校验格不进档（不是要测的颜色）；灰阶留着 —— 拟合曲线要靠它，
+      // 三页收齐合并时按 ref 去重
+      return {
+        ok: true,
+        densePage: page,
+        samples: samples.filter((_, i) => i !== GRAYS.length && i !== samples.length - 1),
+      };
+    }
+  }
+  return sampleGrid(d, w, h, COLS, ROWS, chartPatches());
+}
+
+function sampleGrid(
+  d: Uint8ClampedArray,
+  w: number,
+  h: number,
+  COLS: number,
+  ROWS: number,
+  patches: RGB[],
+): SampleResult {
 
   // 品红像素的四个「极点」。取 x+y / x−y 的极值，等于沿着四条 45° 方向找最外面的点 ——
   // 对于一个被透视压成梯形的矩形，这四个点就是它的四个角。包围盒做不到这一点：
@@ -359,7 +463,7 @@ export function sampleChartPixels(d: Uint8ClampedArray, w: number, h: number): S
   }
 
   const N = 5; // 每个格子取 5×5 个点，落在中间 50% 里
-  const samples: Sample[] = chartPatches().map((ref, i) => {
+  const samples: Sample[] = patches.map((ref, i) => {
     const c = i % COLS;
     const r = (i / COLS) | 0;
     const u0 = GU + c * (cw + GU);

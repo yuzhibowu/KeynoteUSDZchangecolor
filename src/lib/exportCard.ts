@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { applyLift, makeCapMaterial, makeFaceMaterial } from './material';
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
-import { drawChart, setChartExtra, pickCovering, EXTRA_SLOTS, type RGB } from './chart';
+import { DENSE_PAGES, drawChart, drawDenseChart, setChartExtra, pickCovering, EXTRA_SLOTS, type RGB } from './chart';
 import { isIdentity, solveWritten } from './color';
 import { capGeometry, cardGeometry, prismSection, sideGeometry } from './geometry';
 import { MAX_SIDES, type Params } from './types';
@@ -82,13 +82,24 @@ const DEFAULT_PROBE: RGB[] = [
   [255, 200, 70], [250, 170, 90], [200, 150, 200], [150, 200, 220], [110, 110, 110],
 ];
 
+/**
+ * @param densePage 传了就是密集色卡的第几张（0 起）。密集色卡格子小，贴图用 2048，
+ *   否则截图里一格只剩十几个像素，抗锯齿把中心都吃掉了。
+ */
 export async function exportChartCard(
   params: Params,
   canvases?: HTMLCanvasElement[],
+  densePage?: number,
 ): Promise<{ blob: Blob; name: string }> {
-  if (canvases) setChartExtra(probeColorsFrom(canvases, params.sides, params));
+  const dense = densePage !== undefined;
+  if (canvases && !dense) setChartExtra(probeColorsFrom(canvases, params.sides, params));
   const canvas = document.createElement('canvas');
-  drawChart(canvas, 1024);
+  if (dense) drawDenseChart(canvas, densePage, 2048);
+  else drawChart(canvas, 1024);
+  const texSize = dense ? 2048 : 1024;
+  const fileName = dense
+    ? `keynote-dense-chart-${densePage + 1}of${DENSE_PAGES}-${Date.now().toString(36)}.usdz`
+    : `keynote-color-chart-${Date.now().toString(36)}.usdz`;
 
   const group = new THREE.Group();
   const disposables: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[] = [];
@@ -137,7 +148,7 @@ export async function exportChartCard(
     if (unlit) mat.emissive.set(edge);
     group.add(new THREE.Mesh(band, mat));
     disposables.push(mat, band);
-    return finish(group, disposables);
+    return finish(group, disposables, texSize, fileName);
   }
 
   for (let i = 0; i < sides; i++) {
@@ -168,7 +179,7 @@ export async function exportChartCard(
     }
   }
 
-  return finish(group, disposables);
+  return finish(group, disposables, texSize, fileName);
 }
 
 /** 和 viewer 里 averageColor 同一口径：整张缩到 32×32 取平均，含透明像素 */
@@ -195,10 +206,12 @@ function averageHex(src: HTMLCanvasElement): string {
 async function finish(
   group: THREE.Group,
   disposables: (THREE.BufferGeometry | THREE.Material | THREE.Texture)[],
+  texSize: number,
+  name: string,
 ): Promise<{ blob: Blob; name: string }> {
   group.updateMatrixWorld(true);
   const buffer = await new USDZExporter().parseAsync(group, {
-    maxTextureSize: 1024,
+    maxTextureSize: texSize,
     includeAnchoringProperties: true,
     quickLookCompatible: false,
   });
@@ -206,6 +219,6 @@ async function finish(
 
   return {
     blob: new Blob([buffer as unknown as BlobPart], { type: 'model/vnd.usdz+zip' }),
-    name: `keynote-color-chart-${Date.now().toString(36)}.usdz`,
+    name,
   };
 }
