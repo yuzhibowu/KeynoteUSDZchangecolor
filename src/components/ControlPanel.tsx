@@ -76,8 +76,6 @@ export function ControlPanel({
   sizeText,
   busy,
 }: Props) {
-  // Safari 没有 showSaveFilePicker，导出只能落到「下载」文件夹 —— 先说清楚，免得用户找不到文件
-  const canPickFolder = typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
 
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
   const recolorInput = useRef<HTMLInputElement>(null);
@@ -532,11 +530,7 @@ export function ControlPanel({
             <span>预估大小</span>
             <b>{sizeText}</b>
           </div>
-          {!canPickFolder && (
-            <p className="hint tight">
-              这个浏览器不支持选择保存位置，文件会直接存进「下载」文件夹。想自己选位置就用 Chrome。
-            </p>
-          )}
+          <p className="hint tight">文件直接存进「下载」文件夹，不弹保存框。</p>
           <button className="btn-primary" onClick={onExport} disabled={busy !== null}>
             {busy ?? '导出 USDZ'}
           </button>

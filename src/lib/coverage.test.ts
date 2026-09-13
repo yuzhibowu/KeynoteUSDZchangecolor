@@ -70,10 +70,13 @@ describe('覆盖诊断', () => {
   });
 
   it('只有一小部分颜色没覆盖时，是提醒而不是报警', () => {
-    const anchor = DEFAULT_COMP.samples![0].ref as Triple;
+    // 内置档现在是密集的，整个色域都有实测点，拿它造不出「没覆盖」——
+    // 用一份只有一个锚点的稀疏档来造这个场景
+    const anchor: Triple = [0, 0, 0];
+    const sparse: ColorComp = { ...DEFAULT_COMP, samples: [{ ref: anchor, got: [15, 15, 15] }] };
     // 九成像素落在锚点上，一成是没覆盖的怪色
     const d = twoTone([anchor[0], anchor[1], anchor[2]], [250, 120, 200], 0.9, 2000);
-    const r = coverageOf(d, DEFAULT_COMP, 6);
+    const r = coverageOf(d, sparse, 6);
     expect(r.uncoveredShare).toBeLessThan(0.25);
     expect(coverageVerdict(r).level).toBe('warn');
   });

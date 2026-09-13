@@ -92,10 +92,10 @@ describe('局部修正必须是插值，不能退回加权平均', () => {
       { ref: [130, 200, 70], got: [171, 238, 96] },
       { ref: [30, 60, 150], got: [44, 92, 214] },
     ];
-    const tuned: ColorComp = {
-      ...DEFAULT_COMP,
-      samples: [...(DEFAULT_COMP.samples ?? []), ...pts],
-    };
+    // 这条测的是插值这个性质本身，所以用只有这几个锚点的稀疏档。
+    // 内置档现在是密集的（相邻 28 阶），叠在它上面的话，新锚点 18 阶半径里本来就有
+    // 实测点，岭正则会在两者之间折中（实测 2~3 阶）—— 那是另一回事，不该混在这里。
+    const tuned: ColorComp = { ...DEFAULT_COMP, samples: pts };
     for (const a of pts) {
       const y = forwardOf(a.ref[0], a.ref[1], a.ref[2], tuned);
       const d = Math.max(...[0, 1, 2].map((i) => Math.abs(y[i] - a.got[i])));
@@ -110,10 +110,7 @@ describe('局部修正必须是插值，不能退回加权平均', () => {
       { ref: [204, 99, 44], got: [240, 150, 30] },
       { ref: [199, 102, 47], got: [232, 160, 48] },
     ];
-    const tuned: ColorComp = {
-      ...DEFAULT_COMP,
-      samples: [...(DEFAULT_COMP.samples ?? []), ...cluster],
-    };
+    const tuned: ColorComp = { ...DEFAULT_COMP, samples: cluster };
     for (const a of cluster) {
       const y = forwardOf(a.ref[0], a.ref[1], a.ref[2], tuned);
       const d = Math.max(...[0, 1, 2].map((i) => Math.abs(y[i] - a.got[i])));
@@ -136,9 +133,9 @@ describe('局部修正必须是插值，不能退回加权平均', () => {
 });
 
 describe('内置校准档的质量', () => {
-  it('是 117 格那一份，不是早期 70 格 / 24 格的', () => {
-    // 24 格那份暗部整段空白，深红开箱即用会差 33 阶
-    expect(BUILT_IN_PROFILE.samples.length).toBe(117);
+  it('是密集 1130 格那一份，不是早期 117 / 70 / 24 格的', () => {
+    // 24 格那份暗部整段空白，深红开箱即用会差 33 阶；117 格相邻 85 阶，格点之间靠外推
+    expect(BUILT_IN_PROFILE.samples.length).toBe(1130);
     expect(DEFAULT_COMP.calibratedLift).toBe(0.5);
     expect(DEFAULT_COMP.calibratedUnlit).toBe(false);
   });

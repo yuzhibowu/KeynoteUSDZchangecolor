@@ -5,7 +5,7 @@ import { RecolorPane } from './components/RecolorPane';
 import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
-import { CANCELLED, download, exportUsdz, formatBytes, openSaveTarget, usdzFileName } from './lib/exportUsdz';
+import { download, exportUsdz, formatBytes } from './lib/exportUsdz';
 import { yieldToBrowser } from './lib/yieldToBrowser';
 import { applyTheme, isDark, loadTheme, type Theme } from './lib/theme';
 import { exportChartCard } from './lib/exportCard';
@@ -541,10 +541,8 @@ export default function App() {
   const handleExport = useCallback(async () => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-    // 先问存哪儿，并在同一个手势里就把可写句柄拿到 —— 拖到烘焙打包之后再拿，手势就过期了。
-    // 这样点一下就弹保存框，选完位置才开始干活，最后提示「已保存」。
-    const target = await openSaveTarget(usdzFileName(params.sides));
-    if (target === CANCELLED) return;
+    // 不再弹保存框，直接存进「下载」文件夹（用户要求：每次导出都要选位置太烦）。
+    // 保存框那套（exportUsdz.ts 里的 openSaveTarget）留着没删，想改回去照它的注释接回来。
     setBusy('导出中…');
     setStatus(null);
     // 烘补偿贴图会让预览和缩略图整体变暗 —— 那是「Keynote 里才该出现」的像素，
@@ -578,24 +576,15 @@ export default function App() {
       const note = isIdentity(params.color)
         ? ' · 未套用颜色补偿（「偏色抵消」是关的）'
         : ' · 已套用颜色补偿';
-      if (target) {
-        await target.write(blob);
-        await target.close();
-        setLastFile(null);
-        setStatus(`已保存 ${name} · ${formatBytes(blob.size)}${note}`);
-      } else {
-        // 没有保存对话框的浏览器（Safari 就没有）：退回下载。
-        // 一定要说清楚文件去哪了 —— 只说「已导出」，用户会以为能自己选位置，
-        // 结果满世界找不到文件。浏览器有时还会静默拦掉连续下载，
-        // 所以把这一份留着，点「再存一次」就是一次全新的手势，通常就放行了。
-        download(blob, name);
-        setLastFile({ blob, name });
-        setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)}${note}`);
-      }
+      // 一定要说清楚文件去哪了 —— 只说「已导出」，用户会满世界找文件。
+      // 浏览器有时还会静默拦掉连续下载，所以把这一份留着，
+      // 点「再存一次」就是一次全新的手势，通常就放行了。
+      download(blob, name);
+      setLastFile({ blob, name });
+      setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)}${note}`);
       // 烘回不带补偿的版本，视口继续显示「Keynote 里应有的样子」
       await store.bakeAllAsync(faces, { ...base, compensate: false });
     } catch (err) {
-      if (target) await target.abort().catch(() => undefined);
       setStatus(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       viewer.setPaused(false);
