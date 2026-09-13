@@ -552,7 +552,11 @@ export default function App() {
       setBusy('打包中…（面多、分辨率高会慢一点）');
       await yieldToBrowser();
       const { blob, name } = await exportUsdz(viewer, store, params);
-      const note = isIdentity(params.color) ? '' : ' · 已套用颜色补偿';
+      // 校正关着的时候必须明说。原来关着就什么都不提，用户以为照常补偿了，
+      // 导进 Keynote 一看整张偏色，回头查了半天模型 —— 其实是勾没打上。
+      const note = isIdentity(params.color)
+        ? ' · 未套用颜色补偿（「偏色抵消」是关的）'
+        : ' · 已套用颜色补偿';
       if (target) {
         await target.write(blob);
         await target.close();

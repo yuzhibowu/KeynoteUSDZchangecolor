@@ -18,7 +18,7 @@ type Persisted = { params: Params; transforms: (FaceTransform & { hidden?: boole
  * 想彻底不补偿只有一个入口：把 on 关掉。
  * 别的目标本来就可能没校准过，空着是正常状态，不能拿 Keynote 的档去顶。
  */
-function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorComp {
+export function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorComp {
   // 每个目标的出厂默认都从 defaultProfiles 拿，别在这儿再写一份
   const base = defaultProfiles()[id];
   const merged = { ...base, ...(raw ?? {}) };
@@ -29,7 +29,22 @@ function reviveComp(id: TargetId, raw: Partial<ColorComp> | undefined): ColorCom
   if (!merged.matrix || !merged.curve) {
     return { ...base, on: merged.on };
   }
+  // 存档里是**旧版内置档**（标签写着「内置」，但矩阵/曲线和现在代码里的对不上）：
+  // 也换成当前内置档。否则 70 格、175 格那些老档会一直盖住新的 117 格档，
+  // 用户根本不知道自己一直在用旧标定，只觉得「怎么还是不准」——
+  // 只有手点「恢复内置校准」才换过来，实测就栽在这里。
+  // 用户在当前内置档上做过闭环微调的（标签不变、只多了 samples）矩阵是一样的，不会被误伤。
+  if (isBuiltInLabel(merged.calibratedAt) && !sameCalibration(merged, base)) {
+    return { ...base, on: merged.on };
+  }
   return merged;
+}
+
+const isBuiltInLabel = (label: string | null | undefined) => !!label && label.startsWith('内置');
+
+function sameCalibration(a: ColorComp, b: ColorComp): boolean {
+  const key = (c: ColorComp) => JSON.stringify([c.matrix, c.offset, c.curve]);
+  return key(a) === key(b);
 }
 
 /** 只存参数和 face transform，图片本体不存（太大） */
