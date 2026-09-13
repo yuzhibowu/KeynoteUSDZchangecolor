@@ -77,12 +77,11 @@ export function load(): Persisted | null {
     // 材质回来了（第二次）。老存档里 material 是 'paper1' / 'metal3' 这类旧 id，
     // 认不得的一律落回「纸张」—— 它就是校准条件，别让一个旧 id 把颜色带偏。
     if (!MATERIALS.some((m) => m.id === params.material)) params.material = DEFAULT_MATERIAL;
-    // 嵌套对象浅合并会把新加的字段丢掉，逐份补齐
-    params.previewTune = { ...DEFAULT_PREVIEW_TUNE, ...(parsed.params?.previewTune ?? {}) };
-    // 主光的参数结构改过两次（光带宽度 → 圆盘半径 → 椭圆宽高）；缺字段的旧值一律落回默认
-    if (typeof params.previewTune.sizeW !== 'number' || typeof params.previewTune.elev !== 'number') {
-      params.previewTune = DEFAULT_PREVIEW_TUNE;
-    }
+    // 主光的参数结构和默认值改过几次（光带 → 圆盘 → 椭圆 → 按 11 张截图拟合）；
+    // 存档里的版本号对不上就整组落回默认。要看**存档原文**的 v，先合并再看永远是新的
+    const savedTune = parsed.params?.previewTune as Partial<Params['previewTune']> | undefined;
+    params.previewTune =
+      savedTune && savedTune.v === DEFAULT_PREVIEW_TUNE.v ? { ...DEFAULT_PREVIEW_TUNE, ...savedTune } : DEFAULT_PREVIEW_TUNE;
     const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),

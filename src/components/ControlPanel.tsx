@@ -441,8 +441,8 @@ export function ControlPanel({
                 {/* 临时调杆：只调视口里的观感，往 Keynote 那种柔和的影棚光靠。一个都不进文件。
                     用户调到满意后把下面这行数值发回来写死，这一块就撤。 */}
                 <p className="hint tight">
-                  <b>预览调校（只影响视口，不进文件）。</b>把反光调到和 Keynote 里一样柔和，
-                  然后把这行数值发给我：
+                  <b>预览调校（只影响视口，不进文件）。</b>默认值是按 11 张 Keynote 截图拟合的；
+                  觉得还差就微调，然后把这行数值发给我：
                   <code>
                     {' '}env {params.previewTune.env.toFixed(2)} · elev {params.previewTune.elev} · azim {params.previewTune.azim} · sizeW{' '}
                     {params.previewTune.sizeW} · sizeH {params.previewTune.sizeH} · direct {params.previewTune.direct.toFixed(2)} · exposure{' '}

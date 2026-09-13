@@ -41,6 +41,11 @@ function shortestTo(current: number, target: number): number {
 // 默认就正对第 0 面 —— 和导出时归零的姿态一致，
 // 免得视口里是斜的、进了 Keynote 又是正的，两头对不上。
 const DEFAULT_YAW = 0;
+/** 拟合出的环境：均匀底光、主光幅度、主光倾斜（见 DEFAULT_PREVIEW_TUNE 注释），以及贴图编码用的缩放 */
+const ENV_BASE = 0.8;
+const ENV_LOBE = 0.61;
+const ENV_TILT_DEG = -12;
+const ENV_SCALE = 2.2;
 const DEFAULT_SPIN = 0.22;
 
 export class PrismViewer {
@@ -120,7 +125,9 @@ export class PrismViewer {
     this.renderer.domElement.style.touchAction = 'none';
 
     // 相机固定：正对 +Z，只在几何变化时调距离让物体占满画面
-    this.camera = new THREE.PerspectiveCamera(34, 1, 0.005, 100);
+    // 视角 60°：Keynote 的相机离卡片只有约 1.15 个卡宽（从截图梯形比例算的），透视很强，
+    // 反光在卡片上扫过的位置取决于这个距离。34° 时我们离 2.4 个卡宽，高光位置对不上。
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.005, 100);
     this.camera.position.set(0, 0, 0.4);
     this.camera.lookAt(0, 0, 0);
 
@@ -591,12 +598,12 @@ export class PrismViewer {
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
   /**
-   * 预览用的「软影棚」环境：自己画的等距柱状图 —— 上亮下暗的底渐变，加**一块可定位的大柔光**。
+   * 预览用的「软影棚」环境：自己画的等距柱状图 —— 均匀底光 + 一块可定位的椭圆柔光。
+   * 形状和位置是用 11 张 Keynote 截图拟合出来的，见 DEFAULT_PREVIEW_TUNE 的注释。
    *
-   * 不用 RoomEnvironment：它是个带几块极亮小灯板的房间，卡片是一整块平面，镜面只反射
-   * 一个方向，正对灯板时整张一起爆白。也不用环绕一圈的水平光带（上一版），那和 Keynote
-   * 的布光对不上。从 Keynote 截图反推：主光是一块贴着镜头、略高略偏右的大面积柔光
-   * （见 DEFAULT_PREVIEW_TUNE 的注释）。
+   * 数值的口径：拟合出来的是「截图亮度 / 贴图反照率」这个 sRGB 域的倍率 r
+   * （底光 0.8，光斑中心 1.4）。渲染是在线性域相乘，所以贴图里存的是 r^2.2 / K，
+   * envMapIntensity 再乘回 K（K = ENV_SCALE），峰值才能超过 1 而不被 8 位贴图截掉。
    *
    * 视口相机固定在 +Z 看向原点，所以「相对镜头」= 相对世界 +Z。three 的等距柱状图：
    * u = atan2(z, x) / 2π + 0.5，v = asin(y) / π + 0.5，+Z 落在 u = 0.75。
@@ -615,18 +622,20 @@ export class PrismViewer {
       const az = (azimDeg * Math.PI) / 180;
       // 主光中心方向：从 +Z（镜头那边）抬 el、向 +X 转 az
       const L = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
-      // 主光是椭圆的：在它自己的局部坐标里量横向 / 纵向偏角，各用各的宽度
+      // 主光是椭圆的：在它自己的局部坐标里量横向 / 纵向偏角，各用各的宽度；整体带一点倾斜
       const up0 = new THREE.Vector3(0, 1, 0);
-      const right = new THREE.Vector3().crossVectors(up0, L).normalize(); // 光的「横向」
-      const up = new THREE.Vector3().crossVectors(L, right).normalize(); // 光的「纵向」
+      const right0 = new THREE.Vector3().crossVectors(up0, L).normalize();
+      const up1 = new THREE.Vector3().crossVectors(L, right0).normalize();
+      const tilt = (ENV_TILT_DEG * Math.PI) / 180;
+      const right = right0.clone().multiplyScalar(Math.cos(tilt)).addScaledVector(up1, Math.sin(tilt));
+      const up = right0.clone().multiplyScalar(-Math.sin(tilt)).addScaledVector(up1, Math.cos(tilt));
       const sw = (wDeg * Math.PI) / 180;
       const sh = (hDeg * Math.PI) / 180;
       const dir = new THREE.Vector3();
+      const toSrgb = (lin: number) => (lin <= 0.0031308 ? lin * 12.92 : 1.055 * Math.pow(lin, 1 / 2.4) - 0.055);
       for (let y = 0; y < H; y++) {
         const v = y / (H - 1); // three 的 v：0 = 地面，1 = 天顶
         const phi = (v - 0.5) * Math.PI; // 仰角
-        // 底渐变：天顶 0.9 → 地面 0.3
-        const base = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(phi));
         for (let x = 0; x < W; x++) {
           const u = x / W;
           const theta = (u - 0.5) * 2 * Math.PI; // atan2(z, x)
@@ -634,8 +643,8 @@ export class PrismViewer {
           const dAz = Math.atan2(dir.dot(right), Math.max(1e-6, dir.dot(L)));
           const dEl = Math.asin(Math.max(-1, Math.min(1, dir.dot(up))));
           const behind = dir.dot(L) < 0 ? 0 : 1; // 背面半球不发光
-          const light = 0.7 * behind * Math.exp(-((dAz * dAz) / (2 * sw * sw) + (dEl * dEl) / (2 * sh * sh)));
-          const val = Math.round(255 * Math.min(1, base + light));
+          const ratio = ENV_BASE + ENV_LOBE * behind * Math.exp(-((dAz * dAz) / (2 * sw * sw) + (dEl * dEl) / (2 * sh * sh)));
+          const val = Math.round(255 * Math.min(1, toSrgb(Math.pow(ratio, 2.2) / ENV_SCALE)));
           const i = ((H - 1 - y) * W + x) * 4; // 画布 y 向下，贴图 v 向上
           img.data[i] = val;
           img.data[i + 1] = val;
@@ -678,7 +687,7 @@ export class PrismViewer {
       m.envMap = want;
       m.needsUpdate = true;
     }
-    m.envMapIntensity = want ? tune.env : 1;
+    m.envMapIntensity = want ? tune.env * ENV_SCALE : 1;
   }
 
   private applyPreviewLights() {
