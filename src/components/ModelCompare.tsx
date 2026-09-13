@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { USDLoader } from '../vendor/USDLoader.js';
 import { applyForwardToImageData, type ColorComp } from '../lib/color';
 import { normalizeUsdzForLoader } from '../lib/recolor';
+import { STUDIO_ENV_INTENSITY, makeStudioEnvironment } from '../lib/studioEnv';
 
 /**
  * 校正前 / 校正后的**模型**对比。
@@ -88,6 +89,12 @@ function makeScene(container: HTMLDivElement) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
+  // 别人的模型什么材质都有。金属只反射环境，没环境就一片黑 —— 用户导入一块
+  // 金属度 1 的长方体，预览里只剩个暗红影子，就是栽在这里。挂上按 Keynote 拟合的影棚环境，
+  // 强度也用同一份，两边看起来才是一回事。
+  const env = makeStudioEnvironment(renderer);
+  scene.environment = env;
+  scene.environmentIntensity = STUDIO_ENV_INTENSITY;
   // 和主视口同一套布光，免得两边看起来不是一回事
   scene.add(new THREE.AmbientLight(0xffffff, 1.6));
   const key = new THREE.DirectionalLight(0xffffff, 1.5);
