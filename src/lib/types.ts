@@ -149,11 +149,6 @@ export type Params = {
   /** 表面材质。「纸张」是校准条件，颜色只对它精确 */
   material: MaterialId;
   /**
-   * 预览调校（临时的调杆）：只影响视口里非纸张材质的观感，不进文件。
-   * 用户调到「像 Keynote」之后把数值写死，这组滑杆就撤掉。
-   */
-  previewTune: PreviewTune;
-  /**
    * 卡片「适应」：比例和圆角都跟着正面那张图走（按不透明区域算），
    * 而不是手选一个预设。开着时预设按钮和圆角滑杆都让位。
    */
@@ -182,46 +177,6 @@ export type Params = {
   /** 每个「目标 App × 模型类型」各一份校准档；color 是当前生效的那一份 */
   profiles: Record<ProfileKey, ColorComp>;
   color: ColorComp; // 导出时烘进贴图的颜色预补偿
-};
-
-export type PreviewTune = {
-  /** 参数结构版本：改了含义就加一，旧存档整组落回默认 */
-  v: number;
-  /** 环境贴图强度（反射有多亮） */
-  env: number;
-  /** 主光横向角半径（度）：越大左右摆动时反光扫得越久 */
-  sizeW: number;
-  /** 主光纵向角半径（度）：越大上下俯仰时反光留得越久 */
-  sizeH: number;
-  /** 主光相对镜头轴线的仰角（度，正 = 在上方） */
-  elev: number;
-  /** 主光相对镜头轴线的方位（度，正 = 在右侧） */
-  azim: number;
-  /** 三盏直射光的倍率（硬高光主要来自它们） */
-  direct: number;
-  /** 色调映射曝光；0 = 不做色调映射 */
-  exposure: number;
-};
-
-/**
- * 默认值是用 11 张 Keynote 截图**拟合**出来的（2026-09-13，金属卡片，X/Y 各扫一遍）：
- * 每张先找四个角把画面映射回卡片坐标，用原图反照率除掉贴图自身明暗，再按已知旋转角
- * 和相机距离（从梯形比例算出 d/W ≈ 1.15）求每个采样点的反射方向，4000 多个点一起拟合。
- * 结果：主光在镜头轴线上方 21.8°、左侧 16.0°，角半径约 14°（近圆，略倾斜 -12°），
- * 幅度 0.61；底光几乎均匀 0.8 —— 金属永远不会黑、整体柔和就是它。rmse 0.12。
- * 然后把视口自己的渲染按同样的方法量一遍、和 Keynote 的 4000 多个点逐点比（rmse 从 0.139
- * 降到 0.105），定下 env 1.3、横 15° / 纵 12°：拟合出的 14° 是「光的大小 ⊗ 粗糙度 0.3 的模糊」，
- * 但视口的 PMREM 模糊和 Keynote 的不一样，所以最终以逐点比对为准，不以解析拟合为准。
- */
-export const DEFAULT_PREVIEW_TUNE: PreviewTune = {
-  v: 3,
-  env: 1.3,
-  sizeW: 15,
-  sizeH: 12,
-  elev: 22,
-  azim: -16,
-  direct: 0,
-  exposure: 0,
 };
 
 export const DEFAULT_TRANSFORM: FaceTransform = {
@@ -284,7 +239,6 @@ export const DEFAULT_PARAMS: Params = {
   capMode: 'solid',
   edgeAuto: true,
   material: DEFAULT_MATERIAL,
-  previewTune: DEFAULT_PREVIEW_TUNE,
   fitFront: true,
   capColorRight: '#d9d9de',
   capColorLeft: '#d9d9de',

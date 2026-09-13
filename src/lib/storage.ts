@@ -1,6 +1,6 @@
 import { type ColorComp } from './color';
 import { DEFAULT_MATERIAL, MATERIALS } from './material';
-import { DEFAULT_PARAMS, DEFAULT_PREVIEW_TUNE, DEFAULT_TRANSFORM, MAX_SLOTS, PROFILE_KEYS, TARGETS, defaultProfiles, profileKey, type FaceTransform, type Params, type ProfileKey, type TargetId } from './types';
+import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, PROFILE_KEYS, TARGETS, defaultProfiles, profileKey, type FaceTransform, type Params, type ProfileKey, type TargetId } from './types';
 
 /**
  * 存档键带版本号。参数结构变了（长度/粗细改成像素、分辨率换档位、端面多了镂空、
@@ -77,11 +77,8 @@ export function load(): Persisted | null {
     // 材质回来了（第二次）。老存档里 material 是 'paper1' / 'metal3' 这类旧 id，
     // 认不得的一律落回「纸张」—— 它就是校准条件，别让一个旧 id 把颜色带偏。
     if (!MATERIALS.some((m) => m.id === params.material)) params.material = DEFAULT_MATERIAL;
-    // 主光的参数结构和默认值改过几次（光带 → 圆盘 → 椭圆 → 按 11 张截图拟合）；
-    // 存档里的版本号对不上就整组落回默认。要看**存档原文**的 v，先合并再看永远是新的
-    const savedTune = parsed.params?.previewTune as Partial<Params['previewTune']> | undefined;
-    params.previewTune =
-      savedTune && savedTune.v === DEFAULT_PREVIEW_TUNE.v ? { ...DEFAULT_PREVIEW_TUNE, ...savedTune } : DEFAULT_PREVIEW_TUNE;
+    // 预览布光的调杆已经撤了，值写死在 viewer 里；老存档里的 previewTune 直接丢掉
+    delete (params as Record<string, unknown>).previewTune;
     const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),

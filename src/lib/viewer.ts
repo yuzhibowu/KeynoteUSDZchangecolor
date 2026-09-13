@@ -41,10 +41,25 @@ function shortestTo(current: number, target: number): number {
 // 默认就正对第 0 面 —— 和导出时归零的姿态一致，
 // 免得视口里是斜的、进了 Keynote 又是正的，两头对不上。
 const DEFAULT_YAW = 0;
-/** 拟合出的环境：均匀底光、主光幅度、主光倾斜（见 DEFAULT_PREVIEW_TUNE 注释），以及贴图编码用的缩放 */
+/**
+ * 预览布光（只影响视口里非纸张材质，不进文件）。用 11 张 Keynote 截图拟合出来的
+ * （2026-09-13，金属卡片，X/Y 各扫一遍）：每张找四个角映射回卡片坐标，用原图反照率
+ * 除掉贴图自身明暗，按已知旋转角和相机距离（梯形比例算出 d/W ≈ 1.15）求每点反射方向，
+ * 4000 多个点一起拟合。主光在镜头轴线上方 21.8°、左侧 16.0°，角半径约 14°，幅度 0.61；
+ * 底光几乎均匀 0.8 —— 金属永远不会黑、整体柔和就是它。
+ * 再把视口自己的渲染用同样方法量一遍、逐点和 Keynote 比（rmse 0.139 → 0.105），
+ * 定下强度 1.3、横 15° / 纵 12°。拟合出的 14° 是「光的大小 ⊗ 粗糙度 0.3 的模糊」，
+ * 视口的 PMREM 模糊和 Keynote 不一样，所以以逐点比对为准。用户实拍确认「非常好」。
+ */
 const ENV_BASE = 0.8;
 const ENV_LOBE = 0.61;
 const ENV_TILT_DEG = -12;
+const ENV_ELEV_DEG = 22;
+const ENV_AZIM_DEG = -16;
+const ENV_SIZE_W_DEG = 15;
+const ENV_SIZE_H_DEG = 12;
+const ENV_INTENSITY = 1.3;
+/** 贴图编码用的缩放：存 r^2.2 / K，envMapIntensity 乘回 K，峰值才能超过 1 */
 const ENV_SCALE = 2.2;
 const DEFAULT_SPIN = 0.22;
 
@@ -53,7 +68,6 @@ export class PrismViewer {
   readonly scene = new THREE.Scene();
   /** 预览用的环境贴图：金属 / 玻璃没有环境什么都反射不出来，一片黑。只给预览，导出器不写它 */
   private envMap: THREE.Texture | null = null;
-  private envKey = '';
   private directLights: THREE.DirectionalLight[] = [];
   private directBase: number[] = [];
   readonly camera: THREE.PerspectiveCamera;
@@ -608,9 +622,12 @@ export class PrismViewer {
    * 视口相机固定在 +Z 看向原点，所以「相对镜头」= 相对世界 +Z。three 的等距柱状图：
    * u = atan2(z, x) / 2π + 0.5，v = asin(y) / π + 0.5，+Z 落在 u = 0.75。
    */
-  private environment(key: string, elevDeg: number, azimDeg: number, wDeg: number, hDeg: number): THREE.Texture {
-    if (!this.envMap || this.envKey !== key) {
-      this.envMap?.dispose();
+  private environment(): THREE.Texture {
+    if (!this.envMap) {
+      const elevDeg = ENV_ELEV_DEG;
+      const azimDeg = ENV_AZIM_DEG;
+      const wDeg = ENV_SIZE_W_DEG;
+      const hDeg = ENV_SIZE_H_DEG;
       const W = 512;
       const H = 256;
       const c = document.createElement('canvas');
@@ -660,52 +677,30 @@ export class PrismViewer {
       this.envMap = pmrem.fromEquirectangular(tex).texture;
       pmrem.dispose();
       tex.dispose();
-      this.envKey = key;
     }
     return this.envMap;
   }
 
   /**
-   * 纸张不挂环境、不动灯、不做色调映射 —— 预览和校准时一模一样。
-   * 别的材质挂上环境才看得出质感，同时按 previewTune 调环境强度 / 直射光 / 色调映射，
-   * 往 Keynote 那种柔和的影棚光靠。这些只影响视口，一个都不进文件。
+   * 纸张不挂环境、不动灯 —— 预览和校准时一模一样。
+   * 别的材质挂上按 Keynote 拟合出来的环境（见文件顶部 ENV_* 常量）。只影响视口，不进文件。
    */
   private applyEnv(m: THREE.MeshPhysicalMaterial) {
-    const p = this.state!.params;
-    const tune = p.previewTune;
-    const want =
-      p.material === 'paper'
-        ? null
-        : this.environment(
-            `${tune.elev}|${tune.azim}|${tune.sizeW}|${tune.sizeH}`,
-            tune.elev,
-            tune.azim,
-            tune.sizeW,
-            tune.sizeH,
-          );
+    const want = this.state!.params.material === 'paper' ? null : this.environment();
     if (m.envMap !== want) {
       m.envMap = want;
       m.needsUpdate = true;
     }
-    m.envMapIntensity = want ? tune.env * ENV_SCALE : 1;
+    m.envMapIntensity = want ? ENV_INTENSITY * ENV_SCALE : 1;
   }
 
+  /**
+   * 纸张：三盏直射光照常（预览和校准时一模一样）。别的材质：直射光全关 ——
+   * 拟合 Keynote 的布光时不需要它们，留着只会在金属上加出 Keynote 没有的硬亮斑。
+   */
   private applyPreviewLights() {
-    const p = this.state!.params;
-    const paper = p.material === 'paper';
-    const k = paper ? 1 : p.previewTune.direct;
+    const k = this.state!.params.material === 'paper' ? 1 : 0;
     this.directLights.forEach((l, i) => (l.intensity = this.directBase[i] * k));
-    const tone = !paper && p.previewTune.exposure > 0;
-    const mapping = tone ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    if (this.renderer.toneMapping !== mapping) {
-      this.renderer.toneMapping = mapping;
-      // 色调映射是编译进着色器的，换了要让材质重编
-      this.sideMaterials.forEach((mat) => (mat.needsUpdate = true));
-      this.innerMaterials.forEach((mat) => (mat.needsUpdate = true));
-      this.capRightMat.needsUpdate = true;
-      this.capLeftMat.needsUpdate = true;
-    }
-    this.renderer.toneMappingExposure = tone ? p.previewTune.exposure : 1;
   }
 
   syncSideMaterials() {

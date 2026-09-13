@@ -10,7 +10,6 @@ import {
   MODEL_TYPES,
   type ModelType,
   DEFAULT_PARAMS,
-  DEFAULT_PREVIEW_TUNE,
   CARD_FRONT,
   type Mode,
   MAX_SIDES,
@@ -436,88 +435,6 @@ export function ControlPanel({
                 ? '「纸张」就是颜色校准时用的材质，颜色最准。'
                 : '颜色校准是按「纸张」标的；实测金属材质导出后 Keynote 里色准依然准。补光越高，质感越看不出来。'}
             </p>
-            {params.material !== 'paper' && (
-              <>
-                {/* 临时调杆：只调视口里的观感，往 Keynote 那种柔和的影棚光靠。一个都不进文件。
-                    用户调到满意后把下面这行数值发回来写死，这一块就撤。 */}
-                <p className="hint tight">
-                  <b>预览调校（只影响视口，不进文件）。</b>默认值是按 11 张 Keynote 截图拟合的；
-                  觉得还差就微调，然后把这行数值发给我：
-                  <code>
-                    {' '}env {params.previewTune.env.toFixed(2)} · elev {params.previewTune.elev} · azim {params.previewTune.azim} · sizeW{' '}
-                    {params.previewTune.sizeW} · sizeH {params.previewTune.sizeH} · direct {params.previewTune.direct.toFixed(2)} · exposure{' '}
-                    {params.previewTune.exposure.toFixed(2)}
-                  </code>
-                </p>
-                <Slider
-                  label="环境反射强度"
-                  reset={DEFAULT_PREVIEW_TUNE.env}
-                  value={params.previewTune.env}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, env: v } })}
-                />
-                <Slider
-                  label="主光仰角（正 = 镜头上方）"
-                  reset={DEFAULT_PREVIEW_TUNE.elev}
-                  value={params.previewTune.elev}
-                  min={-60}
-                  max={80}
-                  step={1}
-                  suffix="°"
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, elev: v } })}
-                />
-                <Slider
-                  label="主光方位（正 = 镜头右侧）"
-                  reset={DEFAULT_PREVIEW_TUNE.azim}
-                  value={params.previewTune.azim}
-                  min={-90}
-                  max={90}
-                  step={1}
-                  suffix="°"
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, azim: v } })}
-                />
-                <Slider
-                  label="主光横向宽度（角半径）"
-                  reset={DEFAULT_PREVIEW_TUNE.sizeW}
-                  value={params.previewTune.sizeW}
-                  min={3}
-                  max={80}
-                  step={1}
-                  suffix="°"
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, sizeW: v } })}
-                />
-                <Slider
-                  label="主光纵向高度（角半径）"
-                  reset={DEFAULT_PREVIEW_TUNE.sizeH}
-                  value={params.previewTune.sizeH}
-                  min={3}
-                  max={80}
-                  step={1}
-                  suffix="°"
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, sizeH: v } })}
-                />
-                <Slider
-                  label="直射光强度"
-                  reset={DEFAULT_PREVIEW_TUNE.direct}
-                  value={params.previewTune.direct}
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, direct: v } })}
-                />
-                <Slider
-                  label="色调映射曝光（0 = 关）"
-                  reset={DEFAULT_PREVIEW_TUNE.exposure}
-                  value={params.previewTune.exposure}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  onChange={(v) => patch({ previewTune: { ...params.previewTune, exposure: v } })}
-                />
-              </>
-            )}
           </div>
         </section>
 
