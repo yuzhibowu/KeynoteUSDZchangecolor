@@ -149,6 +149,11 @@ export type Params = {
   /** 表面材质。「纸张」是校准条件，颜色只对它精确 */
   material: MaterialId;
   /**
+   * 预览调校（临时的调杆）：只影响视口里非纸张材质的观感，不进文件。
+   * 用户调到「像 Keynote」之后把数值写死，这组滑杆就撤掉。
+   */
+  previewTune: PreviewTune;
+  /**
    * 卡片「适应」：比例和圆角都跟着正面那张图走（按不透明区域算），
    * 而不是手选一个预设。开着时预设按钮和圆角滑杆都让位。
    */
@@ -178,6 +183,19 @@ export type Params = {
   profiles: Record<ProfileKey, ColorComp>;
   color: ColorComp; // 导出时烘进贴图的颜色预补偿
 };
+
+export type PreviewTune = {
+  /** 环境贴图强度（反射有多亮） */
+  env: number;
+  /** 环境贴图模糊（PMREM 的 sigma：光源越糊，高光越柔） */
+  blur: number;
+  /** 三盏直射光的倍率（硬高光主要来自它们） */
+  direct: number;
+  /** 色调映射曝光；0 = 不做色调映射 */
+  exposure: number;
+};
+
+export const DEFAULT_PREVIEW_TUNE: PreviewTune = { env: 1, blur: 0.04, direct: 1, exposure: 0 };
 
 export const DEFAULT_TRANSFORM: FaceTransform = {
   offsetX: 0,
@@ -239,6 +257,7 @@ export const DEFAULT_PARAMS: Params = {
   capMode: 'solid',
   edgeAuto: true,
   material: DEFAULT_MATERIAL,
+  previewTune: DEFAULT_PREVIEW_TUNE,
   fitFront: true,
   capColorRight: '#d9d9de',
   capColorLeft: '#d9d9de',

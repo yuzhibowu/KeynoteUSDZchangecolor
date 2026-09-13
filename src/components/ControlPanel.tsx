@@ -10,6 +10,7 @@ import {
   MODEL_TYPES,
   type ModelType,
   DEFAULT_PARAMS,
+  DEFAULT_PREVIEW_TUNE,
   CARD_FRONT,
   type Mode,
   MAX_SIDES,
@@ -433,8 +434,58 @@ export function ControlPanel({
             <p className="hint tight">
               {params.material === 'paper'
                 ? '「纸张」就是颜色校准时用的材质，颜色最准。'
-                : '颜色校准是按「纸张」标的，这个材质在 Keynote 里颜色会有偏差；想要精确，就在这个材质下重新做一次密集标定。补光越高，质感越看不出来。'}
+                : '颜色校准是按「纸张」标的；实测金属材质导出后 Keynote 里色准依然准。补光越高，质感越看不出来。'}
             </p>
+            {params.material !== 'paper' && (
+              <>
+                {/* 临时调杆：只调视口里的观感，往 Keynote 那种柔和的影棚光靠。一个都不进文件。
+                    用户调到满意后把下面这行数值发回来写死，这一块就撤。 */}
+                <p className="hint tight">
+                  <b>预览调校（只影响视口，不进文件）。</b>把反光调到和 Keynote 里一样柔和，
+                  然后把这行数值发给我：
+                  <code>
+                    {' '}env {params.previewTune.env.toFixed(2)} · blur {params.previewTune.blur.toFixed(2)} · direct{' '}
+                    {params.previewTune.direct.toFixed(2)} · exposure {params.previewTune.exposure.toFixed(2)}
+                  </code>
+                </p>
+                <Slider
+                  label="环境反射强度"
+                  reset={DEFAULT_PREVIEW_TUNE.env}
+                  value={params.previewTune.env}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, env: v } })}
+                />
+                <Slider
+                  label="环境光源模糊"
+                  reset={DEFAULT_PREVIEW_TUNE.blur}
+                  value={params.previewTune.blur}
+                  min={0}
+                  max={1}
+                  step={0.02}
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, blur: v } })}
+                />
+                <Slider
+                  label="直射光强度"
+                  reset={DEFAULT_PREVIEW_TUNE.direct}
+                  value={params.previewTune.direct}
+                  min={0}
+                  max={1.5}
+                  step={0.05}
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, direct: v } })}
+                />
+                <Slider
+                  label="色调映射曝光（0 = 关）"
+                  reset={DEFAULT_PREVIEW_TUNE.exposure}
+                  value={params.previewTune.exposure}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onChange={(v) => patch({ previewTune: { ...params.previewTune, exposure: v } })}
+                />
+              </>
+            )}
           </div>
         </section>
 

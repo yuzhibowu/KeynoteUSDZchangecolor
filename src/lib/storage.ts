@@ -1,6 +1,6 @@
 import { type ColorComp } from './color';
 import { DEFAULT_MATERIAL, MATERIALS } from './material';
-import { DEFAULT_PARAMS, DEFAULT_TRANSFORM, MAX_SLOTS, PROFILE_KEYS, TARGETS, defaultProfiles, profileKey, type FaceTransform, type Params, type ProfileKey, type TargetId } from './types';
+import { DEFAULT_PARAMS, DEFAULT_PREVIEW_TUNE, DEFAULT_TRANSFORM, MAX_SLOTS, PROFILE_KEYS, TARGETS, defaultProfiles, profileKey, type FaceTransform, type Params, type ProfileKey, type TargetId } from './types';
 
 /**
  * 存档键带版本号。参数结构变了（长度/粗细改成像素、分辨率换档位、端面多了镂空、
@@ -77,6 +77,8 @@ export function load(): Persisted | null {
     // 材质回来了（第二次）。老存档里 material 是 'paper1' / 'metal3' 这类旧 id，
     // 认不得的一律落回「纸张」—— 它就是校准条件，别让一个旧 id 把颜色带偏。
     if (!MATERIALS.some((m) => m.id === params.material)) params.material = DEFAULT_MATERIAL;
+    // 嵌套对象浅合并会把新加的字段丢掉，逐份补齐
+    params.previewTune = { ...DEFAULT_PREVIEW_TUNE, ...(parsed.params?.previewTune ?? {}) };
     const transforms = Array.from({ length: MAX_SLOTS }, (_, i) => ({
       ...DEFAULT_TRANSFORM,
       ...(parsed.transforms?.[i] ?? {}),

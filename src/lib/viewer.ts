@@ -49,6 +49,9 @@ export class PrismViewer {
   readonly scene = new THREE.Scene();
   /** 预览用的环境贴图：金属 / 玻璃没有环境什么都反射不出来，一片黑。只给预览，导出器不写它 */
   private envMap: THREE.Texture | null = null;
+  private envBlur = -1;
+  private directLights: THREE.DirectionalLight[] = [];
+  private directBase: number[] = [];
   readonly camera: THREE.PerspectiveCamera;
   /** 承载旋转的分组：相机固定不动，转的是它 */
   readonly pivot = new THREE.Group();
@@ -128,6 +131,8 @@ export class PrismViewer {
     const bottom = new THREE.DirectionalLight(0xffffff, 0.35);
     bottom.position.set(0, -2, 0.5);
     this.scene.add(bottom);
+    this.directLights = [key, fill, bottom];
+    this.directBase = this.directLights.map((l) => l.intensity);
 
     this.scene.add(this.pivot);
     this.pivot.add(this.prism);
@@ -300,6 +305,7 @@ export class PrismViewer {
     const lift = this.liftNow();
     // 材质预设跟着 params.material 走：侧面、内面、端面、卡片窄边一套（导出走 syncSideMaterials 同样会套）
     const preview = !this.exportMode;
+    this.applyPreviewLights();
     applyMaterialPreset(this.capRightMat, params.material, true, preview);
     applyMaterialPreset(this.capLeftMat, params.material, true, preview);
     this.applyEnv(this.capRightMat);
@@ -559,22 +565,50 @@ export class PrismViewer {
    * 补光（自发光）只在导出时挂上 —— 视口的三条光和 Keynote 不是一套，
    * 再叠补光会显得过曝。所以 `liftNow()` 会看 `exportMode`。
    */
-  private environment(): THREE.Texture {
-    if (!this.envMap) {
+  /** 环境贴图按当前的模糊度生成；模糊度变了就重做（PMREM 的 sigma 决定光源有多糊） */
+  private environment(blur: number): THREE.Texture {
+    if (!this.envMap || this.envBlur !== blur) {
+      this.envMap?.dispose();
       const pmrem = new THREE.PMREMGenerator(this.renderer);
-      this.envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      this.envMap = pmrem.fromScene(new RoomEnvironment(), blur).texture;
       pmrem.dispose();
+      this.envBlur = blur;
     }
     return this.envMap;
   }
 
-  /** 纸张不挂环境（保持和校准时一模一样的预览），别的材质挂上才看得出质感 */
+  /**
+   * 纸张不挂环境、不动灯、不做色调映射 —— 预览和校准时一模一样。
+   * 别的材质挂上环境才看得出质感，同时按 previewTune 调环境强度 / 直射光 / 色调映射，
+   * 往 Keynote 那种柔和的影棚光靠。这些只影响视口，一个都不进文件。
+   */
   private applyEnv(m: THREE.MeshPhysicalMaterial) {
-    const want = this.state!.params.material === 'paper' ? null : this.environment();
+    const p = this.state!.params;
+    const tune = p.previewTune;
+    const want = p.material === 'paper' ? null : this.environment(tune.blur);
     if (m.envMap !== want) {
       m.envMap = want;
       m.needsUpdate = true;
     }
+    m.envMapIntensity = want ? tune.env : 1;
+  }
+
+  private applyPreviewLights() {
+    const p = this.state!.params;
+    const paper = p.material === 'paper';
+    const k = paper ? 1 : p.previewTune.direct;
+    this.directLights.forEach((l, i) => (l.intensity = this.directBase[i] * k));
+    const tone = !paper && p.previewTune.exposure > 0;
+    const mapping = tone ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    if (this.renderer.toneMapping !== mapping) {
+      this.renderer.toneMapping = mapping;
+      // 色调映射是编译进着色器的，换了要让材质重编
+      this.sideMaterials.forEach((mat) => (mat.needsUpdate = true));
+      this.innerMaterials.forEach((mat) => (mat.needsUpdate = true));
+      this.capRightMat.needsUpdate = true;
+      this.capLeftMat.needsUpdate = true;
+    }
+    this.renderer.toneMappingExposure = tone ? p.previewTune.exposure : 1;
   }
 
   syncSideMaterials() {
