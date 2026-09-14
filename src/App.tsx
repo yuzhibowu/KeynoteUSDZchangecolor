@@ -136,6 +136,9 @@ export default function App() {
   const [motionExtra, setMotionExtra] = useState<{ name: string; buf: ArrayBuffer }[]>([]);
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
+  // 预览背景：'dark' | 'slide' | 自定义颜色。只影响预览
+  const [motionBg, setMotionBg] = useState('dark');
+  const motionBgColor = motionBg === 'dark' ? '#111111' : motionBg === 'slide' ? '#ffffff' : motionBg;
   // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
   const [spin, setSpin] = useState(true);
   const [compareReady, setCompareReady] = useState(false);
@@ -831,6 +834,8 @@ export default function App() {
             motion={motion}
             onFiles={pickMotionFiles}
             onLoaded={onMotionLoaded}
+            background={motionBgColor}
+            slide={motionBg !== 'dark'}
             drawing={drawing}
             onDrawn={onDrawn}
           />
@@ -901,6 +906,8 @@ export default function App() {
           patch: patchMotion,
           drawing,
           setDrawing,
+          background: motionBg,
+          setBackground: setMotionBg,
           onPick: pickMotionFiles,
           onExport: exportMotion,
           exportBusy: motionBusy,

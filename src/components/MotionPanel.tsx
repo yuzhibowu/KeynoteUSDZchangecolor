@@ -11,6 +11,9 @@ export type MotionSidebar = {
   patch: (p: Partial<MotionParams>) => void;
   drawing: boolean;
   setDrawing: (v: boolean) => void;
+  /** 预览背景：'dark' | 'slide' | 自定义颜色 */
+  background: string;
+  setBackground: (v: string) => void;
   onPick: (files: File[]) => void;
   onExport: () => void;
   exportBusy: string | null;
@@ -22,7 +25,7 @@ export type MotionSidebar = {
  * 参数故意少：做 PPT 的人要的是「轻一点 / 明显一点」，不是「幅度 1.5%、微旋 1.5°」。
  * 漂浮本身就包含上下位移和两个轴的微倾，不让用户自己拼。
  */
-export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawing, setDrawing, onPick, onExport, exportBusy }: MotionSidebar) {
+export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawing, setDrawing, background, setBackground, onPick, onExport, exportBusy }: MotionSidebar) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -230,6 +233,29 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             Keynote 从第 0 帧开始播：模型先入场，再接进漂浮。循环到结尾会用同样的方式退场，
             所以每一圈都会重演一次；想少见到就把下面的循环长度拉长。
           </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>预览背景</h2>
+        <div className="stack">
+          <div className="opts">
+            <button type="button" className="opt" aria-pressed={background === 'dark'} onClick={() => setBackground('dark')}>
+              深色
+            </button>
+            <button type="button" className="opt" aria-pressed={background === 'slide'} onClick={() => setBackground('slide')}>
+              白色幻灯片
+            </button>
+            <label className="opt color-opt" aria-pressed={background !== 'dark' && background !== 'slide'}>
+              自定义
+              <input
+                type="color"
+                value={background.startsWith('#') ? background : '#dfe6ee'}
+                onChange={(e) => setBackground(e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="hint">只影响这里怎么看，不进文件。选幻灯片时视口按 16:9 来框，就是放进 Keynote 的样子。</p>
         </div>
       </section>
 

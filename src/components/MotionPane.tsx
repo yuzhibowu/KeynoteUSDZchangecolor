@@ -20,6 +20,8 @@ export function MotionPane({
   motion,
   onFiles,
   onLoaded,
+  background,
+  slide,
   drawing,
   onDrawn,
 }: {
@@ -30,6 +32,10 @@ export function MotionPane({
   onFiles: (files: File[]) => void;
   /** 模型加载完了（或者失败了）告诉外面：导出要用加载器的变换和包围盒 */
   onLoaded: (space: ModelSpace | null, error: string | null) => void;
+  /** 预览背景色（CSS 颜色）。只影响预览，不进文件 */
+  background: string;
+  /** 视口按 16:9 的幻灯片来框，看的就是放进 Keynote 的样子 */
+  slide: boolean;
   /** 手绘模式：拖动是画路径而不是转视角 */
   drawing: boolean;
   /** 画完一笔。点是模型半径的倍数，XY 平面 */
@@ -42,6 +48,12 @@ export function MotionPane({
   motionRef.current = motion;
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
+  const bgRef = useRef(background);
+  bgRef.current = background;
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  useEffect(() => {
+    rendererRef.current?.setClearColor(new THREE.Color(background));
+  }, [background]);
   const onDrawnRef = useRef(onDrawn);
   onDrawnRef.current = onDrawn;
   // 进入手绘就把视角回正：画在正对着的那个平面上，画的和走的才是一回事
@@ -96,6 +108,8 @@ export function MotionPane({
       };
 
       part = makeScene(host);
+      part.renderer.setClearColor(new THREE.Color(bgRef.current));
+      rendererRef.current = part.renderer;
       // 旋转轴要在包围盒中心 —— 第三方模型的原点经常在脚底或某个角上
       obj.position.sub(center);
       const mover = new THREE.Group();
@@ -241,6 +255,7 @@ export function MotionPane({
       if (part) {
         part.renderer.dispose();
         part.renderer.domElement.remove();
+        rendererRef.current = null;
       }
     };
   }, [source, onLoaded]);
@@ -277,7 +292,10 @@ export function MotionPane({
         <div className="motion-stage">
           {busy && <div className="motion-loading">正在加载…</div>}
           {drawing && !busy && <div className="motion-drawhint">按住拖一笔，松手就好</div>}
-          <div ref={hostRef} className={drawing ? 'motion-view drawing' : 'motion-view'} />
+          <div
+            ref={hostRef}
+            className={['motion-view', drawing ? 'drawing' : '', slide ? 'slide' : ''].filter(Boolean).join(' ')}
+          />
         </div>
       )}
     </div>
