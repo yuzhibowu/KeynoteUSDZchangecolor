@@ -50,7 +50,7 @@ describe('bakeMotion', () => {
 });
 
 describe('入场 / 退场', () => {
-  const p = { ...DEFAULT_MOTION, entrance: 'rise' as const, entranceSeconds: 1.5, seconds: 10 };
+  const p = { ...DEFAULT_MOTION, entrance: 'rise' as const, entranceSeconds: 1.5, entranceDelay: 0, seconds: 10 };
   it('没有入场时包络恒为 1、缩放恒为 1', () => {
     expect(poseAt(DEFAULT_MOTION, 0, 1).scale).toBe(1);
     expect(poseAt(DEFAULT_MOTION, 0.3, 1).position[1]).toBeCloseTo(Math.sin(0.3 * 1.25) * 0.047, 9);
@@ -78,5 +78,21 @@ describe('入场 / 退场', () => {
     const g = { ...p, entrance: 'spin' as const };
     expect(poseAt(g, 0, 1).rotation[1]).toBeCloseTo(360, 9);
     expect(poseAt(g, 3, 1).rotation[1]).toBe(0);
+  });
+});
+
+describe('入场延迟', () => {
+  const p = { ...DEFAULT_MOTION, entrance: 'grow' as const, entranceSeconds: 1.5, entranceDelay: 1, seconds: 10 };
+  it('延迟期间按住第 0 帧不动', () => {
+    expect(poseAt(p, 0, 1).scale).toBe(poseAt(p, 0.9, 1).scale);
+    expect(poseAt(p, 0.9, 1).scale).toBeLessThan(0.01);
+  });
+  it('延迟过后才开始长，结束时间跟着后移', () => {
+    expect(poseAt(p, 1.4, 1).scale).toBeGreaterThan(0.3);
+    expect(poseAt(p, 2.6, 1).scale).toBe(1);
+  });
+  it('退场不受延迟影响，还是贴着循环结尾', () => {
+    expect(poseAt(p, 8.4, 1).scale).toBe(1);
+    expect(poseAt(p, 9.99, 1).scale).toBeLessThan(0.05);
   });
 });

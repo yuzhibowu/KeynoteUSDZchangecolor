@@ -36,7 +36,7 @@ export function MotionPane({
   const restartRef = useRef(0);
   useEffect(() => {
     restartRef.current = performance.now();
-  }, [motion.entrance, motion.entranceSeconds, motion.seconds]);
+  }, [motion.entrance, motion.entranceSeconds, motion.entranceDelay, motion.seconds]);
 
   useEffect(() => {
     const host = hostRef.current;

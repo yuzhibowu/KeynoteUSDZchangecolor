@@ -35,6 +35,11 @@ export type MotionParams = {
   entrance: Entrance;
   /** 入场用多少秒 */
   entranceSeconds: number;
+  /**
+   * 入场前先按住第 0 帧多少秒。Keynote 显示 3D 对象时自己会先淡入约一秒，
+   * 入场如果从第 0 帧就开始，整个过程被这次淡入盖住，看起来像是原大模型渐显出来。
+   */
+  entranceDelay: number;
   /** 节奏倍率：1 是书籍那套原速，0.5 慢一倍，2 快一倍 */
   speed: number;
   /**
@@ -54,6 +59,7 @@ export const DEFAULT_MOTION: MotionParams = {
   float: 'medium',
   entrance: 'none',
   entranceSeconds: 1.5,
+  entranceDelay: 1,
   speed: 1,
   phase: 0,
   seconds: 30,
@@ -81,7 +87,8 @@ export function envelopeAt(p: MotionParams, t: number): number {
   if (p.entrance === 'none') return 1;
   const dur = Math.max(0.05, Math.min(p.entranceSeconds, p.seconds / 2));
   const tl = ((t % p.seconds) + p.seconds) % p.seconds;
-  const inn = Math.min(1, tl / dur);
+  const delay = Math.max(0, Math.min(p.entranceDelay, p.seconds / 2 - dur));
+  const inn = Math.max(0, Math.min(1, (tl - delay) / dur));
   const out = Math.min(1, (p.seconds - tl) / dur);
   return easeOut(Math.min(inn, out));
 }

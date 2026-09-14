@@ -118,9 +118,22 @@ export function MotionPanel({ fileName, loaded, motion, patch, onPick, onExport,
             disabled={motion.entrance === 'none'}
             onChange={(v) => patch({ entranceSeconds: v })}
           />
+          <Slider
+            label="入场延迟"
+            value={motion.entranceDelay}
+            min={0}
+            max={3}
+            step={0.1}
+            digits={1}
+            suffix=" 秒"
+            reset={1}
+            disabled={motion.entrance === 'none'}
+            onChange={(v) => patch({ entranceDelay: v })}
+          />
           <p className="hint">
-            Keynote 从第 0 帧开始播：模型先入场，再接进漂浮。循环到结尾会用同样的方式退场，
-            所以每一圈都会重演一次；想少见到就把下面的循环长度拉长。
+            Keynote 显示 3D 对象时自己会先淡入约一秒，入场晚一点开始才不会被它盖住。
+            模型先入场，再接进漂浮；循环到结尾会用同样的方式退场，所以每一圈都会重演一次，
+            想少见到就把下面的循环长度拉长。
           </p>
         </div>
       </section>
