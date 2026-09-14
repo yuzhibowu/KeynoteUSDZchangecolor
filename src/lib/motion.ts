@@ -46,12 +46,6 @@ export type SpinAxis = (typeof SPIN_AXES)[number]['id'];
 export type MotionParams = {
   /** 漂浮幅度：0 不动，1 是书籍那套原幅度，位移和微倾一起缩放 */
   floatAmount: number;
-  /**
-   * 微倾的第二个方向要不要用侧倾（绕 Z）。默认关：用摇头（绕 Y）代替。
-   * 侧倾会让竖直的边缘变成斜零点几度的线，Keynote 画 3D 对象不抗锯齿，
-   * 这种线会呈现又长又整齐的台阶，还随着摆动滑来滑去；点头和摇头都不会让竖边变斜。
-   */
-  floatRoll: boolean;
   /** 自转：绕哪根轴一直转。默认 Y（竖轴，像转台） */
   spin: SpinAxis;
   /** 转一圈用多少秒。会吸附到能整除循环长度的值，接缝才闭合 */
@@ -107,7 +101,6 @@ export const loopLabel = (s: number) => (s >= 60 ? `${s / 60}分钟` : `${s}秒`
 export const bakeFps = (seconds: number) => (seconds > 60 ? 30 : 60);
 export const DEFAULT_MOTION: MotionParams = {
   floatAmount: 1,
-  floatRoll: false,
   spin: 'none',
   spinLap: 12,
   spinClockwise: true,
@@ -250,14 +243,12 @@ export function poseAt(p: MotionParams, t: number, radius: number): Pose {
   // 侧倾：往右走时 heading = 0，往上拐时 heading > 0 → 模型往前倾（绕 Z 负转）
   const bank = p.path !== 'none' && p.pathBank ? -Math.sin(path.heading) * BANK_MAX : 0;
   const spin = spinAt(p, t);
-  // 第二个微倾方向：侧倾（绕 Z）或摇头（绕 Y），同一条正弦
-  const tilt2 = Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k;
   return {
     position: [z(path.x), z(y + path.y), 0],
     rotation: [
       z(Math.cos(tt * FLOAT_W_X) * FLOAT_TILT_X * k + (p.spin === 'x' ? spin : 0)),
-      z(ry + (p.floatRoll ? 0 : tilt2) + (p.spin === 'y' ? spin : 0)),
-      z((p.floatRoll ? tilt2 : 0) + bank + (p.spin === 'z' ? spin : 0)),
+      z(ry + (p.spin === 'y' ? spin : 0)),
+      z(Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k + bank + (p.spin === 'z' ? spin : 0)),
     ],
     scale,
   };

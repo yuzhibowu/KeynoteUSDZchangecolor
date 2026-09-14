@@ -49,19 +49,6 @@ describe('bakeMotion', () => {
   });
 });
 
-describe('微倾的第二个方向', () => {
-  it('默认是摇头：Z 转角恒为 0，Y 上有正弦', () => {
-    const r = poseAt(DEFAULT_MOTION, 1.3, 1).rotation;
-    expect(r[2]).toBe(0);
-    expect(r[1]).toBeCloseTo(Math.sin(1.3 * 0.82) * (0.014 * 180) / Math.PI, 9);
-  });
-  it('开了侧倾：同一条正弦挪到 Z 上，Y 归 0', () => {
-    const r = poseAt({ ...DEFAULT_MOTION, floatRoll: true }, 1.3, 1).rotation;
-    expect(r[1]).toBe(0);
-    expect(r[2]).toBeCloseTo(Math.sin(1.3 * 0.82) * (0.014 * 180) / Math.PI, 9);
-  });
-});
-
 describe('入场 / 退场', () => {
   const p = { ...DEFAULT_MOTION, entrance: 'rise' as const, entranceSeconds: 1.5, seconds: 10 };
   it('没有入场时包络恒为 1、缩放恒为 1', () => {
@@ -96,8 +83,7 @@ describe('入场 / 退场', () => {
     expect(poseAt(g, 3, 1).scale).toBe(1);
   });
   it('旋入：第 0 帧转了一整圈，就位后是 0', () => {
-    // 开侧倾把摇头挪开，Y 上只剩旋入
-    const g = { ...p, entrance: 'spin' as const, floatRoll: true };
+    const g = { ...p, entrance: 'spin' as const };
     expect(poseAt(g, 0, 1).rotation[1]).toBeCloseTo(360, 9);
     expect(poseAt(g, 3, 1).rotation[1]).toBe(0);
   });
