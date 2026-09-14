@@ -69,6 +69,29 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
       </section>
 
       <section>
+        <h2>循环长度</h2>
+        <div className="stack">
+          <div className="opts">
+            {LOOP_SECONDS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="opt"
+                aria-pressed={motion.seconds === s}
+                onClick={() => patch({ seconds: s })}
+              >
+                {s} 秒
+              </button>
+            ))}
+          </div>
+          <p className="hint">
+            所有动作都在这一圈里：漂浮末尾平滑接回开头，自转和轨迹要转整数圈。
+            越长越看不出重复、一圈用时的档位越细，文件不会因此变大多少；导出视频的时长也是它。
+          </p>
+        </div>
+      </section>
+
+      <section>
         <h2>漂浮</h2>
         <div className="stack">
           <div className="opts four">
@@ -341,27 +364,6 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
         </div>
       </section>
 
-      <section>
-        <h2>循环长度</h2>
-        <div className="stack">
-          <div className="opts">
-            {LOOP_SECONDS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="opt"
-                aria-pressed={motion.seconds === s}
-                onClick={() => patch({ seconds: s })}
-              >
-                {s} 秒
-              </button>
-            ))}
-          </div>
-          <p className="hint">
-            导出时烘成这么长的一圈，末尾平滑接回开头。越长越看不出重复，文件不会因此变大多少。
-          </p>
-        </div>
-      </section>
 
       <section>
         <h2>导出视频</h2>
