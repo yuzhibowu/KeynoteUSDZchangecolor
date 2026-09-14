@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MOTION, bakeMotion, effectiveLap, pathAt, poseAt, randomPhase } from './motion';
+import { DEFAULT_MOTION, bakeMotion, effectiveLap, effectiveSpinLap, pathAt, poseAt, randomPhase, spinAt } from './motion';
 
 describe('poseAt', () => {
   it('不动档全是零', () => {
@@ -148,5 +148,31 @@ describe('randomPhase', () => {
       expect(v).toBeLessThanOrEqual(10);
       expect(Math.abs(v - 3)).toBeGreaterThanOrEqual(2.4);
     }
+  });
+});
+
+describe('自转', () => {
+  const y = { ...DEFAULT_MOTION, float: 'off' as const, spin: 'y' as const, spinLap: 12, seconds: 30 };
+  it('一圈用时吸附：30 秒里 12 秒一圈 → 3 圈 10 秒', () => {
+    expect(effectiveSpinLap(y)).toBe(10);
+  });
+  it('线性累加，一圈 360°，方向可反', () => {
+    expect(spinAt(y, 5)).toBeCloseTo(-180);
+    expect(spinAt(y, 10)).toBeCloseTo(-360);
+    expect(spinAt({ ...y, spinClockwise: false }, 5)).toBeCloseTo(180);
+  });
+  it('落在选的那根轴上', () => {
+    expect(poseAt(y, 2.5, 1).rotation[1]).toBeCloseTo(-90);
+    expect(poseAt({ ...y, spin: 'x' }, 2.5, 1).rotation[0]).toBeCloseTo(-90);
+    expect(poseAt({ ...y, spin: 'z' }, 2.5, 1).rotation[2]).toBeCloseTo(-90);
+    expect(poseAt({ ...y, spin: 'none' }, 2.5, 1).rotation[1]).toBe(0);
+  });
+  it('烘出来的循环末尾不会倒着转回去：每帧转的角度恒定', () => {
+    const s = bakeMotion(y, 1, 30, 60);
+    const step = 360 / 10 / 60;
+    for (let i = 1; i < s.length; i++) {
+      expect(s[i].rotation[1] - s[i - 1].rotation[1]).toBeCloseTo(-step, 6);
+    }
+    expect(s[1800].rotation[1]).toBeCloseTo(-1080, 6);
   });
 });

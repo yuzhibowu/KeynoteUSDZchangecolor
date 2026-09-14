@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, effectiveLap, randomPhase, type MotionParams } from '../lib/motion';
+import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, SPIN_AXES, effectiveLap, effectiveSpinLap, randomPhase, type MotionParams } from '../lib/motion';
 import { VIDEO_FPS, VIDEO_SIZES, type VideoFormat, type VideoSizeId } from '../lib/videoExport';
 
 export type MotionSidebar = {
@@ -120,6 +120,53 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。
             同一页放几个模型时，每个「错开」不同的秒数，它们就不会一起起伏。
           </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>自转</h2>
+        <div className="stack">
+          <div className="opts four">
+            {SPIN_AXES.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className="opt"
+                aria-pressed={motion.spin === a.id}
+                onClick={() => patch({ spin: a.id })}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+          {motion.spin !== 'none' && (
+            <>
+              <Slider
+                label="一圈用时"
+                value={motion.spinLap}
+                min={2}
+                max={60}
+                step={0.5}
+                digits={1}
+                suffix=" 秒"
+                note={`实际 ${effectiveSpinLap(motion).toFixed(1)} 秒`}
+                reset={12}
+                onChange={(v) => patch({ spinLap: v })}
+              />
+              <div className="opts">
+                <button type="button" className="opt" aria-pressed={motion.spinClockwise} onClick={() => patch({ spinClockwise: true })}>
+                  顺时针
+                </button>
+                <button type="button" className="opt" aria-pressed={!motion.spinClockwise} onClick={() => patch({ spinClockwise: false })}>
+                  逆时针
+                </button>
+              </div>
+              <p className="hint">
+                Y 轴是竖着的，像转台；X 轴前后翻，Z 轴在屏幕里打转。一圈用时会吸附到能整除循环长度的值，
+                一个循环转整数圈，接缝才闭合。
+              </p>
+            </>
+          )}
         </div>
       </section>
 

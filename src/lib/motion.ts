@@ -36,9 +36,23 @@ export const PATHS = [
 ] as const;
 export type PathKind = (typeof PATHS)[number]['id'];
 
+export const SPIN_AXES = [
+  { id: 'none', label: '不转' },
+  { id: 'x', label: 'X 轴' },
+  { id: 'y', label: 'Y 轴' },
+  { id: 'z', label: 'Z 轴' },
+] as const;
+export type SpinAxis = (typeof SPIN_AXES)[number]['id'];
+
 export type MotionParams = {
   /** 漂浮强度档 */
   float: FloatLevel;
+  /** 自转：绕哪根轴一直转。默认 Y（竖轴，像转台） */
+  spin: SpinAxis;
+  /** 转一圈用多少秒。会吸附到能整除循环长度的值，接缝才闭合 */
+  spinLap: number;
+  /** 顺时针（从轴的正方向看过去） */
+  spinClockwise: boolean;
   /** 轨迹。都在屏幕平面（XY）里跑，和漂浮、入场叠加 */
   path: PathKind;
   /** 轨迹的水平半径，按模型包围球半径的倍数 */
@@ -79,6 +93,9 @@ export type MotionParams = {
 export const LOOP_SECONDS = [10, 30, 60] as const;
 export const DEFAULT_MOTION: MotionParams = {
   float: 'medium',
+  spin: 'none',
+  spinLap: 12,
+  spinClockwise: true,
   path: 'none',
   pathSize: 1,
   pathAspect: 0.45,
@@ -134,9 +151,21 @@ export function floatScale(level: FloatLevel): number {
 }
 
 /** 一圈实际用多少秒：吸附到能整除循环长度的值，一个循环里跑整数圈，接缝才闭合 */
+export function snapLap(lap: number, seconds: number): number {
+  const laps = Math.max(1, Math.round(seconds / Math.max(0.5, lap)));
+  return seconds / laps;
+}
 export function effectiveLap(p: MotionParams): number {
-  const laps = Math.max(1, Math.round(p.seconds / Math.max(0.5, p.pathLap)));
-  return p.seconds / laps;
+  return snapLap(p.pathLap, p.seconds);
+}
+export function effectiveSpinLap(p: MotionParams): number {
+  return snapLap(p.spinLap, p.seconds);
+}
+
+/** 自转到 t 秒转了多少度（可以超过 360，一直累加；导出写四元数不在乎） */
+export function spinAt(p: MotionParams, t: number): number {
+  if (p.spin === 'none') return 0;
+  return ((p.spinClockwise ? -1 : 1) * 360 * t) / effectiveSpinLap(p);
 }
 
 /**
@@ -207,12 +236,13 @@ export function poseAt(p: MotionParams, t: number, radius: number): Pose {
   const path = pathAt(p, t, radius);
   // 侧倾：往右走时 heading = 0，往上拐时 heading > 0 → 模型往前倾（绕 Z 负转）
   const bank = p.path !== 'none' && p.pathBank ? -Math.sin(path.heading) * BANK_MAX : 0;
+  const spin = spinAt(p, t);
   return {
     position: [z(path.x), z(y + path.y), 0],
     rotation: [
-      z(Math.cos(tt * FLOAT_W_X) * FLOAT_TILT_X * k),
-      z(ry),
-      z(Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k + bank),
+      z(Math.cos(tt * FLOAT_W_X) * FLOAT_TILT_X * k + (p.spin === 'x' ? spin : 0)),
+      z(ry + (p.spin === 'y' ? spin : 0)),
+      z(Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k + bank + (p.spin === 'z' ? spin : 0)),
     ],
     scale,
   };
@@ -243,9 +273,11 @@ export function bakeMotion(
     const u = seconds > blendFrom ? Math.max(0, (t - blendFrom) / (seconds - blendFrom)) : 0;
     const w = u * u * u * (10 + u * (-15 + 6 * u));
     const mix = (x: number, y: number) => x * (1 - w) + y * w;
+    // 角度按 360 的等价类混：自转到循环末尾是 360k，下一圈开头是 0，直接混会倒着转回去
+    const mixDeg = (x: number, y: number) => mix(x, y + 360 * Math.round((x - y) / 360));
     out.push({
       position: [mix(a.position[0], b.position[0]), mix(a.position[1], b.position[1]), mix(a.position[2], b.position[2])],
-      rotation: [mix(a.rotation[0], b.rotation[0]), mix(a.rotation[1], b.rotation[1]), mix(a.rotation[2], b.rotation[2])],
+      rotation: [mixDeg(a.rotation[0], b.rotation[0]), mixDeg(a.rotation[1], b.rotation[1]), mixDeg(a.rotation[2], b.rotation[2])],
       scale: mix(a.scale, b.scale),
     });
   }
