@@ -61,6 +61,10 @@
   只能靠 Keynote 自己的构建效果，别再往文件里试。
 - 曾以为 Keynote 会对 3D 对象固定淡入一秒 —— 错的，那是上一页「神奇移动」带来的渐变。
 
-## 还没做
+## 导出视频
 
-- 导出视频：3D 项目（`~/Documents/3D`）里有成熟方案，接过来就行。
+管线从 3D 项目（`~/Documents/3D`）搬来：视口逐帧按 `bakeMotion` 的姿态渲染成透明 PNG，
+ffmpeg.wasm 在浏览器里编 ProRes 4444 XQ（`prores_ks -profile:v 5 -pix_fmt yuva444p10le`），
+厂商标记从 FFMP 改成 apl0。时长 = 循环长度，用当前视角和「取景」缩放。
+代码在 `src/lib/videoExport.ts` 和 `MotionPane.tsx` 的 `frameRef.render`。
+开发模式下 `@ffmpeg/ffmpeg` 必须从 Vite 预打包里排除（见 vite.config.ts）。
