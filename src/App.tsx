@@ -3,7 +3,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
 import { MotionPane, PHASE_STEP, type FrameRenderer } from './components/MotionPane';
-import { loadMotion, saveMotion, type MotionParams } from './lib/motion';
+import { bakeFps, loadMotion, saveMotion, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
 import { measureUsdz } from './lib/usdzScene';
 import { normalizeUsdzForLoader } from './lib/recolor';
@@ -640,13 +640,13 @@ export default function App() {
     try {
       const outName = (n: string) => n.replace(/\.usdz$/i, '') + '-加动效.usdz';
       if (motionFiles.length === 1) {
-        const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds);
+        const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds, bakeFps(motion.seconds));
         const name = outName(motionSrc.name);
         const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
         download(blob, name);
         setLastFile({ blob, name });
         const notes = [
-          `${report.seconds} 秒 ${report.frames} 帧`,
+          `${report.seconds} 秒 ${report.frames} 帧（${report.fps} fps）`,
           report.binaryRoot ? '原文件是二进制场景，已另写一层文本图层把它引用进来' : null,
           report.replacedAnimation ? '原文件自带的动画已替换' : null,
           report.nestedAnimation ? `原文件深处还有 ${report.nestedAnimation} 段动画会叠加` : null,
@@ -664,7 +664,7 @@ export default function App() {
         try {
           const space = motionSpaces[i] ?? (await measureUsdz(normalizeUsdzForLoader(all[i].buf.slice(0))));
           const params = { ...motion, phase: motion.phase + i * PHASE_STEP };
-          files[outName(all[i].name)] = addMotionToUsdz(all[i].buf, params, space, motion.seconds).bytes;
+          files[outName(all[i].name)] = addMotionToUsdz(all[i].buf, params, space, motion.seconds, bakeFps(motion.seconds)).bytes;
         } catch (e) {
           failed.push(`${all[i].name}（${e instanceof Error ? e.message : String(e)}）`);
         }
@@ -695,14 +695,16 @@ export default function App() {
       videoAbort.current = controller;
       const base = safeBaseName(motionSrc.name.replace(/\.usdz$/i, '') + '-加动效');
       try {
-        const total = validateExport({ width: size.width, height: size.height, fps: videoFps, seconds: motion.seconds }, fr.maxTextureSize);
+        // 几分钟的长循环是给 Keynote 播放一次用的，视频最多导前 60 秒
+        const videoSeconds = Math.min(motion.seconds, 60);
+        const total = validateExport({ width: size.width, height: size.height, fps: videoFps, seconds: videoSeconds }, fr.maxTextureSize);
         setVideoBusy(`正在渲染 0 / ${total} 帧`);
         setDrawing(false);
         const frames = await fr.render({
           width: size.width,
           height: size.height,
           fps: videoFps,
-          seconds: motion.seconds,
+          seconds: videoSeconds,
           signal: controller.signal,
           onProgress: (done, all) => setVideoBusy(`正在渲染 ${done} / ${all} 帧`),
         });

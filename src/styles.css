@@ -372,6 +372,9 @@ input[type='range']:focus-visible { outline: 2px solid var(--muted); outline-off
 
 .opts { display: grid; gap: 8px; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .opts.four { grid-template-columns: repeat(4, 1fr); grid-auto-flow: row; gap: 6px; }
+/* 循环长度五档一行：字挤一点也别折行 */
+.opts.five { grid-template-columns: repeat(5, 1fr); grid-auto-flow: row; gap: 6px; }
+.opts.five .opt { padding: 0 4px; white-space: nowrap; }
 .opt {
   /* 所有选项按钮同一个高度 —— 画面比例、分辨率是四列一行，端面 / 留白底色 / 目标 App
      是两列一行，但它们在侧栏里是一列上下排着的，高矮不一眼就看出来了 */

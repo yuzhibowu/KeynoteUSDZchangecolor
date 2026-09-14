@@ -68,6 +68,14 @@ describe('入场 / 退场', () => {
     // 中段是纯漂浮
     expect(s[300].position[1]).toBeCloseTo(poseAt(DEFAULT_MOTION, 5, 1).position[1], 9);
   });
+  it('不退场（播放一次）：结尾包络是 1，最后一帧是原大的纯漂浮，不会取模回隐藏姿态', () => {
+    const h = { ...p, entrance: 'grow' as const, exit: false };
+    expect(poseAt(h, 9.9, 1).scale).toBe(1);
+    const s = bakeMotion(h, 1, 10, 60);
+    expect(s[0].scale).toBeLessThan(0.01);
+    expect(s[600].scale).toBeCloseTo(1, 9);
+    expect(s[600].position[1]).toBeCloseTo(poseAt(DEFAULT_MOTION, 0, 1).position[1], 6);
+  });
   it('长出：缩放从接近 0 到 1，不会是 0', () => {
     const g = { ...p, entrance: 'grow' as const };
     expect(poseAt(g, 0, 1).scale).toBeGreaterThan(0);

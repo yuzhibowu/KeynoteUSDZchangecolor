@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { ENTRANCES, FLOAT_SNAPS, LOOP_SECONDS, PATHS, SPIN_AXES, effectiveLap, effectiveSpinLap, randomPhase, snapLap, type MotionParams } from '../lib/motion';
+import { ENTRANCES, FLOAT_SNAPS, LOOP_SECONDS, PATHS, SPIN_AXES, bakeFps, effectiveLap, effectiveSpinLap, loopLabel, randomPhase, snapLap, type MotionParams } from '../lib/motion';
 import { VIDEO_FPS, VIDEO_SIZES, type VideoFormat, type VideoSizeId } from '../lib/videoExport';
 
 export type MotionSidebar = {
@@ -70,7 +70,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
       <section>
         <h2>循环长度</h2>
         <div className="stack">
-          <div className="opts">
+          <div className="opts five">
             {LOOP_SECONDS.map((s) => (
               <button
                 key={s}
@@ -79,13 +79,15 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
                 aria-pressed={motion.seconds === s}
                 onClick={() => patch({ seconds: s })}
               >
-                {s} 秒
+                {loopLabel(s)}
               </button>
             ))}
           </div>
           <p className="hint">
             所有动作都在这一圈里：漂浮末尾平滑接回开头，自转和轨迹要转整数圈。
-            越长越看不出重复、一圈用时的档位越细，文件不会因此变大多少；导出视频的时长也是它。
+            越长越看不出重复、一圈用时的档位越细。5 / 10 分钟是给「播放一次」用的：入场只演一次，
+            漂到结束，一页讲完都不会重演；按 {bakeFps(motion.seconds)} fps 烘，文件会大几 MB。
+            导出视频的时长也是它，最多取前 60 秒。
           </p>
         </div>
       </section>
@@ -118,9 +120,30 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             disabled={motion.entrance === 'none'}
             onChange={(v) => patch({ entranceSeconds: v })}
           />
+          <div className="opts">
+            <button
+              type="button"
+              className="opt"
+              aria-pressed={motion.exit !== false}
+              disabled={motion.entrance === 'none'}
+              onClick={() => patch({ exit: true })}
+            >
+              结尾退场（循环）
+            </button>
+            <button
+              type="button"
+              className="opt"
+              aria-pressed={motion.exit === false}
+              disabled={motion.entrance === 'none'}
+              onClick={() => patch({ exit: false })}
+            >
+              只入场一次（播放一次）
+            </button>
+          </div>
           <p className="hint">
-            Keynote 从第 0 帧开始播：模型先入场，再接进漂浮。循环到结尾会用同样的方式退场，
-            所以每一圈都会重演一次；想少见到就把下面的循环长度拉长。
+            {motion.exit === false
+              ? `入场一次，然后一直漂到循环长度结束、停在最后一帧。Keynote 里把这个对象设成「播放一次」，循环长度选 5 或 10 分钟，够一页讲完。翻走再翻回来 Keynote 会接着上次的进度，不会重演入场。`
+              : `Keynote 从第 0 帧开始播：模型先入场，再接进漂浮。循环到结尾会用同样的方式退场，所以每一圈都会重演一次；不想重演就换成「只入场一次」。`}
           </p>
         </div>
       </section>
@@ -384,7 +407,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             ))}
           </div>
           <p className="hint">
-            透明背景，时长就是循环长度（{motion.seconds} 秒，{motion.seconds * video.fps} 帧），用当前的视角。
+            透明背景，时长就是循环长度（{Math.min(motion.seconds, 60)} 秒，{Math.min(motion.seconds, 60) * video.fps} 帧），用当前的视角。
             MOV 是 ProRes 4444 带 alpha，直接拖进 Keynote 或视频画布。全在浏览器里算，第一次要先下 32 MB 的编码器。
           </p>
           {video.busy ? (

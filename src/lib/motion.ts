@@ -75,6 +75,12 @@ export type MotionParams = {
   entrance: Entrance;
   /** 入场用多少秒 */
   entranceSeconds: number;
+  /**
+   * 结尾要不要退场。true 是给 Keynote「循环」用的：结尾对称退场，回到第 0 帧接缝是平的。
+   * false 是给「播放一次」用的：入场只演一次，漂到循环长度结束就停在最后一帧 ——
+   * 配 5 / 10 分钟的循环长度，一页讲完都不会重演入场。
+   */
+  exit: boolean;
   /** 节奏倍率：1 是书籍那套原速，0.5 慢一倍，2 快一倍 */
   speed: number;
   /**
@@ -89,7 +95,10 @@ export type MotionParams = {
   seconds: number;
 };
 
-export const LOOP_SECONDS = [10, 30, 60] as const;
+export const LOOP_SECONDS = [10, 30, 60, 300, 600] as const;
+export const loopLabel = (s: number) => (s >= 60 ? `${s / 60}分钟` : `${s}秒`);
+/** 烘关键帧的帧率：几分钟的长文件降到 30fps，漂浮很慢，直线插值看不出来，文件小一半 */
+export const bakeFps = (seconds: number) => (seconds > 60 ? 30 : 60);
 export const DEFAULT_MOTION: MotionParams = {
   floatAmount: 1,
   spin: 'none',
@@ -105,6 +114,7 @@ export const DEFAULT_MOTION: MotionParams = {
   customClosed: false,
   entrance: 'none',
   entranceSeconds: 1.5,
+  exit: true,
   speed: 1,
   phase: 0,
   seconds: 30,
@@ -133,7 +143,7 @@ export function envelopeAt(p: MotionParams, t: number): number {
   const dur = Math.max(0.05, Math.min(p.entranceSeconds, p.seconds / 2));
   const tl = ((t % p.seconds) + p.seconds) % p.seconds;
   const inn = Math.min(1, tl / dur);
-  const out = Math.min(1, (p.seconds - tl) / dur);
+  const out = p.exit === false ? 1 : Math.min(1, (p.seconds - tl) / dur);
   return easeOut(Math.min(inn, out));
 }
 
@@ -251,6 +261,8 @@ export function poseAt(p: MotionParams, t: number, radius: number): Pose {
  * 三条正弦的周期对不齐，循环末尾和开头对不上 —— 最后 blendSeconds 秒用
  * 五次多项式（C2 连续）平滑地混回下一圈的开头，接缝看不出来。
  * 入场 / 退场的包络在 poseAt 里已经按循环长度取模了，两边的包络一样，混合不受影响。
+ * 不退场（播放一次）时，混合的目标是纯漂浮的开头：不然最后一帧会取模回第 0 帧的隐藏姿态，
+ * Keynote 播完停在最后一帧，模型就没了。
  */
 export function bakeMotion(
   p: MotionParams,
@@ -261,11 +273,12 @@ export function bakeMotion(
 ): Pose[] {
   const frames = Math.round(seconds * fps);
   const blendFrom = seconds - Math.min(blendSeconds, seconds);
+  const next: MotionParams = p.exit === false ? { ...p, entrance: 'none' } : p;
   const out: Pose[] = [];
   for (let f = 0; f <= frames; f++) {
     const t = f / fps;
     const a = poseAt(p, t, radius);
-    const b = poseAt(p, t - seconds, radius);
+    const b = poseAt(next, t - seconds, radius);
     const u = seconds > blendFrom ? Math.max(0, (t - blendFrom) / (seconds - blendFrom)) : 0;
     const w = u * u * u * (10 + u * (-15 + 6 * u));
     const mix = (x: number, y: number) => x * (1 - w) + y * w;
