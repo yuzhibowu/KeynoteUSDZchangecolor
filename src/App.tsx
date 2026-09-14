@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
+import { CheckPane } from './components/CheckPane';
+import { checkUsdz, type CheckReport } from './lib/check';
+import { DEFAULT_SLIM, slimUsdz, type SlimOptions, type SlimReport } from './lib/slim';
 import { MotionPane, PHASE_STEP, type FrameRenderer } from './components/MotionPane';
 import { bakeFps, loadMotion, saveMotion, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
@@ -129,6 +132,13 @@ export default function App() {
   const [recolorOut, setRecolorOut] = useState<{ bytes: Uint8Array; report: RecolorReport } | null>(null);
   const [recolorBusy, setRecolorBusy] = useState<string | null>(null);
   const [recolorError, setRecolorError] = useState<string | null>(null);
+  // 体检模式
+  const [checkSrc, setCheckSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
+  const [checkReport, setCheckReport] = useState<CheckReport | null>(null);
+  const [checkBusy, setCheckBusy] = useState<string | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [slimOpts, setSlimOpts] = useState<SlimOptions>(DEFAULT_SLIM);
+  const [slimOut, setSlimOut] = useState<SlimReport | null>(null);
   // 加动效：模型和参数分开放，改参数不重新加载模型。拖进来几个就几块预览，一起导出
   const [motionFiles, setMotionFiles] = useState<{ name: string; buf: ArrayBuffer }[]>([]);
   const [motion, setMotion] = useState<MotionParams>(loadMotion);
@@ -613,6 +623,41 @@ export default function App() {
     setRecolorSrc({ name: f.name, buf: await f.arrayBuffer() });
   }, []);
 
+  const pickCheckFile = useCallback(async (f: File) => {
+    setCheckError(null);
+    setSlimOut(null);
+    setCheckReport(null);
+    setCheckBusy('正在体检…');
+    await yieldToBrowser();
+    try {
+      const buf = await f.arrayBuffer();
+      setCheckSrc({ name: f.name, buf });
+      setCheckReport(checkUsdz(buf));
+    } catch (e) {
+      setCheckError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCheckBusy(null);
+    }
+  }, []);
+  const exportCheck = useCallback(async () => {
+    if (!checkSrc || !checkReport) return;
+    setCheckBusy('正在处理…');
+    await yieldToBrowser();
+    try {
+      const { bytes, report } = await slimUsdz(checkSrc.buf, checkReport, slimOpts, setCheckBusy);
+      const name = checkSrc.name.replace(/\.usdz$/i, '') + '-体检.usdz';
+      const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
+      download(blob, name);
+      setLastFile({ blob, name });
+      setSlimOut(report);
+      setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(report.bytesBefore)} → ${formatBytes(report.bytesAfter)}`);
+    } catch (e) {
+      setStatus(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCheckBusy(null);
+    }
+  }, [checkSrc, checkReport, slimOpts]);
+
   const pickMotionFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
     const all = await Promise.all(files.map(async (f) => ({ name: f.name, buf: await f.arrayBuffer() })));
@@ -903,6 +948,15 @@ export default function App() {
             drawing={drawing}
             onDrawn={onDrawn}
           />
+        ) : mode === 'check' ? (
+          <CheckPane
+            fileName={checkSrc?.name ?? null}
+            busy={checkBusy}
+            error={checkError}
+            report={checkReport}
+            slimmed={slimOut}
+            onFile={pickCheckFile}
+          />
         ) : mode === 'recolor' ? (
           <RecolorPane
             fileName={recolorSrc?.name ?? null}
@@ -986,6 +1040,15 @@ export default function App() {
             onExport: exportVideo,
             onCancel: () => videoAbort.current?.abort(),
           },
+        }}
+        check={{
+          fileName: checkSrc?.name ?? null,
+          report: checkReport,
+          busy: checkBusy,
+          slim: slimOpts,
+          patchSlim: (p) => setSlimOpts((o) => ({ ...o, ...p })),
+          onPick: pickCheckFile,
+          onExport: exportCheck,
         }}
         onPickRecolor={pickRecolorFile}
         onExportRecolor={exportRecolor}

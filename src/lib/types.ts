@@ -122,6 +122,7 @@ export const MODES = [
   { id: 'model', title: 'USDZ 导出器' },
   { id: 'recolor', title: 'USDZ 颜色校正' },
   { id: 'motion', title: 'USDZ 加动效' },
+  { id: 'check', title: 'USDZ 体检' },
 ] as const;
 export type Mode = (typeof MODES)[number]['id'];
 

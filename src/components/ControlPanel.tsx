@@ -1,5 +1,6 @@
 import { ColorPanel } from './ColorPanel';
 import { MotionPanel, type MotionSidebar } from './MotionPanel';
+import { CheckPanel, type CheckSidebar } from './CheckPanel';
 import { useRef } from 'react';
 import { Slider } from './Slider';
 import { FramePreview } from './FramePreview';
@@ -34,6 +35,7 @@ type Props = {
   recolorReady: boolean;
   recolorBusy: string | null;
   motion: MotionSidebar;
+  check: CheckSidebar;
   onPickRecolor: (f: File) => void;
   onExportRecolor: () => void;
   spin: boolean;
@@ -62,6 +64,7 @@ export function ControlPanel({
   recolorReady,
   recolorBusy,
   motion,
+  check,
   onPickRecolor,
   onExportRecolor,
   spin,
@@ -156,6 +159,8 @@ export function ControlPanel({
       <div className="side-body">
         {mode === 'motion' ? (
           <MotionPanel {...motion} />
+        ) : mode === 'check' ? (
+          <CheckPanel {...check} />
         ) : mode === 'recolor' ? (
           <>
           <section className="bare">

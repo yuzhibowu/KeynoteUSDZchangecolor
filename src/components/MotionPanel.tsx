@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
+import { Tip } from './Tip';
 import { ENTRANCES, FLOAT_SNAPS, LOOP_SECONDS, PATHS, SPIN_AXES, bakeFps, effectiveLap, effectiveSpinLap, loopLabel, randomPhase, snapLap, type MotionParams } from '../lib/motion';
 import { VIDEO_FPS, VIDEO_SIZES, type VideoFormat, type VideoSizeId } from '../lib/videoExport';
 
@@ -64,6 +65,11 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
               共 {extraNames.length + 1} 个一起导出，同一套设定，起步逐个错开 —— 左边每块就是各自导出后的样子。
             </p>
           )}
+          <Tip title="跨页接着动">
+            Keynote 放映时所有 3D 动画的时钟从第一页起一起起跑，翻页不重置。反过来用：同一个模型放在连续几页上，
+            翻页时漂浮和自转是接着的，不会跳——等于白送一个跨页连续的神奇移动。把自转设慢一点，观众会觉得模型一直在台上转着，只是页在换。
+            代价是烘在文件里的「入场」只有放映从这页开始时才看得到。
+          </Tip>
         </div>
       </section>
 
