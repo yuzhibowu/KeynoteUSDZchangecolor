@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-// @ts-expect-error 从 three r185 搬过来的加载器，没有类型声明
-import { USDLoader } from '../vendor/USDLoader.js';
 import { applyForwardToImageData, type ColorComp } from '../lib/color';
 import { normalizeUsdzForLoader } from '../lib/recolor';
-import { STUDIO_ENV_INTENSITY, makeStudioEnvironment } from '../lib/studioEnv';
+import { frameCamera, loadUsdz, makeScene } from '../lib/usdzScene';
 
 /**
  * 校正前 / 校正后的**模型**对比。
@@ -20,24 +18,6 @@ import { STUDIO_ENV_INTENSITY, makeStudioEnvironment } from '../lib/studioEnv';
 
 /** 预览用的贴图最长边。原图可能是 4K，逐像素跑一遍没必要 */
 const PREVIEW_TEX = 1024;
-
-/**
- * 加载一个 usdz，**等到贴图真正解码完**才 resolve。
- *
- * 关键是必须走 onLoad 回调：`parse()` 本身是同步的，它建好几何和材质就立刻返回，
- * 贴图是另一条异步链（Blob → Image → onload 才把 image 挂到 texture 上）。
- * 加载器只有在收到 onLoad 时才会去等自己那批 texturePromises —— 直接
- * `await loader.parse(...)` 等于没等，拿到的模型上每个 map 都还是空的，
- * 渲染出来整个模型是黑的（贴图槽有值、内容是空的，采样结果就是黑）。
- *
- * 以前这里是 parse 完再自己遍历材质「等贴图」，但判断条件是看 `map.image` 在不在 ——
- * 那一刻它必然是 null，于是一张都没等到，颜色模拟也整个被跳过。
- */
-function loadUsdz(buf: ArrayBuffer): Promise<THREE.Object3D> {
-  return new Promise((resolve, reject) => {
-    new USDLoader().parse(buf, '', resolve, reject);
-  });
-}
 
 /** 把模型上每张贴图换成「Keynote 里会显示成的样子」 */
 function simulate(root: THREE.Object3D, comp: ColorComp) {
@@ -81,32 +61,6 @@ function simulate(root: THREE.Object3D, comp: ColorComp) {
       mat.needsUpdate = true;
     }
   });
-}
-
-function makeScene(container: HTMLDivElement) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  container.appendChild(renderer.domElement);
-  const scene = new THREE.Scene();
-  // 别人的模型什么材质都有。金属只反射环境，没环境就一片黑 —— 用户导入一块
-  // 金属度 1 的长方体，预览里只剩个暗红影子，就是栽在这里。挂上按 Keynote 拟合的影棚环境，
-  // 强度也用同一份，两边看起来才是一回事。
-  const env = makeStudioEnvironment(renderer);
-  scene.environment = env;
-  scene.environmentIntensity = STUDIO_ENV_INTENSITY;
-  // 和主视口同一套布光，免得两边看起来不是一回事
-  scene.add(new THREE.AmbientLight(0xffffff, 1.6));
-  const key = new THREE.DirectionalLight(0xffffff, 1.5);
-  key.position.set(2, 3, 4);
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.7);
-  fill.position.set(-3, 1, 2);
-  scene.add(fill);
-  const camera = new THREE.PerspectiveCamera(35, 1, 0.001, 100);
-  const pivot = new THREE.Group();
-  scene.add(pivot);
-  return { renderer, scene, camera, pivot };
 }
 
 export function ModelCompare({
@@ -180,14 +134,7 @@ export function ModelCompare({
           const h = host.clientHeight || 1;
           p.renderer.setSize(w, h);
           p.camera.aspect = w / h;
-          const vHalf = (p.camera.fov * Math.PI) / 360;
-          const hHalf = Math.atan(Math.tan(vHalf) * p.camera.aspect);
-          const dist = (radius / Math.sin(Math.min(vHalf, hHalf))) * 1.25;
-          p.camera.position.set(0, 0, dist);
-          p.camera.lookAt(0, 0, 0);
-          p.camera.near = Math.max(0.001, dist - radius * 2);
-          p.camera.far = dist + radius * 6;
-          p.camera.updateProjectionMatrix();
+          frameCamera(p.camera, radius);
         }
       };
       resize();

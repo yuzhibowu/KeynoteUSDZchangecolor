@@ -22,6 +22,7 @@ const BUILD_ID = new Intl.DateTimeFormat('zh-CN', {
 
 export default defineConfig({
   plugins: [react()],
-  server: { port: 5173 },
+  // 端口可以从环境变量来 —— 5173 被别的项目占着时，预览工具会另指一个
+  server: { port: Number(process.env.PORT) || 5173 },
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
 });

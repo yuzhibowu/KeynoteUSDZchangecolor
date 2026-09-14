@@ -918,3 +918,31 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   cursor: pointer;
 }
 .status-x:hover { color: #fff; }
+
+/* ================= 加动效模式 ================= */
+
+/* 视口撑满左边整块，模型会上下漂，四周不能挤 */
+.recolor.motion { padding: 20px; }
+.motion-stage { position: relative; flex: 1; min-height: 0; display: flex; }
+.motion-view {
+  flex: 1;
+  min-height: 0;
+  background: var(--track);
+  border: 1px solid var(--line);
+  cursor: grab;
+  touch-action: none;
+  overflow: hidden;
+}
+.motion-view:active { cursor: grabbing; }
+.motion-view canvas { display: block; }
+.motion-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+  pointer-events: none;
+}

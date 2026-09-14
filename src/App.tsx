@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
+import { MotionPane } from './components/MotionPane';
+import { DEFAULT_MOTION, type MotionParams } from './lib/motion';
 import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
@@ -121,6 +123,11 @@ export default function App() {
   const [recolorOut, setRecolorOut] = useState<{ bytes: Uint8Array; report: RecolorReport } | null>(null);
   const [recolorBusy, setRecolorBusy] = useState<string | null>(null);
   const [recolorError, setRecolorError] = useState<string | null>(null);
+  // 加动效：模型和参数分开放，改参数不重新加载模型
+  const [motionSrc, setMotionSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
+  const [motion, setMotion] = useState<MotionParams>(DEFAULT_MOTION);
+  const [motionInfo, setMotionInfo] = useState<{ radius: number } | null>(null);
+  const [motionBusy, setMotionBusy] = useState<string | null>(null);
   // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
   const [spin, setSpin] = useState(true);
   const [compareReady, setCompareReady] = useState(false);
@@ -585,6 +592,21 @@ export default function App() {
     setRecolorSrc({ name: f.name, buf: await f.arrayBuffer() });
   }, []);
 
+  const pickMotionFile = useCallback(async (f: File) => {
+    setMotionInfo(null);
+    setMotionSrc({ name: f.name, buf: await f.arrayBuffer() });
+  }, []);
+  const onMotionLoaded = useCallback((info: { radius: number } | null, error: string | null) => {
+    setMotionInfo(info);
+    if (error) setStatus(`这个文件渲染不了：${error}`);
+  }, []);
+  const patchMotion = useCallback((p: Partial<MotionParams>) => setMotion((m) => ({ ...m, ...p })), []);
+  const exportMotion = useCallback(() => {
+    // 下一步再做：把 poseAt 烘成 timeSamples 写回 usdz
+    setMotionBusy(null);
+    setStatus('导出还没接上，下一步做');
+  }, []);
+
   const exportRecolor = useCallback(() => {
     if (!recolorOut || !recolorSrc) return;
     const name = recolorSrc.name.replace(/\.usdz$/i, '') + `-${targetLabel(params.target)}校正.usdz`;
@@ -739,7 +761,15 @@ export default function App() {
             </button>
           </span>
         </div>
-        {mode === 'recolor' ? (
+        {mode === 'motion' ? (
+          <MotionPane
+            fileName={motionSrc?.name ?? null}
+            source={motionSrc?.buf ?? null}
+            motion={motion}
+            onFile={pickMotionFile}
+            onLoaded={onMotionLoaded}
+          />
+        ) : mode === 'recolor' ? (
           <RecolorPane
             fileName={recolorSrc?.name ?? null}
             busy={recolorBusy}
@@ -770,7 +800,7 @@ export default function App() {
           onTestFill={onTestFill}
         />
         )}
-        {mode !== 'recolor' && (
+        {mode === 'model' && (
         <FaceDock
           store={store}
           faces={faces}
@@ -798,6 +828,15 @@ export default function App() {
         recolorName={recolorSrc?.name ?? null}
         recolorReady={!!recolorOut}
         recolorBusy={recolorBusy}
+        motion={{
+          fileName: motionSrc?.name ?? null,
+          loaded: !!motionInfo,
+          motion,
+          patch: patchMotion,
+          onPick: pickMotionFile,
+          onExport: exportMotion,
+          exportBusy: motionBusy,
+        }}
         onPickRecolor={pickRecolorFile}
         onExportRecolor={exportRecolor}
         spin={spin}

@@ -1,4 +1,5 @@
 import { ColorPanel } from './ColorPanel';
+import { MotionPanel, type MotionSidebar } from './MotionPanel';
 import { useRef } from 'react';
 import { Slider } from './Slider';
 import { FramePreview } from './FramePreview';
@@ -32,6 +33,7 @@ type Props = {
   recolorName: string | null;
   recolorReady: boolean;
   recolorBusy: string | null;
+  motion: MotionSidebar;
   onPickRecolor: (f: File) => void;
   onExportRecolor: () => void;
   spin: boolean;
@@ -59,6 +61,7 @@ export function ControlPanel({
   recolorName,
   recolorReady,
   recolorBusy,
+  motion,
   onPickRecolor,
   onExportRecolor,
   spin,
@@ -127,7 +130,7 @@ export function ControlPanel({
     <aside className="side">
       <div className="side-head">
         {/* 模型类型（棱柱 / 卡片）还在原来的位置；左上角那个菜单管的是另一件事 */}
-        {mode !== 'recolor' && (
+        {mode === 'model' && (
           <select
             className="model-type"
             aria-label="模型类型"
@@ -151,7 +154,9 @@ export function ControlPanel({
       </div>
 
       <div className="side-body">
-        {mode === 'recolor' ? (
+        {mode === 'motion' ? (
+          <MotionPanel {...motion} />
+        ) : mode === 'recolor' ? (
           <>
           <section className="bare">
             <div className="stack">
@@ -574,7 +579,7 @@ export function ControlPanel({
         {/* 不要标题、不要上面那条分隔线 —— 到这儿已经是面板最底下了 */}
         </>
         )}
-        {mode !== 'recolor' && (
+        {mode === 'model' && (
         <section className="export-block">
           <div className="export-meta">
             <span>预估大小</span>
