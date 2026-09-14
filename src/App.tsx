@@ -5,6 +5,7 @@ import { RecolorPane } from './components/RecolorPane';
 import { MotionPane } from './components/MotionPane';
 import { DEFAULT_MOTION, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
+import { centerPath, isClosed, resample, type Pt } from './lib/drawnPath';
 import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
@@ -129,6 +130,7 @@ export default function App() {
   const [motion, setMotion] = useState<MotionParams>(DEFAULT_MOTION);
   const [motionSpace, setMotionSpace] = useState<ModelSpace | null>(null);
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
+  const [drawing, setDrawing] = useState(false);
   // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
   const [spin, setSpin] = useState(true);
   const [compareReady, setCompareReady] = useState(false);
@@ -602,6 +604,11 @@ export default function App() {
     if (error) setStatus(`这个文件渲染不了：${error}`);
   }, []);
   const patchMotion = useCallback((p: Partial<MotionParams>) => setMotion((m) => ({ ...m, ...p })), []);
+  const onDrawn = useCallback((raw: Pt[]) => {
+    const pts = centerPath(resample(raw));
+    setMotion((m) => ({ ...m, path: 'custom', customPath: pts, customClosed: isClosed(pts) }));
+    setDrawing(false);
+  }, []);
   const exportMotion = useCallback(async () => {
     if (!motionSrc || !motionSpace) return;
     setMotionBusy('正在写入动画…');
@@ -787,6 +794,8 @@ export default function App() {
             motion={motion}
             onFile={pickMotionFile}
             onLoaded={onMotionLoaded}
+            drawing={drawing}
+            onDrawn={onDrawn}
           />
         ) : mode === 'recolor' ? (
           <RecolorPane
@@ -852,6 +861,8 @@ export default function App() {
           loaded: !!motionSpace,
           motion,
           patch: patchMotion,
+          drawing,
+          setDrawing,
           onPick: pickMotionFile,
           onExport: exportMotion,
           exportBusy: motionBusy,

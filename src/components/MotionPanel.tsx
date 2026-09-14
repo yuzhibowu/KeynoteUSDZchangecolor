@@ -7,6 +7,8 @@ export type MotionSidebar = {
   loaded: boolean;
   motion: MotionParams;
   patch: (p: Partial<MotionParams>) => void;
+  drawing: boolean;
+  setDrawing: (v: boolean) => void;
   onPick: (f: File) => void;
   onExport: () => void;
   exportBusy: string | null;
@@ -18,7 +20,7 @@ export type MotionSidebar = {
  * 参数故意少：做 PPT 的人要的是「轻一点 / 明显一点」，不是「幅度 1.5%、微旋 1.5°」。
  * 漂浮本身就包含上下位移和两个轴的微倾，不让用户自己拼。
  */
-export function MotionPanel({ fileName, loaded, motion, patch, onPick, onExport, exportBusy }: MotionSidebar) {
+export function MotionPanel({ fileName, loaded, motion, patch, drawing, setDrawing, onPick, onExport, exportBusy }: MotionSidebar) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -106,6 +108,18 @@ export function MotionPanel({ fileName, loaded, motion, patch, onPick, onExport,
               </button>
             ))}
           </div>
+          {motion.path === 'custom' && (
+            <>
+              <button className="btn" disabled={!loaded} aria-pressed={drawing} onClick={() => setDrawing(!drawing)}>
+                {drawing ? '取消' : motion.customPath.length ? '重新画一条' : '画一条'}
+              </button>
+              <p className="hint">
+                {motion.customPath.length
+                  ? `已画好 · ${motion.customClosed ? '首尾接上了，绕着走' : '没接上，来回走'}`
+                  : '在左边视口里按住拖一笔。首尾接上就绕着走，没接上就来回走。'}
+              </p>
+            </>
+          )}
           {motion.path !== 'none' && (
             <>
               <Slider
@@ -120,7 +134,7 @@ export function MotionPanel({ fileName, loaded, motion, patch, onPick, onExport,
                 reset={1}
                 onChange={(v) => patch({ pathSize: v })}
               />
-              {motion.path !== 'line' && (
+              {motion.path !== 'line' && motion.path !== 'custom' && (
                 <Slider
                   label="扁度"
                   value={motion.pathAspect}

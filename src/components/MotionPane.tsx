@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { normalizeUsdzForLoader } from '../lib/recolor';
 import { frameCamera, loadUsdz, makeScene } from '../lib/usdzScene';
-import { motionReach, poseAt, type MotionParams } from '../lib/motion';
+import { motionReach, pathAt, poseAt, effectiveLap, type MotionParams } from '../lib/motion';
+import type { Pt } from '../lib/drawnPath';
 import type { ModelSpace } from '../lib/motionExport';
 
 /**
@@ -19,6 +20,8 @@ export function MotionPane({
   motion,
   onFile,
   onLoaded,
+  drawing,
+  onDrawn,
 }: {
   fileName: string | null;
   source: ArrayBuffer | null;
@@ -26,12 +29,25 @@ export function MotionPane({
   onFile: (f: File) => void;
   /** 模型加载完了（或者失败了）告诉外面：导出要用加载器的变换和包围盒 */
   onLoaded: (space: ModelSpace | null, error: string | null) => void;
+  /** 手绘模式：拖动是画路径而不是转视角 */
+  drawing: boolean;
+  /** 画完一笔。点是模型半径的倍数，XY 平面 */
+  onDrawn: (pts: Pt[]) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const motionRef = useRef(motion);
   motionRef.current = motion;
+  const drawingRef = useRef(drawing);
+  drawingRef.current = drawing;
+  const onDrawnRef = useRef(onDrawn);
+  onDrawnRef.current = onDrawn;
+  // 进入手绘就把视角回正：画在正对着的那个平面上，画的和走的才是一回事
+  const viewRef = useRef({ yaw: 0.35, pitch: 0.18 });
+  useEffect(() => {
+    if (drawing) viewRef.current = { yaw: 0, pitch: 0 };
+  }, [drawing]);
   // 换了入场方式或时长就把时钟归零 —— 不然要等到下一圈才看得到入场
   const restartRef = useRef(0);
   useEffect(() => {
@@ -85,6 +101,46 @@ export function MotionPane({
       mover.add(obj);
       part.pivot.add(mover);
 
+      // 路径线：预设轨迹画一圈，手绘画那一笔。挂在 pivot 下，跟着视角转
+      const lineGeo = new THREE.BufferGeometry();
+      const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x4f8cff, transparent: true, opacity: 0.8 }));
+      line.frustumCulled = false;
+      part.pivot.add(line);
+      let lineKey = '';
+      const setLine = (pts: THREE.Vector3[]) => {
+        lineGeo.setFromPoints(pts);
+        line.visible = pts.length > 1;
+      };
+      const refreshLine = () => {
+        const m = motionRef.current;
+        const key = JSON.stringify([m.path, m.pathSize, m.pathAspect, m.pathClockwise, m.customPath, m.customClosed, m.seconds, m.pathLap]);
+        if (key === lineKey) return;
+        lineKey = key;
+        if (m.path === 'none' || (m.path === 'custom' && m.customPath.length === 0)) return setLine([]);
+        const lap = effectiveLap(m);
+        const n = 160;
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= n; i++) {
+          const a = pathAt(m, (lap * i) / n, radius);
+          pts.push(new THREE.Vector3(a.x, a.y, 0));
+        }
+        setLine(pts);
+      };
+
+      // 屏幕点 → 模型所在的 XY 平面（pivot 空间；手绘时视角已回正，所以就是世界坐标）
+      const ray = new THREE.Raycaster();
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const toPlane = (e: PointerEvent): Pt | null => {
+        if (!part) return null;
+        const r = host.getBoundingClientRect();
+        const nd = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        ray.setFromCamera(nd, part.camera);
+        const hit = new THREE.Vector3();
+        if (!ray.ray.intersectPlane(plane, hit)) return null;
+        return [hit.x / radius, hit.y / radius];
+      };
+      let stroke: Pt[] = [];
+
       let framedReach = -1;
       const resize = () => {
         if (!part) return;
@@ -102,8 +158,6 @@ export function MotionPane({
       setBusy(false);
       onLoaded(space, null);
 
-      let yaw = 0.35;
-      let pitch = 0.18;
       restartRef.current = performance.now();
       const loop = () => {
         raf = requestAnimationFrame(loop);
@@ -111,6 +165,7 @@ export function MotionPane({
         const t = (performance.now() - restartRef.current) / 1000;
         // 参数改了运动范围就重新取景（每帧比一次数，便宜）
         if (Math.abs(motionReach(motionRef.current, radius) - framedReach) > 1e-6) resize();
+        if (stroke.length === 0) refreshLine();
         const pose = poseAt(motionRef.current, t, radius);
         mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
         mover.scale.setScalar(pose.scale);
@@ -121,7 +176,7 @@ export function MotionPane({
           THREE.MathUtils.degToRad(pose.rotation[2]),
           'ZYX',
         );
-        part.pivot.rotation.set(pitch, yaw, 0);
+        part.pivot.rotation.set(viewRef.current.pitch, viewRef.current.yaw, 0);
         part.renderer.render(part.scene, part.camera);
       };
       loop();
@@ -134,16 +189,36 @@ export function MotionPane({
         lastX = e.clientX;
         lastY = e.clientY;
         host.setPointerCapture(e.pointerId);
+        if (drawingRef.current) {
+          const p = toPlane(e);
+          stroke = p ? [p] : [];
+          lineKey = '';
+        }
       };
       const move = (e: PointerEvent) => {
         if (!dragging) return;
-        yaw += (e.clientX - lastX) * 0.01;
-        pitch = Math.max(-1.4, Math.min(1.4, pitch + (e.clientY - lastY) * 0.01));
+        if (drawingRef.current) {
+          const p = toPlane(e);
+          if (p) {
+            stroke.push(p);
+            // 边画边显示这一笔
+            setLine(stroke.map(([x, y]) => new THREE.Vector3(x * radius, y * radius, 0)));
+          }
+          return;
+        }
+        viewRef.current.yaw += (e.clientX - lastX) * 0.01;
+        viewRef.current.pitch = Math.max(-1.4, Math.min(1.4, viewRef.current.pitch + (e.clientY - lastY) * 0.01));
         lastX = e.clientX;
         lastY = e.clientY;
       };
       const up = () => {
+        if (!dragging) return;
         dragging = false;
+        if (drawingRef.current && stroke.length > 1) {
+          const done = stroke;
+          stroke = [];
+          onDrawnRef.current(done);
+        } else stroke = [];
       };
       host.addEventListener('pointerdown', down);
       host.addEventListener('pointermove', move);
@@ -200,7 +275,8 @@ export function MotionPane({
       {fileName && !error && (
         <div className="motion-stage">
           {busy && <div className="motion-loading">正在加载…</div>}
-          <div ref={hostRef} className="motion-view" />
+          {drawing && !busy && <div className="motion-drawhint">按住拖一笔，松手就好</div>}
+          <div ref={hostRef} className={drawing ? 'motion-view drawing' : 'motion-view'} />
         </div>
       )}
     </div>

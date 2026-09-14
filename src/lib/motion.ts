@@ -9,6 +9,8 @@
  * 单一正弦、所有动作绑同一个周期的做法，几秒钟就能看出「它在循环」。
  */
 
+import { customPathAt, type Pt } from './drawnPath';
+
 export const FLOAT_LEVELS = [
   { id: 'off', label: '不动', scale: 0 },
   { id: 'light', label: '轻', scale: 0.5 },
@@ -30,6 +32,7 @@ export const PATHS = [
   { id: 'ellipse', label: '椭圆' },
   { id: 'line', label: '往返' },
   { id: 'eight', label: '8 字' },
+  { id: 'custom', label: '手绘' },
 ] as const;
 export type PathKind = (typeof PATHS)[number]['id'];
 
@@ -48,6 +51,10 @@ export type MotionParams = {
   pathClockwise: boolean;
   /** 沿路径倾斜：模型跟着切线方向侧倾 */
   pathBank: boolean;
+  /** 手绘的点（模型半径的倍数，重心已在原点）。空的话手绘等于没有轨迹 */
+  customPath: Pt[];
+  /** 手绘的一笔首尾接上了：绕圈走；否则来回走 */
+  customClosed: boolean;
   /**
    * 入场方式。Keynote 是从第 0 帧开始播的，所以时间线开头那一段可以不是循环：
    * 先入场，再接进漂浮。循环结尾用同样的方式退场，回到第 0 帧时接缝才是平的。
@@ -78,6 +85,8 @@ export const DEFAULT_MOTION: MotionParams = {
   pathLap: 8,
   pathClockwise: true,
   pathBank: false,
+  customPath: [],
+  customClosed: false,
   entrance: 'none',
   entranceSeconds: 1.5,
   speed: 1,
@@ -136,6 +145,14 @@ export function effectiveLap(p: MotionParams): number {
  */
 export function pathAt(p: MotionParams, t: number, radius: number): { x: number; y: number; heading: number } {
   if (p.path === 'none') return { x: 0, y: 0, heading: 0 };
+  if (p.path === 'custom') {
+    if (!p.customPath?.length) return { x: 0, y: 0, heading: 0 };
+    // 手绘的点是按半径归一的，「大小」在这里还是倍数；方向按顺 / 逆时针翻
+    const u = (p.pathClockwise ? -1 : 1) * (t / effectiveLap(p));
+    const c = customPathAt(p.customPath, p.customClosed, u);
+    const k = p.pathSize * radius;
+    return { x: c.x * k, y: c.y * k, heading: p.pathClockwise ? c.heading + Math.PI : c.heading };
+  }
   const A = p.pathSize * radius;
   const B = A * p.pathAspect;
   const dir = p.pathClockwise ? -1 : 1;
@@ -239,7 +256,11 @@ export function bakeMotion(
 export function motionReach(p: MotionParams, radius: number): number {
   let reach = FLOAT_RISE * radius * floatScale(p.float) * 1.8;
   if (p.entrance === 'rise') reach = Math.max(reach, RISE_DEPTH * radius);
-  if (p.path !== 'none') {
+  if (p.path === 'custom') {
+    let far = 0;
+    for (const [x, y] of p.customPath ?? []) far = Math.max(far, Math.hypot(x, y));
+    reach += far * p.pathSize * radius;
+  } else if (p.path !== 'none') {
     const A = p.pathSize * radius;
     reach += p.path === 'line' ? A : Math.max(A, A * p.pathAspect);
   }

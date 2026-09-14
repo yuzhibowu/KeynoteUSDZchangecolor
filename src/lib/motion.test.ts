@@ -119,3 +119,23 @@ describe('轨迹', () => {
     }
   });
 });
+
+describe('手绘轨迹', () => {
+  const sq = { ...DEFAULT_MOTION, float: 'off' as const, path: 'custom' as const, pathSize: 1, pathLap: 10, seconds: 30,
+    customPath: [[1, 0], [0, 1], [-1, 0], [0, -1]] as [number, number][], customClosed: true };
+  it('没画的时候等于没有轨迹', () => {
+    expect(pathAt({ ...sq, customPath: [] }, 3, 2)).toEqual({ x: 0, y: 0, heading: 0 });
+  });
+  it('点按模型半径放大，一圈回到起点', () => {
+    const a = pathAt(sq, 0, 2);
+    expect(a.x).toBeCloseTo(2);
+    const b = pathAt(sq, 10, 2);
+    expect(b.x).toBeCloseTo(a.x, 6);
+    expect(b.y).toBeCloseTo(a.y, 6);
+  });
+  it('顺 / 逆时针走的方向相反', () => {
+    const cw = pathAt(sq, 1, 1);
+    const ccw = pathAt({ ...sq, pathClockwise: false }, 1, 1);
+    expect(cw.y * ccw.y).toBeLessThan(0);
+  });
+});

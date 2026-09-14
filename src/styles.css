@@ -946,3 +946,18 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
   color: var(--muted);
   pointer-events: none;
 }
+
+.motion-view.drawing { cursor: crosshair; }
+.motion-drawhint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 1;
+}
