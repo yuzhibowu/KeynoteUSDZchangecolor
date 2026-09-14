@@ -322,7 +322,11 @@ export function saveMotion(p: MotionParams) {
   }
 }
 
-/** 读回来时和默认值合并：以后加了新字段，旧档也不会缺 */
+/**
+ * 读回来时和默认值合并：以后加了新字段，旧档也不会缺。
+ * 入场方式不记：每次打开都从「无」开始 —— Keynote 里入场只在放映从这页开始时才看得到，
+ * 默认不带，需要（别的软件能用上）再手动选。
+ */
 export function loadMotion(): MotionParams {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -336,6 +340,7 @@ export function loadMotion(): MotionParams {
       ...saved,
       floatAmount: typeof saved.floatAmount === 'number' ? saved.floatAmount : legacy ?? DEFAULT_MOTION.floatAmount,
       customPath: Array.isArray(saved.customPath) ? saved.customPath : [],
+      entrance: 'none',
     };
   } catch {
     return DEFAULT_MOTION;
