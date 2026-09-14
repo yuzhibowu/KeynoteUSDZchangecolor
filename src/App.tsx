@@ -614,6 +614,7 @@ export default function App() {
       setLastFile({ blob, name });
       const notes = [
         `${report.seconds} 秒 ${report.frames} 帧`,
+        report.binaryRoot ? '原文件是二进制场景，已另写一层文本图层把它引用进来' : null,
         report.replacedAnimation ? '原文件自带的动画已替换' : null,
         report.nestedAnimation ? `原文件深处还有 ${report.nestedAnimation} 段动画会叠加` : null,
       ].filter(Boolean);

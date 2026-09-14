@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { unzipSync } from 'fflate';
 import { addExtents, packUsdz } from './usdzExtent';
 import { bakeMotion, type MotionParams, type Pose } from './motion';
+// @ts-expect-error 从 three r185 搬过来的解析器，没有类型声明
+import { USDCParser } from '../vendor/usd/USDCParser.js';
 
 /**
  * 把运动写进 usdz。
@@ -38,6 +40,8 @@ export type MotionReport = {
   nestedAnimation: number;
   /** 扩大了多少个 extent */
   extents: number;
+  /** 根图层是二进制 .usdc：另写了一个文本根图层把它引用进来，原文件一个字节没动 */
+  binaryRoot: boolean;
 };
 
 const num = (v: number) => {
@@ -259,6 +263,78 @@ ${inner}
   return { text, wrapper, root: prim.name, replacedAnimation: own.stripped, nestedAnimation };
 }
 
+/**
+ * 二进制根图层：另写一个文本根图层，把原来的 .usdc 整个 reference 进来。
+ *
+ * upAxis / metersPerUnit 这类图层元数据只认根图层的，得从二进制里抄出来 ——
+ * 用 three 那个 crate 解析器读一遍字段就有了，不用自己解二进制。
+ * 引用时把 prim 路径写明（`</scene>`），不依赖对方的 defaultPrim。
+ */
+export type BinaryRootInfo = {
+  defaultPrim: string;
+  upAxis: string;
+  metersPerUnit: number;
+  /** 里面已有的动画 op 数 */
+  animatedOps: number;
+};
+
+export function readBinaryRoot(data: Uint8Array): BinaryRootInfo {
+  const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  const parsed = new USDCParser().parseData(buf) as {
+    specsByPath: Record<string, { specType: number; fields: Record<string, unknown> }>;
+  };
+  const root = parsed.specsByPath['/']?.fields ?? {};
+  const children = (root.primChildren as string[] | undefined) ?? [];
+  const defaultPrim = (root.defaultPrim as string | undefined) ?? children[0];
+  if (!defaultPrim) throw new Error('二进制根图层里找不到任何 prim');
+  let animatedOps = 0;
+  for (const spec of Object.values(parsed.specsByPath)) {
+    for (const [k, v] of Object.entries(spec.fields)) {
+      if (k.startsWith('xformOp:') && v && typeof v === 'object' && 'times' in (v as object)) animatedOps++;
+    }
+  }
+  return {
+    defaultPrim,
+    upAxis: (root.upAxis as string | undefined) ?? 'Y',
+    metersPerUnit: (root.metersPerUnit as number | undefined) ?? 1,
+    animatedOps,
+  };
+}
+
+export function binaryRootLayer(info: BinaryRootInfo, usdcPath: string, opts: WrapOptions): string {
+  const frames = opts.translate.length - 1;
+  const ts = (rows: number[][]) => `{${rows.map((v, i) => `${i}: ${vec(v)}`).join(', ')}}`;
+  return `#usda 1.0
+(
+	defaultPrim = "Motion"
+	upAxis = "${info.upAxis}"
+	metersPerUnit = ${num(info.metersPerUnit)}
+	startTimeCode = 0
+	endTimeCode = ${frames}
+	framesPerSecond = ${opts.fps}
+	timeCodesPerSecond = ${opts.fps}
+)
+
+def Xform "Motion"
+{
+	double3 xformOp:translate.timeSamples = ${ts(opts.translate)}
+	float3 xformOp:rotateXYZ.timeSamples = ${ts(opts.rotate)}
+	uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+
+	def "${info.defaultPrim}" (
+		prepend references = @./${usdcPath}@</${info.defaultPrim}>
+	)
+	{
+	}
+}
+`;
+}
+
+const CRATE_MAGIC = 'PXR-USDC';
+function isCrate(data: Uint8Array): boolean {
+  return new TextDecoder('latin1').decode(data.subarray(0, 8)) === CRATE_MAGIC;
+}
+
 // ---------- 整包 ----------
 
 export function addMotionToUsdz(
@@ -271,11 +347,9 @@ export function addMotionToUsdz(
   const entries = unzipSync(new Uint8Array(usdz));
   const names = Object.keys(entries);
   // usdz 规范：包里第一个文件就是根图层
-  const rootName = names.find((n) => /\.usda$/i.test(n));
-  if (!rootName) throw new Error('这个包里没有文本 .usda，场景全在二进制 .usdc 里，加不了动效');
-  if (names[0] !== rootName && /\.usdc$/i.test(names[0])) {
-    throw new Error('这个包的根图层是二进制 .usdc，加不了动效');
-  }
+  const rootName = names[0];
+  if (!rootName || !/\.usd[ac]?$/i.test(rootName)) throw new Error('这个包的第一个文件不是 USD 图层，不像是合法的 usdz');
+  const binaryRoot = /\.usdc$/i.test(rootName) || (/\.usd$/i.test(rootName) && isCrate(entries[rootName]));
 
   const G = new THREE.Matrix4().fromArray(space.groupMatrix);
   const Ginv = G.clone().invert();
@@ -300,14 +374,40 @@ export function addMotionToUsdz(
   // 扫过的范围在 three 世界里量，除掉加载器的缩放才是文件单位
   const scale = new THREE.Vector3().setFromMatrixColumn(G, 0).length() || 1;
   const margin = sweptMargin(mats, space.min, space.max) / scale;
+  const opts: WrapOptions = { translate, rotate, fps };
 
   const dec = new TextDecoder();
   const enc = new TextEncoder();
   const out: Record<string, Uint8Array> = {};
   let extents = 0;
+
+  if (binaryRoot) {
+    // 二进制根图层：新写一个文本根图层放在第一位，其余文件原样搬过去
+    const info = readBinaryRoot(entries[rootName]);
+    let layer = 'motion.usda';
+    for (let n = 1; names.includes(layer); n++) layer = `motion_${n}.usda`;
+    out[layer] = enc.encode(binaryRootLayer(info, rootName, opts));
+    for (const name of names) out[name] = entries[name];
+    return {
+      bytes: packUsdz(out),
+      report: {
+        frames: poses.length - 1,
+        seconds,
+        fps,
+        wrapper: 'Motion',
+        root: info.defaultPrim,
+        replacedAnimation: false,
+        nestedAnimation: info.animatedOps,
+        extents: 0,
+        binaryRoot: true,
+      },
+    };
+  }
+
   let info: ReturnType<typeof wrapWithMotion> | null = null;
   for (const name of names) {
-    if (!/\.usda$/i.test(name)) {
+    // .usd 两种编码都可能，二进制的照搬
+    if (!/\.usda?$/i.test(name) || isCrate(entries[name])) {
       out[name] = entries[name];
       continue;
     }
@@ -316,7 +416,7 @@ export function addMotionToUsdz(
     text = ex.text;
     extents += ex.count;
     if (name === rootName) {
-      info = wrapWithMotion(text, { translate, rotate, fps });
+      info = wrapWithMotion(text, opts);
       text = info.text;
     }
     out[name] = enc.encode(text);
@@ -332,6 +432,7 @@ export function addMotionToUsdz(
       replacedAnimation: info!.replacedAnimation,
       nestedAnimation: info!.nestedAnimation,
       extents,
+      binaryRoot: false,
     },
   };
 }

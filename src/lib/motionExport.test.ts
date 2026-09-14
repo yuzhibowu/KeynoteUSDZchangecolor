@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { expandExtents, poseToFile, stripOwnAnimation, wrapWithMotion } from './motionExport';
+import { binaryRootLayer, expandExtents, poseToFile, stripOwnAnimation, wrapWithMotion } from './motionExport';
 
 const SAMPLE = `#usda 1.0
 (
@@ -135,5 +135,20 @@ describe('poseToFile', () => {
     const f = poseToFile({ position: [0, 0.02, 0], rotation: [0, 0, 0] }, new THREE.Vector3(), G, Ginv);
     // three 里往上（+Y）挪 0.02，文件里是 Z-up 单位 cm：+Z 挪 2
     expect(f.translate.map((v) => +v.toFixed(6))).toEqual([0, 0, 2]);
+  });
+});
+
+describe('binaryRootLayer', () => {
+  it('新根图层：抄元数据、引用二进制里的根 prim、动画写外层', () => {
+    const t = binaryRootLayer(
+      { defaultPrim: 'scene', upAxis: 'Y', metersPerUnit: 0.01, animatedOps: 0 },
+      'scene.usdc',
+      OPTS,
+    );
+    expect(t).toMatch(/^#usda 1\.0\n\(\n\tdefaultPrim = "Motion"\n\tupAxis = "Y"\n\tmetersPerUnit = 0\.01\n/);
+    expect(t).toMatch(/endTimeCode = 2/);
+    expect(t).toMatch(/def Xform "Motion"/);
+    expect(t).toMatch(/def "scene" \(\n\t\tprepend references = @\.\/scene\.usdc@<\/scene>\n\t\)/);
+    expect(t).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ"\]/);
   });
 });
