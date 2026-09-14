@@ -266,3 +266,34 @@ export function motionReach(p: MotionParams, radius: number): number {
   }
   return reach;
 }
+
+/** 参数存进浏览器，刷新不丢。键带版本号：结构变了旧档自然作废 */
+const STORE_KEY = 'prism-usdz-exporter/motion/v1';
+
+export function saveMotion(p: MotionParams) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(p));
+  } catch {
+    /* 隐私模式 / 配额满，忽略 */
+  }
+}
+
+/** 读回来时和默认值合并：以后加了新字段，旧档也不会缺 */
+export function loadMotion(): MotionParams {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return DEFAULT_MOTION;
+    const saved = JSON.parse(raw) as Partial<MotionParams>;
+    return { ...DEFAULT_MOTION, ...saved, customPath: Array.isArray(saved.customPath) ? saved.customPath : [] };
+  } catch {
+    return DEFAULT_MOTION;
+  }
+}
+
+/** 随机一个相位：在一圈的范围里挑，且离现在的值够远，点一下一定看得出变了 */
+export function randomPhase(current: number, seconds: number): number {
+  const span = Math.min(10, seconds);
+  let v = Math.random() * span;
+  if (Math.abs(v - current) < span * 0.25) v = (v + span / 2) % span;
+  return Math.round(v * 10) / 10;
+}

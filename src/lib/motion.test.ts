@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MOTION, bakeMotion, effectiveLap, pathAt, poseAt } from './motion';
+import { DEFAULT_MOTION, bakeMotion, effectiveLap, pathAt, poseAt, randomPhase } from './motion';
 
 describe('poseAt', () => {
   it('不动档全是零', () => {
@@ -137,5 +137,16 @@ describe('手绘轨迹', () => {
     const cw = pathAt(sq, 1, 1);
     const ccw = pathAt({ ...sq, pathClockwise: false }, 1, 1);
     expect(cw.y * ccw.y).toBeLessThan(0);
+  });
+});
+
+describe('randomPhase', () => {
+  it('在范围内，且离现在的值够远', () => {
+    for (let i = 0; i < 200; i++) {
+      const v = randomPhase(3, 30);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(10);
+      expect(Math.abs(v - 3)).toBeGreaterThanOrEqual(2.4);
+    }
   });
 });

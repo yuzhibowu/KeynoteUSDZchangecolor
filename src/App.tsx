@@ -3,7 +3,7 @@ import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
 import { MotionPane } from './components/MotionPane';
-import { DEFAULT_MOTION, type MotionParams } from './lib/motion';
+import { loadMotion, saveMotion, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
 import { measureUsdz } from './lib/usdzScene';
 import { normalizeUsdzForLoader } from './lib/recolor';
@@ -130,7 +130,8 @@ export default function App() {
   const [recolorError, setRecolorError] = useState<string | null>(null);
   // 加动效：模型和参数分开放，改参数不重新加载模型
   const [motionSrc, setMotionSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
-  const [motion, setMotion] = useState<MotionParams>(DEFAULT_MOTION);
+  const [motion, setMotion] = useState<MotionParams>(loadMotion);
+  useEffect(() => saveMotion(motion), [motion]);
   const [motionSpace, setMotionSpace] = useState<ModelSpace | null>(null);
   // 批量：除了预览的那个，其余排着队一起导出
   const [motionExtra, setMotionExtra] = useState<{ name: string; buf: ArrayBuffer }[]>([]);

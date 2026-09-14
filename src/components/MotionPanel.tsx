@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, effectiveLap, type MotionParams } from '../lib/motion';
+import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, effectiveLap, randomPhase, type MotionParams } from '../lib/motion';
 
 export type MotionSidebar = {
   fileName: string | null;
@@ -97,6 +97,13 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             disabled={motion.float === 'off'}
             onChange={(v) => patch({ phase: v })}
           />
+          <button
+            className="btn"
+            disabled={motion.float === 'off'}
+            onClick={() => patch({ phase: randomPhase(motion.phase, motion.seconds) })}
+          >
+            随机错开一个
+          </button>
           <p className="hint">
             上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。
             同一页放几个模型时，每个「错开」不同的秒数，它们就不会一起起伏。
