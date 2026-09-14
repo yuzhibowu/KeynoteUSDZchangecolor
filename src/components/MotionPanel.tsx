@@ -145,8 +145,8 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
           <Slider
             label="节奏"
             value={motion.speed}
-            min={0.5}
-            max={2}
+            min={0.3}
+            max={3}
             step={0.05}
             digits={2}
             suffix="×"

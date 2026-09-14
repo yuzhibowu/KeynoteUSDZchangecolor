@@ -280,10 +280,13 @@ export function bakeMotion(
   return out;
 }
 
-/** 运动最远能离开原位多少（和 radius 同单位），预览取景用 */
+/**
+ * 运动最远能离开原位多少（和 radius 同单位），预览取景用。
+ * 漂浮的位移故意不算：它只有百分之几，为它挪相机没意义，还会让人以为幅度改了模型尺寸。
+ */
 export function motionReach(p: MotionParams, radius: number): number {
-  let reach = FLOAT_RISE * radius * Math.max(0, p.floatAmount) * 1.8;
-  if (p.entrance === 'rise') reach = Math.max(reach, RISE_DEPTH * radius);
+  let reach = 0;
+  if (p.entrance === 'rise') reach = RISE_DEPTH * radius;
   if (p.path === 'custom') {
     let far = 0;
     for (const [x, y] of p.customPath ?? []) far = Math.max(far, Math.hypot(x, y));
