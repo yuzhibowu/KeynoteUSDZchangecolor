@@ -11,13 +11,12 @@
 
 import { customPathAt, type Pt } from './drawnPath';
 
-export const FLOAT_LEVELS = [
-  { id: 'off', label: '不动', scale: 0 },
-  { id: 'light', label: '轻', scale: 0.5 },
-  { id: 'medium', label: '中', scale: 1 },
-  { id: 'heavy', label: '重', scale: 1.8 },
+/** 幅度滑杆上的吸附点：1 是书籍那套原幅度 */
+export const FLOAT_SNAPS = [
+  { value: 0.5, label: '轻' },
+  { value: 1, label: '中' },
+  { value: 1.8, label: '重' },
 ] as const;
-export type FloatLevel = (typeof FLOAT_LEVELS)[number]['id'];
 
 export const ENTRANCES = [
   { id: 'none', label: '无' },
@@ -45,8 +44,8 @@ export const SPIN_AXES = [
 export type SpinAxis = (typeof SPIN_AXES)[number]['id'];
 
 export type MotionParams = {
-  /** 漂浮强度档 */
-  float: FloatLevel;
+  /** 漂浮幅度：0 不动，1 是书籍那套原幅度，位移和微倾一起缩放 */
+  floatAmount: number;
   /** 自转：绕哪根轴一直转。默认 Y（竖轴，像转台） */
   spin: SpinAxis;
   /** 转一圈用多少秒。会吸附到能整除循环长度的值，接缝才闭合 */
@@ -92,7 +91,7 @@ export type MotionParams = {
 
 export const LOOP_SECONDS = [10, 30, 60] as const;
 export const DEFAULT_MOTION: MotionParams = {
-  float: 'medium',
+  floatAmount: 1,
   spin: 'none',
   spinLap: 12,
   spinClockwise: true,
@@ -146,9 +145,6 @@ const FLOAT_W_Y = 1.25;
 const FLOAT_W_X = 0.68;
 const FLOAT_W_Z = 0.82;
 
-export function floatScale(level: FloatLevel): number {
-  return FLOAT_LEVELS.find((l) => l.id === level)?.scale ?? 1;
-}
 
 /** 一圈实际用多少秒：吸附到能整除循环长度的值，一个循环里跑整数圈，接缝才闭合 */
 export function snapLap(lap: number, seconds: number): number {
@@ -220,7 +216,7 @@ const BANK_MAX = 18;
  * 直接绕原点转会整个甩出去；调用方要先把模型平移到中心再套这个姿态。
  */
 export function poseAt(p: MotionParams, t: number, radius: number): Pose {
-  const k = floatScale(p.float);
+  const k = Math.max(0, p.floatAmount);
   const tt = (t + p.phase) * p.speed;
   // 「不动」档乘出来是 -0，写进 usda 会变成 "-0"，看着别扭，归成 0
   const z = (v: number) => (v === 0 ? 0 : v);
@@ -286,7 +282,7 @@ export function bakeMotion(
 
 /** 运动最远能离开原位多少（和 radius 同单位），预览取景用 */
 export function motionReach(p: MotionParams, radius: number): number {
-  let reach = FLOAT_RISE * radius * floatScale(p.float) * 1.8;
+  let reach = FLOAT_RISE * radius * Math.max(0, p.floatAmount) * 1.8;
   if (p.entrance === 'rise') reach = Math.max(reach, RISE_DEPTH * radius);
   if (p.path === 'custom') {
     let far = 0;
@@ -315,8 +311,16 @@ export function loadMotion(): MotionParams {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return DEFAULT_MOTION;
-    const saved = JSON.parse(raw) as Partial<MotionParams>;
-    return { ...DEFAULT_MOTION, ...saved, customPath: Array.isArray(saved.customPath) ? saved.customPath : [] };
+    const saved = JSON.parse(raw) as Partial<MotionParams> & { float?: string };
+    // 老档里漂浮是四个档位，换算成幅度
+    const legacy = { off: 0, light: 0.5, medium: 1, heavy: 1.8 }[saved.float ?? ''];
+    delete saved.float;
+    return {
+      ...DEFAULT_MOTION,
+      ...saved,
+      floatAmount: typeof saved.floatAmount === 'number' ? saved.floatAmount : legacy ?? DEFAULT_MOTION.floatAmount,
+      customPath: Array.isArray(saved.customPath) ? saved.customPath : [],
+    };
   } catch {
     return DEFAULT_MOTION;
   }

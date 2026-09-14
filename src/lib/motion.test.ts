@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_MOTION, bakeMotion, effectiveLap, effectiveSpinLap, pathAt, poseAt, randomPhase, spinAt } from './motion';
 
 describe('poseAt', () => {
-  it('不动档全是零', () => {
-    const p = poseAt({ ...DEFAULT_MOTION, float: 'off' }, 3.3, 1);
+  it('幅度 0 全是零', () => {
+    const p = poseAt({ ...DEFAULT_MOTION, floatAmount: 0 }, 3.3, 1);
     expect(p.position).toEqual([0, 0, 0]);
     expect(p.rotation).toEqual([0, 0, 0]);
   });
@@ -20,7 +20,7 @@ describe('poseAt', () => {
   });
   it('倾角只有零点几度，不会把模型翻过去', () => {
     for (let t = 0; t < 30; t += 0.1) {
-      const p = poseAt({ ...DEFAULT_MOTION, float: 'heavy' }, t, 1);
+      const p = poseAt({ ...DEFAULT_MOTION, floatAmount: 1.8 }, t, 1);
       expect(Math.abs(p.rotation[0])).toBeLessThan(2);
       expect(Math.abs(p.rotation[2])).toBeLessThan(2);
     }
@@ -83,7 +83,7 @@ describe('入场 / 退场', () => {
 
 
 describe('轨迹', () => {
-  const e = { ...DEFAULT_MOTION, float: 'off' as const, path: 'ellipse' as const, pathSize: 1, pathAspect: 0.5, pathLap: 8, seconds: 30 };
+  const e = { ...DEFAULT_MOTION, floatAmount: 0, path: 'ellipse' as const, pathSize: 1, pathAspect: 0.5, pathLap: 8, seconds: 30 };
   it('一圈用时吸附到能整除循环长度：30 秒里 8 秒一圈 → 4 圈、7.5 秒', () => {
     expect(effectiveLap(e)).toBe(7.5);
     expect(effectiveLap({ ...e, pathLap: 20 })).toBe(15);
@@ -121,7 +121,7 @@ describe('轨迹', () => {
 });
 
 describe('手绘轨迹', () => {
-  const sq = { ...DEFAULT_MOTION, float: 'off' as const, path: 'custom' as const, pathSize: 1, pathLap: 10, seconds: 30,
+  const sq = { ...DEFAULT_MOTION, floatAmount: 0, path: 'custom' as const, pathSize: 1, pathLap: 10, seconds: 30,
     customPath: [[1, 0], [0, 1], [-1, 0], [0, -1]] as [number, number][], customClosed: true };
   it('没画的时候等于没有轨迹', () => {
     expect(pathAt({ ...sq, customPath: [] }, 3, 2)).toEqual({ x: 0, y: 0, heading: 0 });
@@ -152,7 +152,7 @@ describe('randomPhase', () => {
 });
 
 describe('自转', () => {
-  const y = { ...DEFAULT_MOTION, float: 'off' as const, spin: 'y' as const, spinLap: 12, seconds: 30 };
+  const y = { ...DEFAULT_MOTION, floatAmount: 0, spin: 'y' as const, spinLap: 12, seconds: 30 };
   it('一圈用时吸附：30 秒里 12 秒一圈 → 3 圈 10 秒', () => {
     expect(effectiveSpinLap(y)).toBe(10);
   });

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, SPIN_AXES, effectiveLap, effectiveSpinLap, randomPhase, snapLap, type MotionParams } from '../lib/motion';
+import { ENTRANCES, FLOAT_SNAPS, LOOP_SECONDS, PATHS, SPIN_AXES, effectiveLap, effectiveSpinLap, randomPhase, snapLap, type MotionParams } from '../lib/motion';
 import { VIDEO_FPS, VIDEO_SIZES, type VideoFormat, type VideoSizeId } from '../lib/videoExport';
 
 export type MotionSidebar = {
@@ -128,19 +128,20 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
       <section>
         <h2>漂浮</h2>
         <div className="stack">
-          <div className="opts four">
-            {FLOAT_LEVELS.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                className="opt"
-                aria-pressed={motion.float === l.id}
-                onClick={() => patch({ float: l.id })}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
+          <Slider
+            label="幅度"
+            value={motion.floatAmount}
+            min={0}
+            max={3}
+            step={0.05}
+            digits={2}
+            suffix=" ×"
+            note={motion.floatAmount === 0 ? '不动' : undefined}
+            reset={1}
+            snaps={FLOAT_SNAPS.map((x) => x.value)}
+            snapLabels={FLOAT_SNAPS.map((x) => x.label)}
+            onChange={(v) => patch({ floatAmount: v })}
+          />
           <Slider
             label="节奏"
             value={motion.speed}
@@ -151,7 +152,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             suffix="×"
             reset={1}
             snaps={[1]}
-            disabled={motion.float === 'off'}
+            disabled={motion.floatAmount === 0}
             onChange={(v) => patch({ speed: v })}
           />
           <Slider
@@ -163,18 +164,18 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             digits={1}
             suffix=" 秒"
             reset={0}
-            disabled={motion.float === 'off'}
+            disabled={motion.floatAmount === 0}
             onChange={(v) => patch({ phase: v })}
           />
           <button
             className="btn"
-            disabled={motion.float === 'off'}
+            disabled={motion.floatAmount === 0}
             onClick={() => patch({ phase: randomPhase(motion.phase, motion.seconds) })}
           >
             随机错开一个
           </button>
           <p className="hint">
-            上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。
+            上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。幅度管动多远，节奏管动多快。
             「起步错开」是从动作的第几秒起步：同一页放几个模型时各自错开，就不会像一队人齐步走。
             一次拖进多个时每块自动错开，左边预览里就是各自的样子。
           </p>
