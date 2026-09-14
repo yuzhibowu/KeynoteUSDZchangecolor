@@ -40,8 +40,8 @@
 
 > 这是一套「Keynote 渲染 USDZ 模型时会改变贴图颜色，如何反向补偿」的完整方案。
 > 先读 PORTING.md 理解方法和为什么这么设计，再读 color.ts 和 chart.ts 拿具体算法。
-> 请用 <你的语言> 重新实现。注意 BUILT_IN_PROFILE 里的数据是特定环境实测的，
-> 不要照抄，新实现里留空、由用户自己走一遍标定流程生成。
+> 网页项目不用重新实现：`for-codex/QUICKSTART.md` 三行接入。别的语言才需要照 PORTING.md 重写。
+> 内置档（`profiles/*.json`）是 Keynote 14.5 实测的，跨机器有效，可以直接当默认值用。
 
 ## 实现顺序建议
 
