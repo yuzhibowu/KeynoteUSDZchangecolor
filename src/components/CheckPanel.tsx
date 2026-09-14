@@ -84,9 +84,9 @@ export function CheckPanel({ fileName, report, busy, slim, patchSlim, onPick, on
             onChange={(v) => patchSlim({ quality: v })}
           />
           <p className="hint">
-            贴图最长边超过上面的上限就缩小，2048 够用。只转真不透明的 PNG，法线和透明贴图不动；
-            颜色校正过的卡片别转，JPEG 会抹掉一两个色阶。
-            {report && bigTex + pngTex > 0 && <>{' '}这份里 {bigTex} 张要缩、{pngTex} 张可能转。</>}
+            缩尺寸不伤颜色，自己调过色的卡片也能放心缩。转 JPEG 只给别人的模型（Sketchfab 那类）用，
+            自己调过色的别勾——JPEG 会把颜色抹掉一两个色阶，白调了。
+            {report && bigTex + pngTex > 0 && <>{' '}这份里 {bigTex} 张要缩、{pngTex} 张可转。</>}
           </p>
         </div>
       </section>

@@ -23,7 +23,7 @@ export type SlimOptions = {
   quality: number;
 };
 
-export const DEFAULT_SLIM: SlimOptions = { maxSize: 2048, jpegOpaque: true, quality: 0.92 };
+export const DEFAULT_SLIM: SlimOptions = { maxSize: 2048, jpegOpaque: false, quality: 0.92 };
 
 export type SlimTexture = {
   name: string;
