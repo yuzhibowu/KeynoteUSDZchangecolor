@@ -25,9 +25,29 @@ export const ENTRANCES = [
 ] as const;
 export type Entrance = (typeof ENTRANCES)[number]['id'];
 
+export const PATHS = [
+  { id: 'none', label: '无' },
+  { id: 'ellipse', label: '椭圆' },
+  { id: 'line', label: '往返' },
+  { id: 'eight', label: '8 字' },
+] as const;
+export type PathKind = (typeof PATHS)[number]['id'];
+
 export type MotionParams = {
   /** 漂浮强度档 */
   float: FloatLevel;
+  /** 轨迹。都在屏幕平面（XY）里跑，和漂浮、入场叠加 */
+  path: PathKind;
+  /** 轨迹的水平半径，按模型包围球半径的倍数 */
+  pathSize: number;
+  /** 垂直半径 / 水平半径。往返用不到 */
+  pathAspect: number;
+  /** 跑一圈用多少秒。会吸附到能整除循环长度的值，接缝才闭合 */
+  pathLap: number;
+  /** 顺时针 */
+  pathClockwise: boolean;
+  /** 沿路径倾斜：模型跟着切线方向侧倾 */
+  pathBank: boolean;
   /**
    * 入场方式。Keynote 是从第 0 帧开始播的，所以时间线开头那一段可以不是循环：
    * 先入场，再接进漂浮。循环结尾用同样的方式退场，回到第 0 帧时接缝才是平的。
@@ -52,6 +72,12 @@ export type MotionParams = {
 export const LOOP_SECONDS = [10, 30, 60] as const;
 export const DEFAULT_MOTION: MotionParams = {
   float: 'medium',
+  path: 'none',
+  pathSize: 1,
+  pathAspect: 0.45,
+  pathLap: 8,
+  pathClockwise: true,
+  pathBank: false,
   entrance: 'none',
   entranceSeconds: 1.5,
   speed: 1,
@@ -98,6 +124,48 @@ export function floatScale(level: FloatLevel): number {
   return FLOAT_LEVELS.find((l) => l.id === level)?.scale ?? 1;
 }
 
+/** 一圈实际用多少秒：吸附到能整除循环长度的值，一个循环里跑整数圈，接缝才闭合 */
+export function effectiveLap(p: MotionParams): number {
+  const laps = Math.max(1, Math.round(p.seconds / Math.max(0.5, p.pathLap)));
+  return p.seconds / laps;
+}
+
+/**
+ * 轨迹在 t 秒时的位置（XY 平面，和 radius 同单位）和切线方向（弧度，给侧倾用）。
+ * 起点都在 θ = 0：椭圆在最右边，往返在中点往右走，8 字在中心。
+ */
+export function pathAt(p: MotionParams, t: number, radius: number): { x: number; y: number; heading: number } {
+  if (p.path === 'none') return { x: 0, y: 0, heading: 0 };
+  const A = p.pathSize * radius;
+  const B = A * p.pathAspect;
+  const dir = p.pathClockwise ? -1 : 1;
+  const th = (dir * (t * 2 * Math.PI)) / effectiveLap(p);
+  let x = 0;
+  let y = 0;
+  let dx = 1;
+  let dy = 0;
+  if (p.path === 'ellipse') {
+    x = A * Math.cos(th);
+    y = B * Math.sin(th);
+    dx = -A * Math.sin(th) * dir;
+    dy = B * Math.cos(th) * dir;
+  } else if (p.path === 'line') {
+    x = A * Math.sin(th);
+    dx = A * Math.cos(th) * dir;
+    dy = 0;
+  } else {
+    // 8 字：横向一个周期，纵向两个
+    x = A * Math.sin(th);
+    y = B * Math.sin(2 * th);
+    dx = A * Math.cos(th) * dir;
+    dy = 2 * B * Math.cos(2 * th) * dir;
+  }
+  return { x, y, heading: Math.atan2(dy, dx) };
+}
+
+/** 侧倾角上限（度）：跟着切线全转会像在翻跟头，只取一部分 */
+const BANK_MAX = 18;
+
 /**
  * t 秒时的姿态。radius 是模型包围球半径 —— 位移幅度按它算，
  * 这样一米的模型和一厘米的模型看起来晃得一样多。
@@ -119,12 +187,15 @@ export function poseAt(p: MotionParams, t: number, radius: number): Pose {
     if (p.entrance === 'grow' || p.entrance === 'spin') scale = GROW_FROM + (1 - GROW_FROM) * e;
     if (p.entrance === 'spin') ry = (1 - e) * 360;
   }
+  const path = pathAt(p, t, radius);
+  // 侧倾：往右走时 heading = 0，往上拐时 heading > 0 → 模型往前倾（绕 Z 负转）
+  const bank = p.path !== 'none' && p.pathBank ? -Math.sin(path.heading) * BANK_MAX : 0;
   return {
-    position: [0, z(y), 0],
+    position: [z(path.x), z(y + path.y), 0],
     rotation: [
       z(Math.cos(tt * FLOAT_W_X) * FLOAT_TILT_X * k),
       z(ry),
-      z(Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k),
+      z(Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k + bank),
     ],
     scale,
   };
@@ -162,4 +233,15 @@ export function bakeMotion(
     });
   }
   return out;
+}
+
+/** 运动最远能离开原位多少（和 radius 同单位），预览取景用 */
+export function motionReach(p: MotionParams, radius: number): number {
+  let reach = FLOAT_RISE * radius * floatScale(p.float) * 1.8;
+  if (p.entrance === 'rise') reach = Math.max(reach, RISE_DEPTH * radius);
+  if (p.path !== 'none') {
+    const A = p.pathSize * radius;
+    reach += p.path === 'line' ? A : Math.max(A, A * p.pathAspect);
+  }
+  return reach;
 }

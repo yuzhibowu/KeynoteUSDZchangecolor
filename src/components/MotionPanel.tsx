@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, type MotionParams } from '../lib/motion';
+import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, effectiveLap, type MotionParams } from '../lib/motion';
 
 export type MotionSidebar = {
   fileName: string | null;
@@ -87,6 +87,91 @@ export function MotionPanel({ fileName, loaded, motion, patch, onPick, onExport,
             上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。
             同一页放几个模型时，每个「错开」不同的秒数，它们就不会一起起伏。
           </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>轨迹</h2>
+        <div className="stack">
+          <div className="opts four">
+            {PATHS.map((k) => (
+              <button
+                key={k.id}
+                type="button"
+                className="opt"
+                aria-pressed={motion.path === k.id}
+                onClick={() => patch({ path: k.id })}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+          {motion.path !== 'none' && (
+            <>
+              <Slider
+                label="大小"
+                value={motion.pathSize}
+                min={0.2}
+                max={3}
+                step={0.05}
+                digits={2}
+                suffix=" ×"
+                note="模型半径的倍数"
+                reset={1}
+                onChange={(v) => patch({ pathSize: v })}
+              />
+              {motion.path !== 'line' && (
+                <Slider
+                  label="扁度"
+                  value={motion.pathAspect}
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  digits={2}
+                  note="竖 / 横"
+                  reset={0.45}
+                  onChange={(v) => patch({ pathAspect: v })}
+                />
+              )}
+              <Slider
+                label="一圈用时"
+                value={motion.pathLap}
+                min={3}
+                max={20}
+                step={0.5}
+                digits={1}
+                suffix=" 秒"
+                note={`实际 ${effectiveLap(motion).toFixed(1)} 秒`}
+                reset={8}
+                onChange={(v) => patch({ pathLap: v })}
+              />
+              <div className="opts">
+                <button
+                  type="button"
+                  className="opt"
+                  aria-pressed={motion.pathClockwise}
+                  onClick={() => patch({ pathClockwise: true })}
+                >
+                  顺时针
+                </button>
+                <button
+                  type="button"
+                  className="opt"
+                  aria-pressed={!motion.pathClockwise}
+                  onClick={() => patch({ pathClockwise: false })}
+                >
+                  逆时针
+                </button>
+              </div>
+              <label className="check">
+                <input type="checkbox" checked={motion.pathBank} onChange={(e) => patch({ pathBank: e.target.checked })} />
+                <span>沿路径倾斜</span>
+              </label>
+              <p className="hint">
+                在屏幕平面里跑，和漂浮叠加。一圈用时会吸附到能整除循环长度的值，接缝才闭合。
+              </p>
+            </>
+          )}
         </div>
       </section>
 

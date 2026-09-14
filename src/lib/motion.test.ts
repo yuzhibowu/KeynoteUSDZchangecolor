@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MOTION, bakeMotion, poseAt } from './motion';
+import { DEFAULT_MOTION, bakeMotion, effectiveLap, pathAt, poseAt } from './motion';
 
 describe('poseAt', () => {
   it('不动档全是零', () => {
@@ -81,3 +81,41 @@ describe('入场 / 退场', () => {
   });
 });
 
+
+describe('轨迹', () => {
+  const e = { ...DEFAULT_MOTION, float: 'off' as const, path: 'ellipse' as const, pathSize: 1, pathAspect: 0.5, pathLap: 8, seconds: 30 };
+  it('一圈用时吸附到能整除循环长度：30 秒里 8 秒一圈 → 4 圈、7.5 秒', () => {
+    expect(effectiveLap(e)).toBe(7.5);
+    expect(effectiveLap({ ...e, pathLap: 20 })).toBe(15);
+    expect(effectiveLap({ ...e, pathLap: 100 })).toBe(30);
+  });
+  it('椭圆：起点在右边，半圈后在左边，纵向按扁度', () => {
+    const a = pathAt(e, 0, 2);
+    expect(a.x).toBeCloseTo(2);
+    expect(a.y).toBeCloseTo(0);
+    const b = pathAt(e, 3.75, 2);
+    expect(b.x).toBeCloseTo(-2);
+    const c = pathAt({ ...e, pathClockwise: false }, 7.5 / 4, 2);
+    expect(c.y).toBeCloseTo(1); // 逆时针四分之一圈在上面
+    expect(pathAt(e, 7.5 / 4, 2).y).toBeCloseTo(-1); // 顺时针在下面
+  });
+  it('往返只有横向，8 字纵向两倍频', () => {
+    expect(pathAt({ ...e, path: 'line' }, 1, 1).y).toBe(0);
+    const f = { ...e, path: 'eight' as const };
+    expect(pathAt(f, 7.5 / 4, 1).y).toBeCloseTo(0); // 四分之一圈时 sin(2θ)=0
+    expect(Math.abs(pathAt(f, 7.5 / 8, 1).y)).toBeCloseTo(0.5);
+  });
+  it('轨迹叠在漂浮上，循环首尾仍然闭合', () => {
+    const p = { ...DEFAULT_MOTION, path: 'eight' as const, pathLap: 8, seconds: 30 };
+    const s = bakeMotion(p, 1, 30, 60);
+    expect(s[1800].position[0]).toBeCloseTo(s[0].position[0], 6);
+    expect(s[1800].position[1]).toBeCloseTo(s[0].position[1], 6);
+    expect(s[1800].rotation[2]).toBeCloseTo(s[0].rotation[2], 6);
+  });
+  it('侧倾只在开了的时候有，且不超过上限', () => {
+    expect(poseAt(e, 1, 1).rotation[2]).toBe(0);
+    for (let t = 0; t < 8; t += 0.25) {
+      expect(Math.abs(poseAt({ ...e, pathBank: true }, t, 1).rotation[2])).toBeLessThanOrEqual(18.0001);
+    }
+  });
+});

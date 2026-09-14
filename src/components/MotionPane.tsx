@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { normalizeUsdzForLoader } from '../lib/recolor';
 import { frameCamera, loadUsdz, makeScene } from '../lib/usdzScene';
-import { poseAt, type MotionParams } from '../lib/motion';
+import { motionReach, poseAt, type MotionParams } from '../lib/motion';
 import type { ModelSpace } from '../lib/motionExport';
 
 /**
@@ -85,14 +85,16 @@ export function MotionPane({
       mover.add(obj);
       part.pivot.add(mover);
 
+      let framedReach = -1;
       const resize = () => {
         if (!part) return;
         const w = host.clientWidth || 1;
         const h = host.clientHeight || 1;
         part.renderer.setSize(w, h);
         part.camera.aspect = w / h;
-        // 留得比对比视口宽一点：模型会上下漂，别让它顶到边
-        frameCamera(part.camera, radius, 1.45);
+        // 取景要把整段运动装下：轨迹开大了模型会跑出画面
+        framedReach = motionReach(motionRef.current, radius);
+        frameCamera(part.camera, radius + framedReach, 1.25);
       };
       resize();
       const ro = new ResizeObserver(resize);
@@ -107,6 +109,8 @@ export function MotionPane({
         raf = requestAnimationFrame(loop);
         if (!part) return;
         const t = (performance.now() - restartRef.current) / 1000;
+        // 参数改了运动范围就重新取景（每帧比一次数，便宜）
+        if (Math.abs(motionReach(motionRef.current, radius) - framedReach) > 1e-6) resize();
         const pose = poseAt(motionRef.current, t, radius);
         mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
         mover.scale.setScalar(pose.scale);
