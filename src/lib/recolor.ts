@@ -273,9 +273,14 @@ export async function recolorUsdz(
       continue;
     }
     // .usdc 是二进制的 crate 格式，没有解析器就动不了里面的材质。
-    // 贴图是独立文件，照样能补 —— 所以不是全无用处，但要如实告诉用户。
-    if (/\.usdc?$/i.test(name)) report.binary.push(name);
-    else report.skipped.push(name);
+    // 但只有**里面真的有材质**才值得报：three 的导出器把每个 mesh 的几何单独写成 .usdc，
+    // 材质全在文本的 model.usda 里 —— 一个卡片模型 183 个几何 .usdc，报出来一屏红字，
+    // 其实材质一个没漏。crate 的 token 表是明文，直接搜材质相关的字样就能分辨。
+    if (/\.usdc?$/i.test(name)) {
+      const text = new TextDecoder('latin1').decode(data);
+      if (/UsdPreviewSurface|diffuseColor|emissiveColor/.test(text)) report.binary.push(name);
+      else report.skipped.push(name);
+    } else report.skipped.push(name);
     out[name] = data;
   }
 

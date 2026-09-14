@@ -137,8 +137,10 @@ export function RecolorPane({
 
           {report.binary.length > 0 && (
             <p className="hint warn">
-              这个文件的场景是二进制的（{report.binary.join('、')}）。贴图已经补偿了，
-              但写死在材质里的纯色和自发光动不了 —— 那需要 USD 的二进制解析器。
+              这个文件有 {report.binary.length} 个二进制场景文件带着材质（
+              {report.binary.slice(0, 3).join('、')}
+              {report.binary.length > 3 ? ` 等 ${report.binary.length} 个` : ''}）。贴图已经补偿了，
+              但写死在这些材质里的纯色和自发光动不了 —— 那需要 USD 的二进制解析器。
               如果模型的颜色主要来自贴图，影响不大。
             </p>
           )}
