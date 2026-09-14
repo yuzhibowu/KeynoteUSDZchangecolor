@@ -64,21 +64,38 @@ export function poseToFile(pose: Pose, center: THREE.Vector3, G: THREE.Matrix4, 
   );
   const q = new THREE.Quaternion().setFromEuler(euler);
   const d = new THREE.Vector3(...pose.position);
-  // 世界 = R·(p − c) + c + d
+  // 世界 = s·R·(p − c) + c + d
   const M = new THREE.Matrix4()
-    .compose(center.clone().add(d), q, new THREE.Vector3(1, 1, 1))
+    .compose(center.clone().add(d), q, new THREE.Vector3(pose.scale, pose.scale, pose.scale))
     .multiply(new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z));
   const F = Ginv.clone().multiply(M).multiply(G);
   const pos = new THREE.Vector3();
   const rot = new THREE.Quaternion();
   const scl = new THREE.Vector3();
   F.decompose(pos, rot, scl);
-  const e = new THREE.Euler().setFromQuaternion(rot, 'ZYX');
+  // 旋转能不分解就不分解：three 的 ZYX 分解把 Y 角限制在 ±90°，旋入转过 90° 时
+  // 会把多出来的塞到 X、Z 上各加 180°，每圈两次一帧的抖动。G 没有旋转（Y-up 文件，
+  // 绝大多数）时文件坐标和预览坐标只差一个均匀缩放，角度原样照抄就是对的。
+  // Z-up 文件才真要换轴，那时自转落在 Z 角上，分解没有这个限制。
+  const rotate = hasRotation(G)
+    ? (() => {
+        const e = new THREE.Euler().setFromQuaternion(rot, 'ZYX');
+        return [THREE.MathUtils.radToDeg(e.x), THREE.MathUtils.radToDeg(e.y), THREE.MathUtils.radToDeg(e.z)];
+      })()
+    : [...pose.rotation];
   return {
     translate: [pos.x, pos.y, pos.z],
-    rotate: [THREE.MathUtils.radToDeg(e.x), THREE.MathUtils.radToDeg(e.y), THREE.MathUtils.radToDeg(e.z)],
+    rotate,
+    scale: [scl.x, scl.y, scl.z],
     matrix: M,
   };
+}
+
+/** G 除了均匀缩放还带不带旋转 */
+function hasRotation(G: THREE.Matrix4): boolean {
+  const q = new THREE.Quaternion();
+  G.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+  return Math.abs(q.w) < 1 - 1e-9;
 }
 
 /** 运动扫过的范围：包围盒八个角在所有帧里离开原位最远的距离（three 世界单位） */
@@ -96,6 +113,24 @@ function sweptMargin(frames: THREE.Matrix4[], min: number[], max: number[]): num
         }
       }
   return worst;
+}
+
+/**
+ * 从矩阵分解出来的欧拉角被折在 ±180° 里，旋入那一整圈会在 180° 处从 −179 跳到 +179。
+ * Keynote 按帧线性插值，那一帧就会狂转一圈。逐帧挑离上一帧最近的等价角，让序列连续。
+ */
+export function unwrapDegrees(rows: number[][]): number[][] {
+  const out = rows.map((r) => [...r]);
+  for (let i = 1; i < out.length; i++) {
+    for (let a = 0; a < 3; a++) {
+      let v = out[i][a];
+      const prev = out[i - 1][a];
+      while (v - prev > 180) v -= 360;
+      while (v - prev < -180) v += 360;
+      out[i][a] = v;
+    }
+  }
+  return out;
 }
 
 // ---------- 纯文本部分 ----------
@@ -203,8 +238,26 @@ export function expandExtents(usda: string, margin: number): { text: string; cou
 export type WrapOptions = {
   translate: number[][];
   rotate: number[][];
+  /** 只有入场用到缩放时才给；不给就不写 scale op，少一个 op 少一分风险 */
+  scale?: number[][];
   fps: number;
 };
+
+/** 三个 op 的声明和顺序。缩放不带后缀 —— 带后缀的 scale 是实测会让苹果放弃的那种 */
+function motionOps(opts: WrapOptions, indent: string): string {
+  const ts = (rows: number[][]) => `{${rows.map((v, i) => `${i}: ${vec(v)}`).join(', ')}}`;
+  const order = ['xformOp:translate', 'xformOp:rotateXYZ'];
+  const lines = [
+    `${indent}double3 xformOp:translate.timeSamples = ${ts(opts.translate)}`,
+    `${indent}float3 xformOp:rotateXYZ.timeSamples = ${ts(opts.rotate)}`,
+  ];
+  if (opts.scale) {
+    lines.push(`${indent}float3 xformOp:scale.timeSamples = ${ts(opts.scale)}`);
+    order.push('xformOp:scale');
+  }
+  lines.push(`${indent}uniform token[] xformOpOrder = [${order.map((o) => `"${o}"`).join(', ')}]`);
+  return lines.join('\n');
+}
 
 /**
  * 在根 prim 外面套一层带动画的 Xform。纯文本操作，方便测试。
@@ -234,12 +287,9 @@ export function wrapWithMotion(
     .join('\n');
 
   const frames = opts.translate.length - 1;
-  const ts = (rows: number[][]) => `{${rows.map((v, i) => `${i}: ${vec(v)}`).join(', ')}}`;
   const wrapped = `def Xform "${wrapper}"
 {
-\tdouble3 xformOp:translate.timeSamples = ${ts(opts.translate)}
-\tfloat3 xformOp:rotateXYZ.timeSamples = ${ts(opts.rotate)}
-\tuniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+${motionOps(opts, '\t')}
 
 ${inner}
 }`;
@@ -303,7 +353,6 @@ export function readBinaryRoot(data: Uint8Array): BinaryRootInfo {
 
 export function binaryRootLayer(info: BinaryRootInfo, usdcPath: string, opts: WrapOptions): string {
   const frames = opts.translate.length - 1;
-  const ts = (rows: number[][]) => `{${rows.map((v, i) => `${i}: ${vec(v)}`).join(', ')}}`;
   return `#usda 1.0
 (
 	defaultPrim = "Motion"
@@ -317,9 +366,7 @@ export function binaryRootLayer(info: BinaryRootInfo, usdcPath: string, opts: Wr
 
 def Xform "Motion"
 {
-	double3 xformOp:translate.timeSamples = ${ts(opts.translate)}
-	float3 xformOp:rotateXYZ.timeSamples = ${ts(opts.rotate)}
-	uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+${motionOps(opts, '\t')}
 
 	def "${info.defaultPrim}" (
 		prepend references = @./${usdcPath}@</${info.defaultPrim}>
@@ -364,17 +411,20 @@ export function addMotionToUsdz(
   const poses = bakeMotion(params, radius, seconds, fps);
   const translate: number[][] = [];
   const rotate: number[][] = [];
+  const scale: number[][] = [];
   const mats: THREE.Matrix4[] = [];
   for (const pose of poses) {
     const f = poseToFile(pose, center, G, Ginv);
     translate.push(f.translate);
     rotate.push(f.rotate);
+    scale.push(f.scale);
     mats.push(f.matrix);
   }
+  const scaled = poses.some((p) => p.scale !== 1);
   // 扫过的范围在 three 世界里量，除掉加载器的缩放才是文件单位
-  const scale = new THREE.Vector3().setFromMatrixColumn(G, 0).length() || 1;
-  const margin = sweptMargin(mats, space.min, space.max) / scale;
-  const opts: WrapOptions = { translate, rotate, fps };
+  const unit = new THREE.Vector3().setFromMatrixColumn(G, 0).length() || 1;
+  const margin = sweptMargin(mats, space.min, space.max) / unit;
+  const opts: WrapOptions = { translate, rotate: unwrapDegrees(rotate), scale: scaled ? scale : undefined, fps };
 
   const dec = new TextDecoder();
   const enc = new TextEncoder();

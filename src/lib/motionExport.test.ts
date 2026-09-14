@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { binaryRootLayer, expandExtents, poseToFile, stripOwnAnimation, wrapWithMotion } from './motionExport';
+import { binaryRootLayer, expandExtents, poseToFile, stripOwnAnimation, unwrapDegrees, wrapWithMotion } from './motionExport';
 
 const SAMPLE = `#usda 1.0
 (
@@ -116,13 +116,13 @@ describe('expandExtents', () => {
 describe('poseToFile', () => {
   const I = new THREE.Matrix4();
   it('Y-up、单位 1、中心在原点：原样写出', () => {
-    const f = poseToFile({ position: [0, 0.2, 0], rotation: [1, 0, 0.5] }, new THREE.Vector3(), I, I);
+    const f = poseToFile({ position: [0, 0.2, 0], rotation: [1, 0, 0.5], scale: 1 }, new THREE.Vector3(), I, I);
     expect(f.translate.map((v) => +v.toFixed(6))).toEqual([0, 0.2, 0]);
     expect(f.rotate.map((v) => +v.toFixed(4))).toEqual([1, 0, 0.5]);
   });
   it('中心不在原点：平移里补上 c − R·c，绕中心转的点回到原位', () => {
     const c = new THREE.Vector3(3, 4, 5);
-    const f = poseToFile({ position: [0, 0, 0], rotation: [0, 90, 0] }, c, I, I);
+    const f = poseToFile({ position: [0, 0, 0], rotation: [0, 90, 0], scale: 1 }, c, I, I);
     // 中心点自己经过变换后还在原地
     const p = c.clone().applyMatrix4(f.matrix);
     expect(p.distanceTo(c)).toBeLessThan(1e-9);
@@ -132,9 +132,47 @@ describe('poseToFile', () => {
     // 加载器：先绕 X 转 -90°（Z-up → Y-up），再缩放 0.01
     const G = new THREE.Matrix4().makeRotationX(-Math.PI / 2).premultiply(new THREE.Matrix4().makeScale(0.01, 0.01, 0.01));
     const Ginv = G.clone().invert();
-    const f = poseToFile({ position: [0, 0.02, 0], rotation: [0, 0, 0] }, new THREE.Vector3(), G, Ginv);
+    const f = poseToFile({ position: [0, 0.02, 0], rotation: [0, 0, 0], scale: 1 }, new THREE.Vector3(), G, Ginv);
     // three 里往上（+Y）挪 0.02，文件里是 Z-up 单位 cm：+Z 挪 2
     expect(f.translate.map((v) => +v.toFixed(6))).toEqual([0, 0, 2]);
+  });
+});
+
+describe('缩放 op', () => {
+  it('给了 scale 才写，写在 order 最后', () => {
+    const r = wrapWithMotion(SAMPLE, { ...OPTS, scale: [[0.001, 0.001, 0.001], [0.5, 0.5, 0.5], [1, 1, 1]] });
+    expect(r.text).toMatch(/float3 xformOp:scale\.timeSamples = \{0: \(0\.001, 0\.001, 0\.001\), 1: \(0\.5, 0\.5, 0\.5\), 2: \(1, 1, 1\)\}/);
+    expect(r.text).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"\]/);
+    expect(wrapWithMotion(SAMPLE, OPTS).text).not.toMatch(/xformOp:scale/);
+  });
+  it('绕中心缩放：中心点不动，缩放从矩阵里分解出来', () => {
+    const I = new THREE.Matrix4();
+    const c = new THREE.Vector3(3, 4, 5);
+    const f = poseToFile({ position: [0, 0, 0], rotation: [0, 0, 0], scale: 0.5 }, c, I, I);
+    expect(c.clone().applyMatrix4(f.matrix).distanceTo(c)).toBeLessThan(1e-9);
+    expect(f.scale.map((v) => +v.toFixed(6))).toEqual([0.5, 0.5, 0.5]);
+  });
+});
+
+describe('旋入的 Y 角', () => {
+  it('Y-up 文件：角度原样照抄，转过 90° 也不折', () => {
+    const I = new THREE.Matrix4();
+    const f = poseToFile({ position: [0, 0, 0], rotation: [0.7, 150, 0.5], scale: 1 }, new THREE.Vector3(), I, I);
+    expect(f.rotate).toEqual([0.7, 150, 0.5]);
+  });
+  it('Z-up 文件：自转落在 Z 角上，分解后角度连续', () => {
+    const G = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+    const Ginv = G.clone().invert();
+    const ys = [0, 60, 120, 150, 179, 200, 300, 359].map(
+      (y) => poseToFile({ position: [0, 0, 0], rotation: [0, y, 0], scale: 1 }, new THREE.Vector3(), G, Ginv).rotate,
+    );
+    // 落在 Z 上，X、Y 基本为 0
+    for (const r of ys) {
+      expect(Math.abs(r[0])).toBeLessThan(1e-6);
+      expect(Math.abs(r[1])).toBeLessThan(1e-6);
+    }
+    const z = unwrapDegrees(ys).map((r) => r[2]);
+    for (let i = 1; i < z.length; i++) expect(Math.abs(z[i] - z[i - 1])).toBeLessThan(120);
   });
 });
 
@@ -150,5 +188,16 @@ describe('binaryRootLayer', () => {
     expect(t).toMatch(/def Xform "Motion"/);
     expect(t).toMatch(/def "scene" \(\n\t\tprepend references = @\.\/scene\.usdc@<\/scene>\n\t\)/);
     expect(t).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ"\]/);
+  });
+});
+
+describe('unwrapDegrees', () => {
+  it('跨过 180° 的序列变成连续的', () => {
+    const r = unwrapDegrees([[0, 0, 0], [0, -12, 0], [0, -170, 0], [0, 178, 0], [0, 90, 0], [0, 0, 0]]);
+    expect(r.map((v) => v[1])).toEqual([0, -12, -170, -182, -270, -360]);
+  });
+  it('本来就连续的不动', () => {
+    const r = unwrapDegrees([[1, 0, 0.5], [0.9, 0, 0.6], [0.8, 0, 0.7]]);
+    expect(r).toEqual([[1, 0, 0.5], [0.9, 0, 0.6], [0.8, 0, 0.7]]);
   });
 });

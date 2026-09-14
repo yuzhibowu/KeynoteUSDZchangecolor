@@ -48,3 +48,35 @@ describe('bakeMotion', () => {
     for (let i = 1500; i < 1800; i++) expect(step(i)).toBeLessThan(maxMid * 1.5);
   });
 });
+
+describe('入场 / 退场', () => {
+  const p = { ...DEFAULT_MOTION, entrance: 'rise' as const, entranceSeconds: 1.5, seconds: 10 };
+  it('没有入场时包络恒为 1、缩放恒为 1', () => {
+    expect(poseAt(DEFAULT_MOTION, 0, 1).scale).toBe(1);
+    expect(poseAt(DEFAULT_MOTION, 0.3, 1).position[1]).toBeCloseTo(Math.sin(0.3 * 1.25) * 0.047, 9);
+  });
+  it('第 0 帧在下方，入场结束后回到漂浮位置', () => {
+    expect(poseAt(p, 0, 1).position[1]).toBeLessThan(-1);
+    const settled = poseAt(p, 2, 1).position[1];
+    const floating = poseAt(DEFAULT_MOTION, 2, 1).position[1];
+    expect(settled).toBeCloseTo(floating, 9);
+  });
+  it('循环结尾退场，首尾姿态一致', () => {
+    const s = bakeMotion(p, 1, 10, 60);
+    expect(s[600].position[1]).toBeCloseTo(s[0].position[1], 6);
+    expect(s[600].scale).toBeCloseTo(s[0].scale, 6);
+    // 中段是纯漂浮
+    expect(s[300].position[1]).toBeCloseTo(poseAt(DEFAULT_MOTION, 5, 1).position[1], 9);
+  });
+  it('长出：缩放从接近 0 到 1，不会是 0', () => {
+    const g = { ...p, entrance: 'grow' as const };
+    expect(poseAt(g, 0, 1).scale).toBeGreaterThan(0);
+    expect(poseAt(g, 0, 1).scale).toBeLessThan(0.01);
+    expect(poseAt(g, 3, 1).scale).toBe(1);
+  });
+  it('旋入：第 0 帧转了一整圈，就位后是 0', () => {
+    const g = { ...p, entrance: 'spin' as const };
+    expect(poseAt(g, 0, 1).rotation[1]).toBeCloseTo(360, 9);
+    expect(poseAt(g, 3, 1).rotation[1]).toBe(0);
+  });
+});

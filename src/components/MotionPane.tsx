@@ -32,6 +32,11 @@ export function MotionPane({
   const [busy, setBusy] = useState(false);
   const motionRef = useRef(motion);
   motionRef.current = motion;
+  // 换了入场方式或时长就把时钟归零 —— 不然要等到下一圈才看得到入场
+  const restartRef = useRef(0);
+  useEffect(() => {
+    restartRef.current = performance.now();
+  }, [motion.entrance, motion.entranceSeconds, motion.seconds]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -97,13 +102,14 @@ export function MotionPane({
 
       let yaw = 0.35;
       let pitch = 0.18;
-      const t0 = performance.now();
+      restartRef.current = performance.now();
       const loop = () => {
         raf = requestAnimationFrame(loop);
         if (!part) return;
-        const t = (performance.now() - t0) / 1000;
+        const t = (performance.now() - restartRef.current) / 1000;
         const pose = poseAt(motionRef.current, t, radius);
         mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
+        mover.scale.setScalar(pose.scale);
         // USD 的 rotateXYZ 是 Rx·Ry·Rz（行向量），对应 three 的 'ZYX' —— 和导出一致
         mover.rotation.set(
           THREE.MathUtils.degToRad(pose.rotation[0]),

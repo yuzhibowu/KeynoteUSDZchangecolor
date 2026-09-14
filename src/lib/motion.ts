@@ -17,9 +17,24 @@ export const FLOAT_LEVELS = [
 ] as const;
 export type FloatLevel = (typeof FLOAT_LEVELS)[number]['id'];
 
+export const ENTRANCES = [
+  { id: 'none', label: '无' },
+  { id: 'rise', label: '浮起' },
+  { id: 'grow', label: '长出' },
+  { id: 'spin', label: '旋入' },
+] as const;
+export type Entrance = (typeof ENTRANCES)[number]['id'];
+
 export type MotionParams = {
   /** 漂浮强度档 */
   float: FloatLevel;
+  /**
+   * 入场方式。Keynote 是从第 0 帧开始播的，所以时间线开头那一段可以不是循环：
+   * 先入场，再接进漂浮。循环结尾用同样的方式退场，回到第 0 帧时接缝才是平的。
+   */
+  entrance: Entrance;
+  /** 入场用多少秒 */
+  entranceSeconds: number;
   /** 节奏倍率：1 是书籍那套原速，0.5 慢一倍，2 快一倍 */
   speed: number;
   /**
@@ -35,13 +50,41 @@ export type MotionParams = {
 };
 
 export const LOOP_SECONDS = [10, 30, 60] as const;
-export const DEFAULT_MOTION: MotionParams = { float: 'medium', speed: 1, phase: 0, seconds: 30 };
+export const DEFAULT_MOTION: MotionParams = {
+  float: 'medium',
+  entrance: 'none',
+  entranceSeconds: 1.5,
+  speed: 1,
+  phase: 0,
+  seconds: 30,
+};
 
-/** 一个瞬间的姿态。位移是「相对模型自身大小」的倍数（见 poseAt 的 radius），旋转是度 */
+/** 一个瞬间的姿态。位移和 radius 同单位，旋转是度，缩放是倍数（1 = 原大） */
 export type Pose = {
   position: [number, number, number];
   rotation: [number, number, number];
+  scale: number;
 };
+
+/** 浮起时从多深的地方升上来（包围球半径的倍数） */
+const RISE_DEPTH = 1.6;
+/** 长出时的起始缩放。不能是 0：零矩阵分解不出旋转，导出会算出 NaN */
+const GROW_FROM = 0.001;
+/** 缓出：开头快、落定慢 */
+const easeOut = (u: number) => 1 - (1 - u) ** 3;
+
+/**
+ * 入场 / 退场的包络：0 = 还没出现，1 = 完全就位。
+ * 时间按循环长度取模，开头 entranceSeconds 内入场，结尾同样长的时间内退场。
+ */
+export function envelopeAt(p: MotionParams, t: number): number {
+  if (p.entrance === 'none') return 1;
+  const dur = Math.max(0.05, Math.min(p.entranceSeconds, p.seconds / 2));
+  const tl = ((t % p.seconds) + p.seconds) % p.seconds;
+  const inn = Math.min(1, tl / dur);
+  const out = Math.min(1, (p.seconds - tl) / dur);
+  return easeOut(Math.min(inn, out));
+}
 
 /** 书籍项目的三条正弦：位移幅度按模型包围球半径的比例给，倾角直接是度 */
 const FLOAT_RISE = 0.047; // 书里是 0.105 / 包围球半径 2.24
@@ -67,13 +110,23 @@ export function poseAt(p: MotionParams, t: number, radius: number): Pose {
   const tt = (t + p.phase) * p.speed;
   // 「不动」档乘出来是 -0，写进 usda 会变成 "-0"，看着别扭，归成 0
   const z = (v: number) => (v === 0 ? 0 : v);
+  let y = Math.sin(tt * FLOAT_W_Y) * FLOAT_RISE * radius * k;
+  let ry = 0;
+  let scale = 1;
+  const e = envelopeAt(p, t);
+  if (e < 1) {
+    if (p.entrance === 'rise') y -= (1 - e) * RISE_DEPTH * radius;
+    if (p.entrance === 'grow' || p.entrance === 'spin') scale = GROW_FROM + (1 - GROW_FROM) * e;
+    if (p.entrance === 'spin') ry = (1 - e) * 360;
+  }
   return {
-    position: [0, z(Math.sin(tt * FLOAT_W_Y) * FLOAT_RISE * radius * k), 0],
+    position: [0, z(y), 0],
     rotation: [
       z(Math.cos(tt * FLOAT_W_X) * FLOAT_TILT_X * k),
-      0,
+      z(ry),
       z(Math.sin(tt * FLOAT_W_Z) * FLOAT_TILT_Z * k),
     ],
+    scale,
   };
 }
 
@@ -83,6 +136,7 @@ export function poseAt(p: MotionParams, t: number, radius: number): Pose {
  * 稀疏关键帧在 Keynote 里是直线插值的，到峰值会突然反向；所以按 fps 密集采样。
  * 三条正弦的周期对不齐，循环末尾和开头对不上 —— 最后 blendSeconds 秒用
  * 五次多项式（C2 连续）平滑地混回下一圈的开头，接缝看不出来。
+ * 入场 / 退场的包络在 poseAt 里已经按循环长度取模了，两边的包络一样，混合不受影响。
  */
 export function bakeMotion(
   p: MotionParams,
@@ -104,6 +158,7 @@ export function bakeMotion(
     out.push({
       position: [mix(a.position[0], b.position[0]), mix(a.position[1], b.position[1]), mix(a.position[2], b.position[2])],
       rotation: [mix(a.rotation[0], b.rotation[0]), mix(a.rotation[1], b.rotation[1]), mix(a.rotation[2], b.rotation[2])],
+      scale: mix(a.scale, b.scale),
     });
   }
   return out;
