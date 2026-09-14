@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { normalizeUsdzForLoader } from '../lib/recolor';
 import { frameCamera, loadUsdz, makeScene } from '../lib/usdzScene';
 import { poseAt, type MotionParams } from '../lib/motion';
+import type { ModelSpace } from '../lib/motionExport';
 
 /**
  * 加动效模式的左侧区域：一个视口，模型按当前参数实时运动。
@@ -23,8 +24,8 @@ export function MotionPane({
   source: ArrayBuffer | null;
   motion: MotionParams;
   onFile: (f: File) => void;
-  /** 模型加载完了（或者失败了）告诉外面，导出按钮要知道 */
-  onLoaded: (info: { radius: number } | null, error: string | null) => void;
+  /** 模型加载完了（或者失败了）告诉外面：导出要用加载器的变换和包围盒 */
+  onLoaded: (space: ModelSpace | null, error: string | null) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,10 +59,19 @@ export function MotionPane({
       }
       if (!alive) return;
 
+      // 加载器会给整个模型套 metersPerUnit 缩放和 Z-up 转 Y-up 的旋转，
+      // 导出时要用它把运动换算回文件坐标 —— 在挪动之前先记下来
+      obj.updateMatrix();
+      const groupMatrix = obj.matrix.toArray();
       const box = new THREE.Box3().setFromObject(obj);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const radius = Math.max(1e-4, size.length() / 2);
+      const space: ModelSpace = {
+        groupMatrix,
+        min: [box.min.x, box.min.y, box.min.z],
+        max: [box.max.x, box.max.y, box.max.z],
+      };
 
       part = makeScene(host);
       // 旋转轴要在包围盒中心 —— 第三方模型的原点经常在脚底或某个角上
@@ -83,7 +93,7 @@ export function MotionPane({
       const ro = new ResizeObserver(resize);
       ro.observe(host);
       setBusy(false);
-      onLoaded({ radius }, null);
+      onLoaded(space, null);
 
       let yaw = 0.35;
       let pitch = 0.18;
@@ -94,10 +104,12 @@ export function MotionPane({
         const t = (performance.now() - t0) / 1000;
         const pose = poseAt(motionRef.current, t, radius);
         mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
+        // USD 的 rotateXYZ 是 Rx·Ry·Rz（行向量），对应 three 的 'ZYX' —— 和导出一致
         mover.rotation.set(
           THREE.MathUtils.degToRad(pose.rotation[0]),
           THREE.MathUtils.degToRad(pose.rotation[1]),
           THREE.MathUtils.degToRad(pose.rotation[2]),
+          'ZYX',
         );
         part.pivot.rotation.set(pitch, yaw, 0);
         part.renderer.render(part.scene, part.camera);

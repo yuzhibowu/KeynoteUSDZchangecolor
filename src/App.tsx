@@ -4,6 +4,7 @@ import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
 import { MotionPane } from './components/MotionPane';
 import { DEFAULT_MOTION, type MotionParams } from './lib/motion';
+import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
 import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
 import { FaceTextureStore, canvasSizeFor, clampTransform } from './lib/faceTexture';
@@ -126,7 +127,7 @@ export default function App() {
   // 加动效：模型和参数分开放，改参数不重新加载模型
   const [motionSrc, setMotionSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
   const [motion, setMotion] = useState<MotionParams>(DEFAULT_MOTION);
-  const [motionInfo, setMotionInfo] = useState<{ radius: number } | null>(null);
+  const [motionSpace, setMotionSpace] = useState<ModelSpace | null>(null);
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
   // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
   const [spin, setSpin] = useState(true);
@@ -593,19 +594,36 @@ export default function App() {
   }, []);
 
   const pickMotionFile = useCallback(async (f: File) => {
-    setMotionInfo(null);
+    setMotionSpace(null);
     setMotionSrc({ name: f.name, buf: await f.arrayBuffer() });
   }, []);
-  const onMotionLoaded = useCallback((info: { radius: number } | null, error: string | null) => {
-    setMotionInfo(info);
+  const onMotionLoaded = useCallback((space: ModelSpace | null, error: string | null) => {
+    setMotionSpace(space);
     if (error) setStatus(`这个文件渲染不了：${error}`);
   }, []);
   const patchMotion = useCallback((p: Partial<MotionParams>) => setMotion((m) => ({ ...m, ...p })), []);
-  const exportMotion = useCallback(() => {
-    // 下一步再做：把 poseAt 烘成 timeSamples 写回 usdz
-    setMotionBusy(null);
-    setStatus('导出还没接上，下一步做');
-  }, []);
+  const exportMotion = useCallback(async () => {
+    if (!motionSrc || !motionSpace) return;
+    setMotionBusy('正在写入动画…');
+    await yieldToBrowser();
+    try {
+      const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds);
+      const name = motionSrc.name.replace(/\.usdz$/i, '') + '-加动效.usdz';
+      const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
+      download(blob, name);
+      setLastFile({ blob, name });
+      const notes = [
+        `${report.seconds} 秒 ${report.frames} 帧`,
+        report.replacedAnimation ? '原文件自带的动画已替换' : null,
+        report.nestedAnimation ? `原文件深处还有 ${report.nestedAnimation} 段动画会叠加` : null,
+      ].filter(Boolean);
+      setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)} · ${notes.join(' · ')}`);
+    } catch (e) {
+      setStatus(`导出失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setMotionBusy(null);
+    }
+  }, [motionSrc, motionSpace, motion]);
 
   const exportRecolor = useCallback(() => {
     if (!recolorOut || !recolorSrc) return;
@@ -830,7 +848,7 @@ export default function App() {
         recolorBusy={recolorBusy}
         motion={{
           fileName: motionSrc?.name ?? null,
-          loaded: !!motionInfo,
+          loaded: !!motionSpace,
           motion,
           patch: patchMotion,
           onPick: pickMotionFile,

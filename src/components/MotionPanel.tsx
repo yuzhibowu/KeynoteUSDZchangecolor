@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { FLOAT_LEVELS, type MotionParams } from '../lib/motion';
+import { FLOAT_LEVELS, LOOP_SECONDS, type MotionParams } from '../lib/motion';
 
 export type MotionSidebar = {
   fileName: string | null;
@@ -90,7 +90,30 @@ export function MotionPanel({ fileName, loaded, motion, patch, onPick, onExport,
         </div>
       </section>
 
+      <section>
+        <h2>循环长度</h2>
+        <div className="stack">
+          <div className="opts">
+            {LOOP_SECONDS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="opt"
+                aria-pressed={motion.seconds === s}
+                onClick={() => patch({ seconds: s })}
+              >
+                {s} 秒
+              </button>
+            ))}
+          </div>
+          <p className="hint">
+            导出时烘成这么长的一圈，末尾平滑接回开头。越长越看不出重复，文件不会因此变大多少。
+          </p>
+        </div>
+      </section>
+
       <section className="export-block">
+        <p className="hint tight">文件直接存进「下载」文件夹，不弹保存框。</p>
         <button className="btn-primary" disabled={!loaded || exportBusy !== null} onClick={onExport}>
           {exportBusy ?? '导出 USDZ'}
         </button>

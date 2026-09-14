@@ -27,9 +27,15 @@ export type MotionParams = {
    * 免得它们完全同步地起伏 —— 那一眼就假。
    */
   phase: number;
+  /**
+   * 导出时烘多长的循环（秒）。文本关键帧不占体积，越长越看不出重复；
+   * 预览是实时算的，用不到这个。
+   */
+  seconds: number;
 };
 
-export const DEFAULT_MOTION: MotionParams = { float: 'medium', speed: 1, phase: 0 };
+export const LOOP_SECONDS = [10, 30, 60] as const;
+export const DEFAULT_MOTION: MotionParams = { float: 'medium', speed: 1, phase: 0, seconds: 30 };
 
 /** 一个瞬间的姿态。位移是「相对模型自身大小」的倍数（见 poseAt 的 radius），旋转是度 */
 export type Pose = {

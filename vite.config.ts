@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
@@ -23,6 +23,6 @@ const BUILD_ID = new Intl.DateTimeFormat('zh-CN', {
 export default defineConfig({
   plugins: [react()],
   // 端口可以从环境变量来 —— 5173 被别的项目占着时，预览工具会另指一个
-  server: { port: Number(process.env.PORT) || 5173 },
+  server: { port: Number(loadEnv('', '.', '').PORT) || 5173 },
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
 });
