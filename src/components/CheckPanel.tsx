@@ -2,7 +2,6 @@ import { useRef } from 'react';
 import { Slider } from './Slider';
 import type { CheckReport } from '../lib/check';
 import type { SlimOptions } from '../lib/slim';
-import { formatBytes } from '../lib/exportUsdz';
 
 export type CheckSidebar = {
   fileName: string | null;
@@ -49,10 +48,7 @@ export function CheckPanel({ fileName, report, busy, slim, patchSlim, onPick, on
             }}
           />
           {fileName && <div className="filename" title={fileName}>{fileName}</div>}
-          <p className="hint">
-            拖一个 USDZ 进来，按这个项目攒下来的 Keynote 实测规律逐条过一遍：哪些会出问题、哪些能顺手修掉。
-            原文件不会被改动。
-          </p>
+          <p className="hint">拖进来看一眼，点导出就修好、瘦好。原文件不动。</p>
         </div>
       </section>
 
@@ -88,13 +84,9 @@ export function CheckPanel({ fileName, report, busy, slim, patchSlim, onPick, on
             onChange={(v) => patchSlim({ quality: v })}
           />
           <p className="hint">
-            上面是贴图最长边的上限：幻灯片上一个模型占不到半屏，2048 够用；超过上限的等比缩小。转 JPEG 只动真的不透明的图：
-            用在透明度上的、法线贴图、只被二进制图层引用的都留着 PNG。颜色校正过的卡片别转——JPEG 会把颜色抹掉一两个色阶。
-            {report && (
-              <>
-                {' '}这份文件里 {bigTex} 张要缩、{pngTex} 张 PNG 可能转（要解码看了才知道是不是真不透明）。
-              </>
-            )}
+            贴图最长边超过上面的上限就缩小，2048 够用。只转真不透明的 PNG，法线和透明贴图不动；
+            颜色校正过的卡片别转，JPEG 会抹掉一两个色阶。
+            {report && bigTex + pngTex > 0 && <>{' '}这份里 {bigTex} 张要缩、{pngTex} 张可能转。</>}
           </p>
         </div>
       </section>
@@ -103,12 +95,7 @@ export function CheckPanel({ fileName, report, busy, slim, patchSlim, onPick, on
         <button className="btn-primary" disabled={!report || busy !== null} onClick={onExport}>
           {busy ?? '修好并瘦身，导出'}
         </button>
-        {report && (
-          <p className="hint">
-            会修 {fixable} 项，重新按 usdz 规范打包；贴图 {formatBytes(report.textureBytes)}，整包 {formatBytes(report.totalBytes)}。
-            修不了的那些只是告诉你，导出不会碰。
-          </p>
-        )}
+        {report && fixable > 0 && <p className="hint">顺手修 {fixable} 项。</p>}
       </section>
     </>
   );

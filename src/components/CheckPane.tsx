@@ -57,76 +57,118 @@ export function CheckPane({
 
       {report && (
         <div className="check-body">
-          <div className="check-summary">
-            <div><span>整包</span><b>{formatBytes(report.totalBytes)}</b></div>
-            <div><span>贴图</span><b>{formatBytes(report.textureBytes)} · {report.textures.length} 张</b></div>
-            <div><span>图层</span><b>{report.layers.length} 个{report.meta.rootBinary ? '，根是二进制' : ''}</b></div>
-            <div><span>单位</span><b>{report.meta.metersPerUnit} 米 · {report.meta.upAxis}-up</b></div>
-            <div><span>动画</span><b>{report.animation.xformOps + report.animation.skeletal > 0 ? `${report.animation.xformOps} 段变换${report.animation.skeletal ? ` · ${report.animation.skeletal} 骨骼` : ''}` : '无'}</b></div>
-          </div>
-
-          <ul className="findings">
-            {report.findings.map((f) => (
-              <li key={f.id} className={`finding ${SEVERITY[f.severity].cls}`}>
-                <div className="finding-head">
-                  <span className="finding-tag">{SEVERITY[f.severity].label}</span>
-                  <span className="finding-title">{f.title}</span>
-                  {f.fixable && <span className="finding-fix">导出时修</span>}
+          {(() => {
+            const bad = report.findings.filter((f) => f.severity === 'bad');
+            const warn = report.findings.filter((f) => f.severity === 'warn');
+            const info = report.findings.filter((f) => f.severity === 'info' && f.id !== 'clean');
+            const issues = [...bad, ...warn];
+            return (
+              <>
+                <div className={`verdict ${bad.length ? 'bad' : warn.length ? 'warn' : 'ok'}`}>
+                  <h2>
+                    {bad.length
+                      ? `${bad.length} 处会让 Keynote 显示出错`
+                      : warn.length
+                        ? `${warn.length} 处有问题`
+                        : 'Keynote 能直接用'}
+                  </h2>
+                  <p className="hint">
+                    {formatBytes(report.totalBytes)}，贴图占 {formatBytes(report.textureBytes)}。
+                    {issues.some((f) => f.fixable) ? '标了「导出时修」的点右边导出就顺手修掉；' : ''}
+                    {report.textureBytes > 1024 * 1024 ? '想变小就点右边导出，贴图会瘦身。' : ''}
+                  </p>
                 </div>
-                <p className="hint">{f.detail}</p>
-              </li>
-            ))}
-          </ul>
 
-          {report.textures.length > 0 && (
-            <div className="tex-table-wrap">
-              <table className="tex-table">
-                <thead>
-                  <tr><th>贴图</th><th>尺寸</th><th>格式</th><th>用途</th><th>体积</th></tr>
-                </thead>
-                <tbody>
-                  {report.textures.map((t) => (
-                    <tr key={t.name} className={t.unreferenced ? 'dim' : undefined}>
-                      <td title={t.name}>{t.name.split('/').pop()}</td>
-                      <td>{t.width && t.height ? `${t.width}×${t.height}` : '?'}</td>
-                      <td>{t.format === 'png' ? (t.alphaChannel ? 'PNG α' : 'PNG') : t.format === 'jpeg' ? 'JPEG' : '?'}</td>
-                      <td>{t.unreferenced ? '没被引用' : t.roles.length ? t.roles.join(' / ') : '—'}{t.binaryRef ? ' ·二进制' : ''}</td>
-                      <td>{formatBytes(t.bytes)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                {issues.length > 0 && (
+                  <ul className="findings">
+                    {issues.map((f) => (
+                      <li key={f.id} className={`finding ${SEVERITY[f.severity].cls}`}>
+                        <div className="finding-head">
+                          <span className="finding-tag">{SEVERITY[f.severity].label}</span>
+                          <span className="finding-title">{f.title}</span>
+                          {f.fixable && <span className="finding-fix">导出时修</span>}
+                        </div>
+                        <p className="hint">{f.detail}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <details className="check-details">
+                  <summary>细节：{info.length} 条提示，{report.textures.length} 张贴图，{report.layers.length} 个图层</summary>
+                  <div className="check-summary">
+                    <div><span>单位</span><b>{report.meta.metersPerUnit} 米 · {report.meta.upAxis}-up</b></div>
+                    <div><span>图层</span><b>{report.layers.length} 个{report.meta.rootBinary ? '，根是二进制' : ''}</b></div>
+                    <div><span>动画</span><b>{report.animation.xformOps + report.animation.skeletal > 0 ? `${report.animation.xformOps} 段变换${report.animation.skeletal ? ` · ${report.animation.skeletal} 骨骼` : ''}` : '无'}</b></div>
+                  </div>
+                  {info.length > 0 && (
+                    <ul className="findings">
+                      {info.map((f) => (
+                        <li key={f.id} className="finding info">
+                          <div className="finding-head">
+                            <span className="finding-title">{f.title}</span>
+                          </div>
+                          <p className="hint">{f.detail}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {report.textures.length > 0 && (
+                    <div className="tex-table-wrap">
+                      <table className="tex-table">
+                        <thead>
+                          <tr><th>贴图</th><th>尺寸</th><th>格式</th><th>用途</th><th>体积</th></tr>
+                        </thead>
+                        <tbody>
+                          {report.textures.map((t) => (
+                            <tr key={t.name} className={t.unreferenced ? 'dim' : undefined}>
+                              <td title={t.name}>{t.name.split('/').pop()}</td>
+                              <td>{t.width && t.height ? `${t.width}×${t.height}` : '?'}</td>
+                              <td>{t.format === 'png' ? (t.alphaChannel ? 'PNG α' : 'PNG') : t.format === 'jpeg' ? 'JPEG' : '?'}</td>
+                              <td>{t.unreferenced ? '没被引用' : t.roles.length ? t.roles.join(' / ') : '—'}{t.binaryRef ? ' ·二进制' : ''}</td>
+                              <td>{formatBytes(t.bytes)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </details>
+              </>
+            );
+          })()}
 
           {slimmed && (
-            <div className="slim-result">
-              <h3>
-                导出结果：{formatBytes(slimmed.bytesBefore)} → <b>{formatBytes(slimmed.bytesAfter)}</b>
-                {slimmed.bytesBefore > 0 && `（${Math.round((1 - slimmed.bytesAfter / slimmed.bytesBefore) * 100)}% 更小）`}
-              </h3>
+            <div className="verdict ok slim-result">
+              <h2>
+                导出了：{formatBytes(slimmed.bytesBefore)} → {formatBytes(slimmed.bytesAfter)}
+                {slimmed.bytesBefore > slimmed.bytesAfter && `，小了 ${Math.round((1 - slimmed.bytesAfter / slimmed.bytesBefore) * 100)}%`}
+              </h2>
               {Object.keys(slimmed.fixes).length > 0 && (
                 <p className="hint">
                   修了：{Object.entries(slimmed.fixes).map(([k, v]) => `${FIX_LABEL[k] ?? k} × ${v}`).join('、')}
                 </p>
               )}
-              <div className="tex-table-wrap">
-                <table className="tex-table">
-                  <thead>
-                    <tr><th>贴图</th><th>之前</th><th>之后</th><th>做了什么</th></tr>
-                  </thead>
-                  <tbody>
-                    {slimmed.textures.map((t) => (
-                      <tr key={t.name}>
-                        <td title={t.newName}>{t.newName.split('/').pop()}</td>
-                        <td>{formatBytes(t.before)}</td>
-                        <td>{formatBytes(t.after)}</td>
-                        <td>{t.action}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <details className="check-details">
+                <summary>每张贴图做了什么</summary>
+                <div className="tex-table-wrap">
+                  <table className="tex-table">
+                    <thead>
+                      <tr><th>贴图</th><th>之前</th><th>之后</th><th>做了什么</th></tr>
+                    </thead>
+                    <tbody>
+                      {slimmed.textures.map((t) => (
+                        <tr key={t.name}>
+                          <td title={t.newName}>{t.newName.split('/').pop()}</td>
+                          <td>{formatBytes(t.before)}</td>
+                          <td>{formatBytes(t.after)}</td>
+                          <td>{t.action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             </div>
           )}
         </div>
