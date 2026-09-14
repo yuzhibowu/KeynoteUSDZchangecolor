@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
 import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, effectiveLap, randomPhase, type MotionParams } from '../lib/motion';
+import { VIDEO_FPS, VIDEO_SIZES, type VideoFormat, type VideoSizeId } from '../lib/videoExport';
 
 export type MotionSidebar = {
   fileName: string | null;
@@ -14,9 +15,20 @@ export type MotionSidebar = {
   /** 预览背景：'dark' | 'slide' | 自定义颜色 */
   background: string;
   setBackground: (v: string) => void;
+  zoom: number;
+  setZoom: (v: number) => void;
   onPick: (files: File[]) => void;
   onExport: () => void;
   exportBusy: string | null;
+  video: {
+    size: VideoSizeId;
+    fps: number;
+    setSize: (v: VideoSizeId) => void;
+    setFps: (v: number) => void;
+    busy: string | null;
+    onExport: (format: VideoFormat) => void;
+    onCancel: () => void;
+  };
 };
 
 /**
@@ -25,7 +37,7 @@ export type MotionSidebar = {
  * 参数故意少：做 PPT 的人要的是「轻一点 / 明显一点」，不是「幅度 1.5%、微旋 1.5°」。
  * 漂浮本身就包含上下位移和两个轴的微倾，不让用户自己拼。
  */
-export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawing, setDrawing, background, setBackground, onPick, onExport, exportBusy }: MotionSidebar) {
+export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawing, setDrawing, background, setBackground, zoom, setZoom, onPick, onExport, exportBusy, video }: MotionSidebar) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -262,7 +274,22 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
               />
             </label>
           </div>
-          <p className="hint">只影响这里怎么看，不进文件。选幻灯片时视口按 16:9 来框，就是放进 Keynote 的样子。</p>
+          <Slider
+            label="取景"
+            value={zoom}
+            min={0.5}
+            max={3}
+            step={0.05}
+            digits={2}
+            suffix=" ×"
+            reset={1.2}
+            snaps={[1]}
+            onChange={setZoom}
+          />
+          <p className="hint">
+            只影响这里怎么看和导出的视频，不进 USDZ。选幻灯片时视口按 16:9 来框，就是放进 Keynote 的样子；
+            取景 1 是把整段运动刚好装下。
+          </p>
         </div>
       </section>
 
@@ -288,9 +315,48 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
         </div>
       </section>
 
+      <section>
+        <h2>导出视频</h2>
+        <div className="stack">
+          <div className="opts">
+            {VIDEO_SIZES.map((v) => (
+              <button key={v.id} type="button" className="opt" aria-pressed={video.size === v.id} onClick={() => video.setSize(v.id)}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <div className="opts">
+            {VIDEO_FPS.map((f) => (
+              <button key={f} type="button" className="opt" aria-pressed={video.fps === f} onClick={() => video.setFps(f)}>
+                {f} fps
+              </button>
+            ))}
+          </div>
+          <p className="hint">
+            透明背景，时长就是循环长度（{motion.seconds} 秒，{motion.seconds * video.fps} 帧），用当前的视角。
+            MOV 是 ProRes 4444 带 alpha，直接拖进 Keynote 或视频画布。全在浏览器里算，第一次要先下 32 MB 的编码器。
+          </p>
+          {video.busy ? (
+            <div className="row">
+              <span className="filename">{video.busy}</span>
+              <button className="btn" onClick={video.onCancel}>取消</button>
+            </div>
+          ) : (
+            <div className="row">
+              <button className="btn" disabled={!loaded || exportBusy !== null} onClick={() => video.onExport('mov')}>
+                透明 MOV
+              </button>
+              <button className="btn" disabled={!loaded || exportBusy !== null} onClick={() => video.onExport('png')}>
+                PNG 序列
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="export-block">
         <p className="hint tight">文件直接存进「下载」文件夹，不弹保存框。</p>
-        <button className="btn-primary" disabled={!loaded || exportBusy !== null} onClick={onExport}>
+        <button className="btn-primary" disabled={!loaded || exportBusy !== null || video.busy !== null} onClick={onExport}>
           {exportBusy ?? (extraNames.length ? `导出全部 ${extraNames.length + 1} 个（打包 zip）` : '导出 USDZ')}
         </button>
       </section>

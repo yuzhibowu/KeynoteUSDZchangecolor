@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
-import { MotionPane } from './components/MotionPane';
+import { MotionPane, type FrameRenderer } from './components/MotionPane';
 import { loadMotion, saveMotion, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
 import { measureUsdz } from './lib/usdzScene';
 import { normalizeUsdzForLoader } from './lib/recolor';
 import { zipSync } from 'fflate';
+import { VIDEO_SIZES, encodeMov, packPngSequence, safeBaseName, validateExport, type VideoFormat, type VideoSizeId } from './lib/videoExport';
 import { centerPath, isClosed, resample, type Pt } from './lib/drawnPath';
 import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
@@ -137,8 +138,15 @@ export default function App() {
   const [motionExtra, setMotionExtra] = useState<{ name: string; buf: ArrayBuffer }[]>([]);
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
+  // 导视频：帧从视口抓，编码在浏览器里跑
+  const frameRef = useRef<FrameRenderer | null>(null);
+  const [videoSize, setVideoSize] = useState<VideoSizeId>('1080p');
+  const [videoFps, setVideoFps] = useState(30);
+  const [videoBusy, setVideoBusy] = useState<string | null>(null);
+  const videoAbort = useRef<AbortController | null>(null);
   // 预览背景：'dark' | 'slide' | 自定义颜色。只影响预览
   const [motionBg, setMotionBg] = useState('dark');
+  const [motionZoom, setMotionZoom] = useState(1.2);
   const motionBgColor = motionBg === 'dark' ? '#111111' : motionBg === 'slide' ? '#ffffff' : motionBg;
   // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
   const [spin, setSpin] = useState(true);
@@ -674,6 +682,54 @@ export default function App() {
     }
   }, [motionSrc, motionExtra, motionSpace, motion]);
 
+  const exportVideo = useCallback(
+    async (format: VideoFormat) => {
+      const fr = frameRef.current;
+      if (!motionSrc || !motionSpace || !fr) return;
+      const size = VIDEO_SIZES.find((v) => v.id === videoSize)!;
+      const controller = new AbortController();
+      videoAbort.current = controller;
+      const base = safeBaseName(motionSrc.name.replace(/\.usdz$/i, '') + '-加动效');
+      try {
+        const total = validateExport({ width: size.width, height: size.height, fps: videoFps, seconds: motion.seconds }, fr.maxTextureSize);
+        setVideoBusy(`正在渲染 0 / ${total} 帧`);
+        setDrawing(false);
+        const frames = await fr.render({
+          width: size.width,
+          height: size.height,
+          fps: videoFps,
+          seconds: motion.seconds,
+          signal: controller.signal,
+          onProgress: (done, all) => setVideoBusy(`正在渲染 ${done} / ${all} 帧`),
+        });
+        let blob: Blob;
+        let name: string;
+        if (format === 'mov') {
+          setVideoBusy('正在加载编码器…');
+          const r = await encodeMov(frames, videoFps, base, controller.signal, (text) => setVideoBusy(text));
+          blob = r.blob;
+          name = r.filename;
+        } else {
+          setVideoBusy('正在打包 PNG 序列…');
+          await yieldToBrowser();
+          const bytes = await Promise.all(frames.map(async (f) => new Uint8Array(await f.arrayBuffer())));
+          blob = packPngSequence(bytes, base);
+          name = `${base}_png序列.zip`;
+        }
+        download(blob, name);
+        setLastFile({ blob, name });
+        setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)} · ${total} 帧 ${videoFps} fps 透明背景`);
+      } catch (e) {
+        const aborted = controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError');
+        setStatus(aborted ? '已取消导出' : `导出视频失败：${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setVideoBusy(null);
+        videoAbort.current = null;
+      }
+    },
+    [motionSrc, motionSpace, motion.seconds, videoSize, videoFps],
+  );
+
   const exportRecolor = useCallback(() => {
     if (!recolorOut || !recolorSrc) return;
     const name = recolorSrc.name.replace(/\.usdz$/i, '') + `-${targetLabel(params.target)}校正.usdz`;
@@ -837,6 +893,8 @@ export default function App() {
             onLoaded={onMotionLoaded}
             background={motionBgColor}
             slide={motionBg !== 'dark'}
+            zoom={motionZoom}
+            frameRef={frameRef}
             drawing={drawing}
             onDrawn={onDrawn}
           />
@@ -909,9 +967,20 @@ export default function App() {
           setDrawing,
           background: motionBg,
           setBackground: setMotionBg,
+          zoom: motionZoom,
+          setZoom: setMotionZoom,
           onPick: pickMotionFiles,
           onExport: exportMotion,
           exportBusy: motionBusy,
+          video: {
+            size: videoSize,
+            fps: videoFps,
+            setSize: setVideoSize,
+            setFps: setVideoFps,
+            busy: videoBusy,
+            onExport: exportVideo,
+            onCancel: () => videoAbort.current?.abort(),
+          },
         }}
         onPickRecolor={pickRecolorFile}
         onExportRecolor={exportRecolor}

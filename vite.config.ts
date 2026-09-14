@@ -24,5 +24,8 @@ export default defineConfig({
   plugins: [react()],
   // 端口可以从环境变量来 —— 5173 被别的项目占着时，预览工具会另指一个
   server: { port: Number(loadEnv('', '.', '').PORT) || 5173 },
+  // ffmpeg.wasm 内部用 Worker 起，被开发模式的依赖预打包一揉，worker 的路径就找不到了，
+  // 表现是「正在加载编码器」永远转不完。生产构建没这个问题
+  optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] },
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
 });

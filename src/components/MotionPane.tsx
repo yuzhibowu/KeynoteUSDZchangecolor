@@ -1,10 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { normalizeUsdzForLoader } from '../lib/recolor';
 import { frameCamera, loadUsdz, makeScene } from '../lib/usdzScene';
-import { motionReach, pathAt, poseAt, effectiveLap, type MotionParams } from '../lib/motion';
+import { bakeMotion, motionReach, pathAt, poseAt, effectiveLap, type MotionParams } from '../lib/motion';
+import { FRAME_MEMORY_LIMIT, checkCancelled, waitForExport } from '../lib/videoExport';
 import type { Pt } from '../lib/drawnPath';
 import type { ModelSpace } from '../lib/motionExport';
+
+/** 逐帧抓透明 PNG，给导视频用。挂在 ref 上，App 那边调 */
+export type FrameRenderer = {
+  maxTextureSize: number;
+  render(opts: {
+    width: number;
+    height: number;
+    fps: number;
+    seconds: number;
+    signal: AbortSignal;
+    onProgress: (done: number, total: number) => void;
+  }): Promise<Blob[]>;
+};
 
 /**
  * 加动效模式的左侧区域：一个视口，模型按当前参数实时运动。
@@ -22,6 +36,8 @@ export function MotionPane({
   onLoaded,
   background,
   slide,
+  zoom,
+  frameRef,
   drawing,
   onDrawn,
 }: {
@@ -36,6 +52,10 @@ export function MotionPane({
   background: string;
   /** 视口按 16:9 的幻灯片来框，看的就是放进 Keynote 的样子 */
   slide: boolean;
+  /** 取景缩放：1 是把整段运动的包围球刚好装下，大于 1 拉近 */
+  zoom: number;
+  /** 导视频时从这里逐帧抓图 */
+  frameRef: MutableRefObject<FrameRenderer | null>;
   /** 手绘模式：拖动是画路径而不是转视角 */
   drawing: boolean;
   /** 画完一笔。点是模型半径的倍数，XY 平面 */
@@ -50,6 +70,8 @@ export function MotionPane({
   drawingRef.current = drawing;
   const bgRef = useRef(background);
   bgRef.current = background;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   useEffect(() => {
     rendererRef.current?.setClearColor(new THREE.Color(background));
@@ -107,8 +129,8 @@ export function MotionPane({
         max: [box.max.x, box.max.y, box.max.z],
       };
 
-      part = makeScene(host);
-      part.renderer.setClearColor(new THREE.Color(bgRef.current));
+      part = makeScene(host, { transparent: true });
+      part.renderer.setClearColor(new THREE.Color(bgRef.current), 1);
       rendererRef.current = part.renderer;
       // 旋转轴要在包围盒中心 —— 第三方模型的原点经常在脚底或某个角上
       obj.position.sub(center);
@@ -156,16 +178,81 @@ export function MotionPane({
       };
       let stroke: Pt[] = [];
 
-      let framedReach = -1;
+      let framedKey = '';
+      let exporting = false;
+      const frameKey = () => `${motionReach(motionRef.current, radius)}/${zoomRef.current}`;
       const resize = () => {
-        if (!part) return;
+        if (!part || exporting) return;
         const w = host.clientWidth || 1;
         const h = host.clientHeight || 1;
         part.renderer.setSize(w, h);
         part.camera.aspect = w / h;
-        // 取景要把整段运动装下：轨迹开大了模型会跑出画面
-        framedReach = motionReach(motionRef.current, radius);
-        frameCamera(part.camera, radius + framedReach, 1.25);
+        // 取景要把整段运动装下：轨迹开大了模型会跑出画面。zoom 再在这个基础上拉近
+        framedKey = frameKey();
+        frameCamera(part.camera, (radius + motionReach(motionRef.current, radius)) / zoomRef.current, 1.1);
+      };
+      const applyPose = (pose: ReturnType<typeof poseAt>) => {
+        mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
+        mover.scale.setScalar(pose.scale);
+        // USD 的 rotateXYZ 是 Rx·Ry·Rz（行向量），对应 three 的 'ZYX' —— 和导出一致
+        mover.rotation.set(
+          THREE.MathUtils.degToRad(pose.rotation[0]),
+          THREE.MathUtils.degToRad(pose.rotation[1]),
+          THREE.MathUtils.degToRad(pose.rotation[2]),
+          'ZYX',
+        );
+      };
+
+      // 导视频：按 bakeMotion 烘出来的姿态逐帧渲染、抓成透明 PNG。
+      // 和写进 usdz 的是同一批姿态，接缝同样闭合。渲染尺寸临时切到输出尺寸，抓完还原。
+      frameRef.current = {
+        maxTextureSize: part.renderer.capabilities.maxTextureSize,
+        async render({ width, height, fps, seconds, signal, onProgress }) {
+          if (!part) throw new Error('视口还没准备好');
+          exporting = true;
+          const r = part.renderer;
+          const cam = part.camera;
+          const prevRatio = r.getPixelRatio();
+          const prevSize = r.getSize(new THREE.Vector2());
+          const bg = new THREE.Color();
+          r.getClearColor(bg);
+          const frames: Blob[] = [];
+          let bytes = 0;
+          try {
+            r.setPixelRatio(1);
+            r.setSize(width, height, false);
+            cam.aspect = width / height;
+            frameCamera(cam, (radius + motionReach(motionRef.current, radius)) / zoomRef.current, 1.1);
+            r.setClearColor(0x000000, 0);
+            line.visible = false;
+            const poses = bakeMotion(motionRef.current, radius, seconds, fps);
+            const total = Math.max(1, Math.round(seconds * fps)); // 最后一帧和第 0 帧重合，不要
+            for (let i = 0; i < total; i++) {
+              checkCancelled(signal);
+              applyPose(poses[i]);
+              part.pivot.rotation.set(viewRef.current.pitch, viewRef.current.yaw, 0);
+              r.render(part.scene, cam);
+              const blob = await waitForExport(
+                new Promise<Blob>((res, rej) => r.domElement.toBlob((b) => (b ? res(b) : rej(new Error('抓不到透明 PNG 帧'))), 'image/png')),
+                signal,
+              );
+              bytes += blob.size;
+              if (bytes > FRAME_MEMORY_LIMIT) throw new Error('帧数据到内存保护上限了，把尺寸、帧率降一档或缩短循环');
+              frames.push(blob);
+              onProgress(i + 1, total);
+              await waitForExport(new Promise((res) => setTimeout(res, 0)), signal);
+            }
+            return frames;
+          } finally {
+            exporting = false;
+            r.setPixelRatio(prevRatio);
+            r.setSize(prevSize.x, prevSize.y, false);
+            r.setClearColor(bg, 1);
+            line.visible = true;
+            lineKey = '';
+            resize();
+          }
+        },
       };
       resize();
       const ro = new ResizeObserver(resize);
@@ -178,19 +265,11 @@ export function MotionPane({
         raf = requestAnimationFrame(loop);
         if (!part) return;
         const t = (performance.now() - restartRef.current) / 1000;
-        // 参数改了运动范围就重新取景（每帧比一次数，便宜）
-        if (Math.abs(motionReach(motionRef.current, radius) - framedReach) > 1e-6) resize();
+        // 参数改了运动范围或取景就重新取景（每帧比一次字符串，便宜）
+        if (frameKey() !== framedKey) resize();
+        if (exporting) return; // 导视频时画面归导出那边管
         if (stroke.length === 0) refreshLine();
-        const pose = poseAt(motionRef.current, t, radius);
-        mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
-        mover.scale.setScalar(pose.scale);
-        // USD 的 rotateXYZ 是 Rx·Ry·Rz（行向量），对应 three 的 'ZYX' —— 和导出一致
-        mover.rotation.set(
-          THREE.MathUtils.degToRad(pose.rotation[0]),
-          THREE.MathUtils.degToRad(pose.rotation[1]),
-          THREE.MathUtils.degToRad(pose.rotation[2]),
-          'ZYX',
-        );
+        applyPose(poseAt(motionRef.current, t, radius));
         part.pivot.rotation.set(viewRef.current.pitch, viewRef.current.yaw, 0);
         part.renderer.render(part.scene, part.camera);
       };
@@ -252,6 +331,7 @@ export function MotionPane({
       alive = false;
       cancelAnimationFrame(raf);
       cleanup?.();
+      frameRef.current = null;
       if (part) {
         part.renderer.dispose();
         part.renderer.domElement.remove();

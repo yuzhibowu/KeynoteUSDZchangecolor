@@ -39,9 +39,16 @@ export async function measureUsdz(buf: ArrayBuffer): Promise<{
   };
 }
 
-/** 一个挂好影棚环境和布光的空场景，模型放进 pivot 里 */
-export function makeScene(container: HTMLDivElement) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+/**
+ * 一个挂好影棚环境和布光的空场景，模型放进 pivot 里。
+ * transparent：要逐帧抓透明 PNG 的（导视频）开这个 —— 带 alpha、不预乘、保留绘制缓冲。
+ */
+export function makeScene(container: HTMLDivElement, opts: { transparent?: boolean } = {}) {
+  const renderer = new THREE.WebGLRenderer(
+    opts.transparent
+      ? { antialias: true, alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true }
+      : { antialias: true, alpha: false },
+  );
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
