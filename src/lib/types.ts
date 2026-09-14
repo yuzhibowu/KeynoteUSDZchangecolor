@@ -119,10 +119,10 @@ export type ModelType = (typeof MODEL_TYPES)[number]['id'];
  * 颜色校正和加动效是另一条路 —— 拿现成的 usdz 来改，没有几何可言。
  */
 export const MODES = [
-  { id: 'model', title: 'USDZ 导出器' },
+  { id: 'check', title: 'USDZ 体检' },
   { id: 'recolor', title: 'USDZ 颜色校正' },
   { id: 'motion', title: 'USDZ 加动效' },
-  { id: 'check', title: 'USDZ 体检' },
+  { id: 'model', title: 'USDZ 棱柱/卡片' },
 ] as const;
 export type Mode = (typeof MODES)[number]['id'];
 
