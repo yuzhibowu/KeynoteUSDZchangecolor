@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { FaceDock } from './components/FaceDock';
 import { RecolorPane } from './components/RecolorPane';
-import { MotionPane, type FrameRenderer } from './components/MotionPane';
+import { MotionPane, PHASE_STEP, type FrameRenderer } from './components/MotionPane';
 import { loadMotion, saveMotion, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
 import { measureUsdz } from './lib/usdzScene';
@@ -129,13 +129,14 @@ export default function App() {
   const [recolorOut, setRecolorOut] = useState<{ bytes: Uint8Array; report: RecolorReport } | null>(null);
   const [recolorBusy, setRecolorBusy] = useState<string | null>(null);
   const [recolorError, setRecolorError] = useState<string | null>(null);
-  // 加动效：模型和参数分开放，改参数不重新加载模型
-  const [motionSrc, setMotionSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
+  // 加动效：模型和参数分开放，改参数不重新加载模型。拖进来几个就几块预览，一起导出
+  const [motionFiles, setMotionFiles] = useState<{ name: string; buf: ArrayBuffer }[]>([]);
   const [motion, setMotion] = useState<MotionParams>(loadMotion);
   useEffect(() => saveMotion(motion), [motion]);
-  const [motionSpace, setMotionSpace] = useState<ModelSpace | null>(null);
-  // 批量：除了预览的那个，其余排着队一起导出
-  const [motionExtra, setMotionExtra] = useState<{ name: string; buf: ArrayBuffer }[]>([]);
+  // 每块预览量出来的空间（加载器的变换 + 包围盒），导出要用；没量出来的是 null
+  const [motionSpaces, setMotionSpaces] = useState<(ModelSpace | null)[]>([]);
+  const motionSrc = motionFiles[0] ?? null;
+  const motionSpace = motionSpaces[0] ?? null;
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
   // 导视频：帧从视口抓，编码在浏览器里跑
@@ -614,14 +615,17 @@ export default function App() {
 
   const pickMotionFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    setMotionSpace(null);
     const all = await Promise.all(files.map(async (f) => ({ name: f.name, buf: await f.arrayBuffer() })));
-    setMotionSrc(all[0]);
-    setMotionExtra(all.slice(1));
+    setMotionSpaces(all.map(() => null));
+    setMotionFiles(all);
   }, []);
-  const onMotionLoaded = useCallback((space: ModelSpace | null, error: string | null) => {
-    setMotionSpace(space);
-    if (error) setStatus(`这个文件渲染不了：${error}`);
+  const onMotionLoaded = useCallback((index: number, space: ModelSpace | null, error: string | null) => {
+    setMotionSpaces((prev) => {
+      const next = prev.slice();
+      next[index] = space;
+      return next;
+    });
+    if (error) setStatus(`第 ${index + 1} 个文件渲染不了：${error}`);
   }, []);
   const patchMotion = useCallback((p: Partial<MotionParams>) => setMotion((m) => ({ ...m, ...p })), []);
   const onDrawn = useCallback((raw: Pt[]) => {
@@ -635,7 +639,7 @@ export default function App() {
     await yieldToBrowser();
     try {
       const outName = (n: string) => n.replace(/\.usdz$/i, '') + '-加动效.usdz';
-      if (motionExtra.length === 0) {
+      if (motionFiles.length === 1) {
         const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds);
         const name = outName(motionSrc.name);
         const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
@@ -650,16 +654,16 @@ export default function App() {
         setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)} · ${notes.join(' · ')}`);
         return;
       }
-      // 批量：每个文件自己量一次空间，相位逐个错开，最后打成一个 zip
-      const all = [motionSrc, ...motionExtra];
+      // 批量：空间用各块预览量好的（还没量出来的补量一次），相位按预览里看到的错开，最后打成一个 zip
+      const all = motionFiles;
       const files: Record<string, Uint8Array> = {};
       const failed: string[] = [];
       for (let i = 0; i < all.length; i++) {
         setMotionBusy(`正在处理 ${i + 1}/${all.length}…`);
         await yieldToBrowser();
         try {
-          const space = i === 0 ? motionSpace : await measureUsdz(normalizeUsdzForLoader(all[i].buf.slice(0)));
-          const params = { ...motion, phase: motion.phase + i * 1.7 };
+          const space = motionSpaces[i] ?? (await measureUsdz(normalizeUsdzForLoader(all[i].buf.slice(0))));
+          const params = { ...motion, phase: motion.phase + i * PHASE_STEP };
           files[outName(all[i].name)] = addMotionToUsdz(all[i].buf, params, space, motion.seconds).bytes;
         } catch (e) {
           failed.push(`${all[i].name}（${e instanceof Error ? e.message : String(e)}）`);
@@ -680,7 +684,7 @@ export default function App() {
     } finally {
       setMotionBusy(null);
     }
-  }, [motionSrc, motionExtra, motionSpace, motion]);
+  }, [motionSrc, motionFiles, motionSpaces, motionSpace, motion]);
 
   const exportVideo = useCallback(
     async (format: VideoFormat) => {
@@ -886,8 +890,7 @@ export default function App() {
         </div>
         {mode === 'motion' ? (
           <MotionPane
-            fileName={motionSrc?.name ?? null}
-            source={motionSrc?.buf ?? null}
+            sources={motionFiles}
             motion={motion}
             onFiles={pickMotionFiles}
             onLoaded={onMotionLoaded}
@@ -959,7 +962,7 @@ export default function App() {
         recolorBusy={recolorBusy}
         motion={{
           fileName: motionSrc?.name ?? null,
-          extraNames: motionExtra.map((x) => x.name),
+          extraNames: motionFiles.slice(1).map((x) => x.name),
           loaded: !!motionSpace,
           motion,
           patch: patchMotion,

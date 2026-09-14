@@ -61,8 +61,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
           {fileName && <div className="filename" title={fileName}>{fileName}</div>}
           {extraNames.length > 0 && (
             <p className="hint">
-              还有 {extraNames.length} 个一起导出：{extraNames.join('、')}。
-              同一套设定，每个自动错开一点相位，不会一起起伏。
+              共 {extraNames.length + 1} 个一起导出，同一套设定，起步逐个错开 —— 左边每块就是各自导出后的样子。
             </p>
           )}
         </div>
@@ -87,6 +86,41 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
           <p className="hint">
             所有动作都在这一圈里：漂浮末尾平滑接回开头，自转和轨迹要转整数圈。
             越长越看不出重复、一圈用时的档位越细，文件不会因此变大多少；导出视频的时长也是它。
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>入场</h2>
+        <div className="stack">
+          <div className="opts four">
+            {ENTRANCES.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                className="opt"
+                aria-pressed={motion.entrance === e.id}
+                onClick={() => patch({ entrance: e.id })}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+          <Slider
+            label="入场用时"
+            value={motion.entranceSeconds}
+            min={0.5}
+            max={3}
+            step={0.1}
+            digits={1}
+            suffix=" 秒"
+            reset={1.5}
+            disabled={motion.entrance === 'none'}
+            onChange={(v) => patch({ entranceSeconds: v })}
+          />
+          <p className="hint">
+            Keynote 从第 0 帧开始播：模型先入场，再接进漂浮。循环到结尾会用同样的方式退场，
+            所以每一圈都会重演一次；想少见到就把下面的循环长度拉长。
           </p>
         </div>
       </section>
@@ -121,7 +155,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             onChange={(v) => patch({ speed: v })}
           />
           <Slider
-            label="错开"
+            label="起步错开"
             value={motion.phase}
             min={0}
             max={10}
@@ -141,7 +175,8 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
           </button>
           <p className="hint">
             上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。
-            同一页放几个模型时，每个「错开」不同的秒数，它们就不会一起起伏。
+            「起步错开」是从动作的第几秒起步：同一页放几个模型时各自错开，就不会像一队人齐步走。
+            一次拖进多个时每块自动错开，左边预览里就是各自的样子。
           </p>
         </div>
       </section>
@@ -288,41 +323,6 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
               </p>
             </>
           )}
-        </div>
-      </section>
-
-      <section>
-        <h2>入场</h2>
-        <div className="stack">
-          <div className="opts four">
-            {ENTRANCES.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                className="opt"
-                aria-pressed={motion.entrance === e.id}
-                onClick={() => patch({ entrance: e.id })}
-              >
-                {e.label}
-              </button>
-            ))}
-          </div>
-          <Slider
-            label="入场用时"
-            value={motion.entranceSeconds}
-            min={0.5}
-            max={3}
-            step={0.1}
-            digits={1}
-            suffix=" 秒"
-            reset={1.5}
-            disabled={motion.entrance === 'none'}
-            onChange={(v) => patch({ entranceSeconds: v })}
-          />
-          <p className="hint">
-            Keynote 从第 0 帧开始播：模型先入场，再接进漂浮。循环到结尾会用同样的方式退场，
-            所以每一圈都会重演一次；想少见到就把下面的循环长度拉长。
-          </p>
         </div>
       </section>
 

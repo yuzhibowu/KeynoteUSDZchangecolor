@@ -21,18 +21,17 @@ export type FrameRenderer = {
 };
 
 /**
- * 加动效模式的左侧区域：一个视口，模型按当前参数实时运动。
+ * 一块预览：一个模型按当前参数实时运动。导入几个模型就有几块，每块自己一个渲染器。
  *
  * 场景层级是 orbit（用户拖动的视角）→ mover（运动函数给的姿态）→ 模型（已平移到包围盒中心）。
  * 视角在最外层：拖动等于绕着整个运动转，运动的轴不跟着视角变 —— 导出时也是这样。
  *
  * 参数改了不重新加载模型：poseAt 是纯函数，每帧拿最新参数算就行。
  */
-export function MotionPane({
-  fileName,
+function MotionTile({
   source,
+  label,
   motion,
-  onFiles,
   onLoaded,
   background,
   slide,
@@ -41,24 +40,19 @@ export function MotionPane({
   drawing,
   onDrawn,
 }: {
-  fileName: string | null;
-  source: ArrayBuffer | null;
+  source: ArrayBuffer;
+  /** 角上的名字，多块的时候还带着错开值 */
+  label: string;
+  /** 这一块用的参数（相位已经错开过） */
   motion: MotionParams;
-  /** 拖进来的所有 usdz。第一个拿来预览，其余跟着一起导出 */
-  onFiles: (files: File[]) => void;
   /** 模型加载完了（或者失败了）告诉外面：导出要用加载器的变换和包围盒 */
   onLoaded: (space: ModelSpace | null, error: string | null) => void;
-  /** 预览背景色（CSS 颜色）。只影响预览，不进文件 */
   background: string;
-  /** 视口按 16:9 的幻灯片来框，看的就是放进 Keynote 的样子 */
   slide: boolean;
-  /** 取景缩放：1 是把整段运动的包围球刚好装下，大于 1 拉近 */
   zoom: number;
-  /** 导视频时从这里逐帧抓图 */
-  frameRef: MutableRefObject<FrameRenderer | null>;
-  /** 手绘模式：拖动是画路径而不是转视角 */
+  /** 导视频时从这里逐帧抓图；只有第一块给了 */
+  frameRef: MutableRefObject<FrameRenderer | null> | null;
   drawing: boolean;
-  /** 画完一笔。点是模型半径的倍数，XY 平面 */
   onDrawn: (pts: Pt[]) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -205,7 +199,7 @@ export function MotionPane({
 
       // 导视频：按 bakeMotion 烘出来的姿态逐帧渲染、抓成透明 PNG。
       // 和写进 usdz 的是同一批姿态，接缝同样闭合。渲染尺寸临时切到输出尺寸，抓完还原。
-      frameRef.current = {
+      if (frameRef) frameRef.current = {
         maxTextureSize: part.renderer.capabilities.maxTextureSize,
         async render({ width, height, fps, seconds, signal, onProgress }) {
           if (!part) throw new Error('视口还没准备好');
@@ -331,15 +325,82 @@ export function MotionPane({
       alive = false;
       cancelAnimationFrame(raf);
       cleanup?.();
-      frameRef.current = null;
+      if (frameRef) frameRef.current = null;
       if (part) {
         part.renderer.dispose();
         part.renderer.domElement.remove();
         rendererRef.current = null;
       }
     };
-  }, [source, onLoaded]);
+  }, [source, onLoaded, frameRef]);
 
+  return (
+    <div className="motion-tile">
+      {error ? (
+        <div className="recolor-empty">
+          <p className="hint warn">{label}：这个文件渲染不了（{error}）。</p>
+        </div>
+      ) : (
+        <div className="motion-stage">
+          {busy && <div className="motion-loading">正在加载…</div>}
+          {drawing && !busy && <div className="motion-drawhint">按住拖一笔，松手就好</div>}
+          <div
+            ref={hostRef}
+            className={['motion-view', drawing ? 'drawing' : '', slide ? 'slide' : ''].filter(Boolean).join(' ')}
+          />
+          <span className="motion-label">{label}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 批量时每块错开多少秒；导出也用这个数，看到的和导出的一样 */
+export const PHASE_STEP = 1.7;
+
+/**
+ * 加动效模式的左侧区域：拖进来几个模型就分几块，每块各漂各的、带各自的错开值。
+ * 手绘和导视频只认第一块（参数是共用的，画在哪块都一样）。
+ */
+export function MotionPane({
+  sources,
+  motion,
+  onFiles,
+  onLoaded,
+  background,
+  slide,
+  zoom,
+  frameRef,
+  drawing,
+  onDrawn,
+}: {
+  sources: { name: string; buf: ArrayBuffer }[];
+  motion: MotionParams;
+  onFiles: (files: File[]) => void;
+  /** 第 i 个模型加载完了（或者失败了） */
+  onLoaded: (index: number, space: ModelSpace | null, error: string | null) => void;
+  /** 预览背景色（CSS 颜色）。只影响预览，不进文件 */
+  background: string;
+  /** 视口按 16:9 的幻灯片来框，看的就是放进 Keynote 的样子 */
+  slide: boolean;
+  /** 取景缩放：1 是把整段运动的包围球刚好装下，大于 1 拉近 */
+  zoom: number;
+  /** 导视频时从这里逐帧抓图 */
+  frameRef: MutableRefObject<FrameRenderer | null>;
+  /** 手绘模式：拖动是画路径而不是转视角 */
+  drawing: boolean;
+  /** 画完一笔。点是模型半径的倍数，XY 平面 */
+  onDrawn: (pts: Pt[]) => void;
+}) {
+  const n = sources.length;
+  const cols = n <= 1 ? 1 : n <= 4 ? 2 : 3;
+  // 每块一个稳定的回调，免得每次渲染都让所有块重新加载
+  const loadedRef = useRef(onLoaded);
+  loadedRef.current = onLoaded;
+  const callbacks = useRef<((space: ModelSpace | null, error: string | null) => void)[]>([]);
+  for (let i = 0; i < n; i++) {
+    if (!callbacks.current[i]) callbacks.current[i] = (space, error) => loadedRef.current(i, space, error);
+  }
   return (
     <div
       className="recolor motion"
@@ -357,25 +418,29 @@ export function MotionPane({
         onFiles(fs);
       }}
     >
-      {!fileName && (
+      {n === 0 && (
         <div className="recolor-empty">
           <h2>把现成的 USDZ 拖进来</h2>
           <p className="hint">或者用右边的「选择 USDZ 文件」。可以一次拖好几个，原文件不会被改动。</p>
         </div>
       )}
-      {fileName && error && (
-        <div className="recolor-empty">
-          <p className="hint warn">这个文件渲染不了（{error}）。</p>
-        </div>
-      )}
-      {fileName && !error && (
-        <div className="motion-stage">
-          {busy && <div className="motion-loading">正在加载…</div>}
-          {drawing && !busy && <div className="motion-drawhint">按住拖一笔，松手就好</div>}
-          <div
-            ref={hostRef}
-            className={['motion-view', drawing ? 'drawing' : '', slide ? 'slide' : ''].filter(Boolean).join(' ')}
-          />
+      {n > 0 && (
+        <div className="motion-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+          {sources.map((src, i) => (
+            <MotionTile
+              key={`${i}:${src.name}:${src.buf.byteLength}`}
+              source={src.buf}
+              label={n > 1 ? `${src.name} · 错开 +${(i * PHASE_STEP).toFixed(1)} 秒` : src.name}
+              motion={i === 0 ? motion : { ...motion, phase: motion.phase + i * PHASE_STEP }}
+              onLoaded={callbacks.current[i]}
+              background={background}
+              slide={slide}
+              zoom={zoom}
+              frameRef={i === 0 ? frameRef : null}
+              drawing={drawing && i === 0}
+              onDrawn={onDrawn}
+            />
+          ))}
         </div>
       )}
     </div>
