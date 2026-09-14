@@ -5,6 +5,9 @@ import { RecolorPane } from './components/RecolorPane';
 import { MotionPane } from './components/MotionPane';
 import { DEFAULT_MOTION, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
+import { measureUsdz } from './lib/usdzScene';
+import { normalizeUsdzForLoader } from './lib/recolor';
+import { zipSync } from 'fflate';
 import { centerPath, isClosed, resample, type Pt } from './lib/drawnPath';
 import { recolorUsdz, type RecolorReport } from './lib/recolor';
 import { Viewport } from './components/Viewport';
@@ -129,6 +132,8 @@ export default function App() {
   const [motionSrc, setMotionSrc] = useState<{ name: string; buf: ArrayBuffer } | null>(null);
   const [motion, setMotion] = useState<MotionParams>(DEFAULT_MOTION);
   const [motionSpace, setMotionSpace] = useState<ModelSpace | null>(null);
+  // 批量：除了预览的那个，其余排着队一起导出
+  const [motionExtra, setMotionExtra] = useState<{ name: string; buf: ArrayBuffer }[]>([]);
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
   // 自动旋转的开关放在这儿：按钮在侧栏、动画在预览区，两边都要用
@@ -595,9 +600,12 @@ export default function App() {
     setRecolorSrc({ name: f.name, buf: await f.arrayBuffer() });
   }, []);
 
-  const pickMotionFile = useCallback(async (f: File) => {
+  const pickMotionFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
     setMotionSpace(null);
-    setMotionSrc({ name: f.name, buf: await f.arrayBuffer() });
+    const all = await Promise.all(files.map(async (f) => ({ name: f.name, buf: await f.arrayBuffer() })));
+    setMotionSrc(all[0]);
+    setMotionExtra(all.slice(1));
   }, []);
   const onMotionLoaded = useCallback((space: ModelSpace | null, error: string | null) => {
     setMotionSpace(space);
@@ -614,24 +622,53 @@ export default function App() {
     setMotionBusy('正在写入动画…');
     await yieldToBrowser();
     try {
-      const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds);
-      const name = motionSrc.name.replace(/\.usdz$/i, '') + '-加动效.usdz';
-      const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
+      const outName = (n: string) => n.replace(/\.usdz$/i, '') + '-加动效.usdz';
+      if (motionExtra.length === 0) {
+        const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds);
+        const name = outName(motionSrc.name);
+        const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
+        download(blob, name);
+        setLastFile({ blob, name });
+        const notes = [
+          `${report.seconds} 秒 ${report.frames} 帧`,
+          report.binaryRoot ? '原文件是二进制场景，已另写一层文本图层把它引用进来' : null,
+          report.replacedAnimation ? '原文件自带的动画已替换' : null,
+          report.nestedAnimation ? `原文件深处还有 ${report.nestedAnimation} 段动画会叠加` : null,
+        ].filter(Boolean);
+        setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)} · ${notes.join(' · ')}`);
+        return;
+      }
+      // 批量：每个文件自己量一次空间，相位逐个错开，最后打成一个 zip
+      const all = [motionSrc, ...motionExtra];
+      const files: Record<string, Uint8Array> = {};
+      const failed: string[] = [];
+      for (let i = 0; i < all.length; i++) {
+        setMotionBusy(`正在处理 ${i + 1}/${all.length}…`);
+        await yieldToBrowser();
+        try {
+          const space = i === 0 ? motionSpace : await measureUsdz(normalizeUsdzForLoader(all[i].buf.slice(0)));
+          const params = { ...motion, phase: motion.phase + i * 1.7 };
+          files[outName(all[i].name)] = addMotionToUsdz(all[i].buf, params, space, motion.seconds).bytes;
+        } catch (e) {
+          failed.push(`${all[i].name}（${e instanceof Error ? e.message : String(e)}）`);
+        }
+      }
+      if (Object.keys(files).length === 0) throw new Error(`一个都没成：${failed.join('；')}`);
+      const zipped = zipSync(files, { level: 0 });
+      const name = `加动效-${Object.keys(files).length}个.zip`;
+      const blob = new Blob([zipped as unknown as BlobPart], { type: 'application/zip' });
       download(blob, name);
       setLastFile({ blob, name });
-      const notes = [
-        `${report.seconds} 秒 ${report.frames} 帧`,
-        report.binaryRoot ? '原文件是二进制场景，已另写一层文本图层把它引用进来' : null,
-        report.replacedAnimation ? '原文件自带的动画已替换' : null,
-        report.nestedAnimation ? `原文件深处还有 ${report.nestedAnimation} 段动画会叠加` : null,
-      ].filter(Boolean);
-      setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)} · ${notes.join(' · ')}`);
+      setStatus(
+        `已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)}` +
+          (failed.length ? ` · 没成功的：${failed.join('；')}` : ''),
+      );
     } catch (e) {
       setStatus(`导出失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setMotionBusy(null);
     }
-  }, [motionSrc, motionSpace, motion]);
+  }, [motionSrc, motionExtra, motionSpace, motion]);
 
   const exportRecolor = useCallback(() => {
     if (!recolorOut || !recolorSrc) return;
@@ -792,7 +829,7 @@ export default function App() {
             fileName={motionSrc?.name ?? null}
             source={motionSrc?.buf ?? null}
             motion={motion}
-            onFile={pickMotionFile}
+            onFiles={pickMotionFiles}
             onLoaded={onMotionLoaded}
             drawing={drawing}
             onDrawn={onDrawn}
@@ -858,12 +895,13 @@ export default function App() {
         recolorBusy={recolorBusy}
         motion={{
           fileName: motionSrc?.name ?? null,
+          extraNames: motionExtra.map((x) => x.name),
           loaded: !!motionSpace,
           motion,
           patch: patchMotion,
           drawing,
           setDrawing,
-          onPick: pickMotionFile,
+          onPick: pickMotionFiles,
           onExport: exportMotion,
           exportBusy: motionBusy,
         }}

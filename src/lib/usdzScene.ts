@@ -20,6 +20,25 @@ export function loadUsdz(buf: ArrayBuffer): Promise<THREE.Object3D> {
   });
 }
 
+/**
+ * 不渲染，只量：加载器给模型套的变换和包围盒（three 世界坐标）。
+ * 批量加动效时，除了正在预览的那个，其余文件都靠这个拿到导出要的空间信息。
+ */
+export async function measureUsdz(buf: ArrayBuffer): Promise<{
+  groupMatrix: number[];
+  min: [number, number, number];
+  max: [number, number, number];
+}> {
+  const obj = await loadUsdz(buf);
+  obj.updateMatrix();
+  const box = new THREE.Box3().setFromObject(obj);
+  return {
+    groupMatrix: obj.matrix.toArray(),
+    min: [box.min.x, box.min.y, box.min.z],
+    max: [box.max.x, box.max.y, box.max.z],
+  };
+}
+
 /** 一个挂好影棚环境和布光的空场景，模型放进 pivot 里 */
 export function makeScene(container: HTMLDivElement) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });

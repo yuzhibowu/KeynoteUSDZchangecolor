@@ -4,12 +4,14 @@ import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, effectiveLap, type Motion
 
 export type MotionSidebar = {
   fileName: string | null;
+  /** 除了预览的那个，还有哪些一起导出 */
+  extraNames: string[];
   loaded: boolean;
   motion: MotionParams;
   patch: (p: Partial<MotionParams>) => void;
   drawing: boolean;
   setDrawing: (v: boolean) => void;
-  onPick: (f: File) => void;
+  onPick: (files: File[]) => void;
   onExport: () => void;
   exportBusy: string | null;
 };
@@ -20,7 +22,7 @@ export type MotionSidebar = {
  * 参数故意少：做 PPT 的人要的是「轻一点 / 明显一点」，不是「幅度 1.5%、微旋 1.5°」。
  * 漂浮本身就包含上下位移和两个轴的微倾，不让用户自己拼。
  */
-export function MotionPanel({ fileName, loaded, motion, patch, drawing, setDrawing, onPick, onExport, exportBusy }: MotionSidebar) {
+export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawing, setDrawing, onPick, onExport, exportBusy }: MotionSidebar) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -33,14 +35,21 @@ export function MotionPanel({ fileName, loaded, motion, patch, drawing, setDrawi
             ref={input}
             type="file"
             accept=".usdz,model/vnd.usdz+zip"
+            multiple
             hidden
             onChange={(e) => {
-              const f = e.target.files?.[0];
+              const fs = [...(e.target.files ?? [])];
               e.target.value = '';
-              if (f) onPick(f);
+              if (fs.length) onPick(fs);
             }}
           />
           {fileName && <div className="filename" title={fileName}>{fileName}</div>}
+          {extraNames.length > 0 && (
+            <p className="hint">
+              还有 {extraNames.length} 个一起导出：{extraNames.join('、')}。
+              同一套设定，每个自动错开一点相位，不会一起起伏。
+            </p>
+          )}
         </div>
       </section>
 
@@ -249,7 +258,7 @@ export function MotionPanel({ fileName, loaded, motion, patch, drawing, setDrawi
       <section className="export-block">
         <p className="hint tight">文件直接存进「下载」文件夹，不弹保存框。</p>
         <button className="btn-primary" disabled={!loaded || exportBusy !== null} onClick={onExport}>
-          {exportBusy ?? '导出 USDZ'}
+          {exportBusy ?? (extraNames.length ? `导出全部 ${extraNames.length + 1} 个（打包 zip）` : '导出 USDZ')}
         </button>
       </section>
     </>

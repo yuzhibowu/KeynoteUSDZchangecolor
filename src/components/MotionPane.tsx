@@ -18,7 +18,7 @@ export function MotionPane({
   fileName,
   source,
   motion,
-  onFile,
+  onFiles,
   onLoaded,
   drawing,
   onDrawn,
@@ -26,7 +26,8 @@ export function MotionPane({
   fileName: string | null;
   source: ArrayBuffer | null;
   motion: MotionParams;
-  onFile: (f: File) => void;
+  /** 拖进来的所有 usdz。第一个拿来预览，其余跟着一起导出 */
+  onFiles: (files: File[]) => void;
   /** 模型加载完了（或者失败了）告诉外面：导出要用加载器的变换和包围盒 */
   onLoaded: (space: ModelSpace | null, error: string | null) => void;
   /** 手绘模式：拖动是画路径而不是转视角 */
@@ -255,16 +256,16 @@ export function MotionPane({
       onDragLeave={(e) => e.currentTarget.classList.remove('drag-over')}
       onDrop={(e) => {
         e.currentTarget.classList.remove('drag-over');
-        const f = [...e.dataTransfer.files].find((x) => /\.usdz$/i.test(x.name));
-        if (!f) return;
+        const fs = [...e.dataTransfer.files].filter((x) => /\.usdz$/i.test(x.name));
+        if (fs.length === 0) return;
         e.preventDefault();
-        onFile(f);
+        onFiles(fs);
       }}
     >
       {!fileName && (
         <div className="recolor-empty">
           <h2>把现成的 USDZ 拖进来</h2>
-          <p className="hint">或者用右边的「选择 USDZ 文件」。原文件不会被改动。</p>
+          <p className="hint">或者用右边的「选择 USDZ 文件」。可以一次拖好几个，原文件不会被改动。</p>
         </div>
       )}
       {fileName && error && (
