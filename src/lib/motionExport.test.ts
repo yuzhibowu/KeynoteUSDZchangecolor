@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { alignQuaternions, binaryRootLayer, expandExtents, poseToFile, stripOwnAnimation, unwrapDegrees, wrapWithMotion } from './motionExport';
+import { alignQuaternions, binaryRootLayer, expandExtents, neutralizeOwnWrapper, poseToFile, rebaseFrames, startName, stripOwnAnimation, unwrapDegrees, wrapWithMotion } from './motionExport';
 
 const SAMPLE = `#usda 1.0
 (
@@ -255,5 +255,85 @@ describe('四元数', () => {
       const dot = q[i].reduce((acc, v, k) => acc + v * q[i - 1][k], 0);
       expect(dot).toBeGreaterThan(0.9);
     }
+  });
+});
+
+describe('起始姿态层（放映开播前 Keynote 不看动画层）', () => {
+  const START = { translate: [0, -2, 0], orient: [1, 0, 0, 0], scale: [0.001, 0.001, 0.001] };
+  it('动画层里面再套一层静态 Xform，第 0 帧姿态写在它身上，绝对路径多一级', () => {
+    const r = wrapWithMotion(SAMPLE, { ...OPTS, start: START });
+    expect(r.text).toMatch(/^def Xform "Motion"\n\{\n\tdouble3 xformOp:translate = /m);
+    expect(r.text).toMatch(/\n\tdef Xform "Start"\n\t\{\n\t\tdouble3 xformOp:translate = \(0, -2, 0\)\n\t\tquatf xformOp:orient = \(1, 0, 0, 0\)\n\t\tfloat3 xformOp:scale = \(0\.001, 0\.001, 0\.001\)\n\t\tuniform token\[\] xformOpOrder = \["xformOp:translate", "xformOp:orient", "xformOp:scale"\]\n/);
+    // 静态层没有 timeSamples
+    const startBlock = r.text.slice(r.text.indexOf('def Xform "Start"'), r.text.indexOf('def Xform "Root"'));
+    expect(startBlock).not.toMatch(/timeSamples/);
+    expect(r.text).toMatch(/\n\t\tdef Xform "Root"/);
+    expect(r.text).toMatch(/material:binding = <\/Motion\/Start\/Root\/Materials\/M>/);
+    expect(r.text).toMatch(/<\/Motion\/Start\/Root\/Materials\/M\/S\.outputs:surface>/);
+  });
+  it('缩放接近 1 就不写静态 scale', () => {
+    const r = wrapWithMotion(SAMPLE, { ...OPTS, start: { ...START, scale: [1, 1, 1] } });
+    const startBlock = r.text.slice(r.text.indexOf('def Xform "Start"'), r.text.indexOf('def Xform "Root"'));
+    expect(startBlock).not.toMatch(/scale/);
+  });
+  it('被套的 prim 就叫 Start 时换名', () => {
+    expect(startName('Root')).toBe('Start');
+    expect(startName('Start')).toBe('Start_1');
+  });
+  it('二进制根图层也套', () => {
+    const t = binaryRootLayer({ defaultPrim: 'scene', upAxis: 'Y', metersPerUnit: 1, animatedOps: 0 }, 'scene.usdc', { ...OPTS, start: START });
+    expect(t).toMatch(/\n\tdef Xform "Start"\n\t\{\n\t\tdouble3 xformOp:translate = \(0, -2, 0\)\n/);
+    expect(t).toMatch(/\n\t\tdef "scene" \(\n\t\t\tprepend references = @\.\/scene\.usdc@<\/scene>\n\t\t\)\n\t\t\{\n\t\t\}\n\t\}\n\}/);
+  });
+  it('rebaseFrames：第 0 帧是单位变换，起始 × 相对 = 原来的每一帧', () => {
+    const c = new THREE.Vector3(3, 4, 5);
+    const I = new THREE.Matrix4();
+    const poses = [
+      { position: [0, -2, 0] as [number, number, number], rotation: [0, 0, 0] as [number, number, number], scale: 0.001 },
+      { position: [0, -1, 0.2] as [number, number, number], rotation: [5, 40, -3] as [number, number, number], scale: 0.4 },
+      { position: [0.1, 0, 0] as [number, number, number], rotation: [1, 95, 2] as [number, number, number], scale: 1 },
+    ];
+    const F = poses.map((p) => poseToFile(p, c, I, I).fileMatrix);
+    const r = rebaseFrames(F);
+    for (const v of r.translate[0]) expect(v).toBeCloseTo(0, 9);
+    expect(r.orient[0].map((v) => +v.toFixed(6))).toEqual([1, 0, 0, 0]);
+    expect(r.scale[0].map((v) => +v.toFixed(6))).toEqual([1, 1, 1]);
+    expect(r.start.scale.map((v) => +v.toFixed(6))).toEqual([0.001, 0.001, 0.001]);
+    const S = new THREE.Matrix4().compose(
+      new THREE.Vector3(...r.start.translate),
+      new THREE.Quaternion(r.start.orient[1], r.start.orient[2], r.start.orient[3], r.start.orient[0]),
+      new THREE.Vector3(...r.start.scale),
+    );
+    for (let i = 0; i < F.length; i++) {
+      const A = new THREE.Matrix4().compose(
+        new THREE.Vector3(...r.translate[i]),
+        new THREE.Quaternion(r.orient[i][1], r.orient[i][2], r.orient[i][3], r.orient[i][0]),
+        new THREE.Vector3(...r.scale[i]),
+      );
+      const back = A.multiply(S);
+      for (let k = 0; k < 16; k++) expect(back.elements[k]).toBeCloseTo(F[i].elements[k], 6);
+    }
+  });
+});
+
+describe('再套一次：起始姿态层要清掉', () => {
+  const START = { translate: [0, -2, 0], orient: [1, 0, 0, 0], scale: [0.001, 0.001, 0.001] };
+  it('上一次的 Start 层和动画层都变成没有 op 的空壳，新的套在外面', () => {
+    const once = wrapWithMotion(SAMPLE, { ...OPTS, start: START, bounds: { min: [-1, -1, -1], max: [1, 1, 1] } }).text;
+    const twice = wrapWithMotion(once, { ...OPTS, start: { ...START, translate: [0, -3, 0] }, bounds: { min: [-2, -2, -2], max: [2, 2, 2] } });
+    expect(twice.wrapper).toBe('Motion_1');
+    expect(twice.replacedAnimation).toBe(true);
+    // 只剩新的一套：一处 0.001 缩放、一处 timeSamples 的 translate
+    expect(twice.text.match(/xformOp:scale = \(0\.001, 0\.001, 0\.001\)/g)).toHaveLength(1);
+    expect(twice.text.match(/xformOp:translate\.timeSamples/g)).toHaveLength(1);
+    expect(twice.text.match(/xformOpOrder/g)).toHaveLength(2);
+    // 旧的 Motion 和它的 Start 还在，但都是空壳
+    const oldMotion = twice.text.slice(twice.text.indexOf('\tdef Xform "Motion"'), twice.text.indexOf('def Xform "Root"'));
+    expect(oldMotion).toMatch(/def Xform "Start"/);
+    expect(oldMotion).not.toMatch(/xformOp/);
+    expect(twice.text).toMatch(/<\/Motion_1\/Start\/Motion\/Start\/Root\/Materials\/M>/);
+  });
+  it('不是我们套的就不认', () => {
+    expect(neutralizeOwnWrapper(SAMPLE.slice(SAMPLE.indexOf('def Xform "Root"')))).toBeNull();
   });
 });

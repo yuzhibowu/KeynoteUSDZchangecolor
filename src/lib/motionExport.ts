@@ -90,7 +90,47 @@ export function poseToFile(pose: Pose, center: THREE.Vector3, G: THREE.Matrix4, 
     orient: [rot.w, rot.x, rot.y, rot.z],
     scale: [scl.x, scl.y, scl.z],
     matrix: M,
+    /** 文件坐标里的同一帧 */
+    fileMatrix: F,
   };
+}
+
+/** 静态的一帧：平移、四元数 (w, x, y, z)、缩放 */
+export type StaticPose = { translate: number[]; orient: number[]; scale: number[] };
+
+function decomposeFile(F: THREE.Matrix4): StaticPose {
+  const pos = new THREE.Vector3();
+  const rot = new THREE.Quaternion();
+  const scl = new THREE.Vector3();
+  F.decompose(pos, rot, scl);
+  return { translate: [pos.x, pos.y, pos.z], orient: [rot.w, rot.x, rot.y, rot.z], scale: [scl.x, scl.y, scl.z] };
+}
+
+/**
+ * 把整段动画改写成「起始姿态 × 相对变化」。
+ *
+ * Keynote 放映时，动画开始播之前**不理会动画层**：默认值也好、第 0 帧也好都不看，
+ * 把模型按没套动画的原样画出来 —— 「长出」会先看到完整的模型摆着，过一会儿缩没再长出来
+ * （2026-09-14 高达实测；编辑状态下倒是显示默认值）。
+ *
+ * 所以第 0 帧的隐藏姿态不能只靠动画层：把它拆成一层**静态**的 Xform（Start，不带 timeSamples），
+ * 动画层只写相对于它的变化 A(t) = F(t) · F(0)⁻¹，第 0 帧正好是单位变换。这样不管 Keynote
+ * 播放前是显示默认值、第一个采样还是把动画层当不存在，看到的都是那个隐藏姿态。
+ * 缩放是均匀的，所以 F(t) · F(0)⁻¹ 仍能分解成平移 · 旋转 · 缩放。
+ */
+export function rebaseFrames(frames: THREE.Matrix4[]): { start: StaticPose; translate: number[][]; orient: number[][]; scale: number[][] } {
+  const F0 = frames[0];
+  const inv = F0.clone().invert();
+  const translate: number[][] = [];
+  const orient: number[][] = [];
+  const scale: number[][] = [];
+  for (const F of frames) {
+    const d = decomposeFile(F.clone().multiply(inv));
+    translate.push(d.translate);
+    orient.push(d.orient);
+    scale.push(d.scale);
+  }
+  return { start: decomposeFile(F0), translate, orient, scale };
 }
 
 /** G 除了均匀缩放还带不带旋转 */
@@ -258,6 +298,64 @@ export function stripOwnAnimation(prim: string): { text: string; stripped: boole
   return { text: prim.slice(0, open) + own + prim.slice(ownEnd), stripped: true };
 }
 
+/** 一个 prim 直属那一层（不进子节点）的范围 */
+function ownRange(prim: string): { open: number; ownEnd: number } | null {
+  const open = prim.indexOf('{');
+  if (open < 0) return null;
+  const nested = /^[ \t]+(?:def|over|class)\b/m.exec(prim.slice(open));
+  return { open, ownEnd: nested ? open + nested.index : prim.length };
+}
+
+/** 把 prim 直属的 xformOp 声明（静态值、timeSamples、xformOpOrder）全部拿掉 */
+function stripOwnOps(prim: string): string {
+  const r = ownRange(prim);
+  if (!r) return prim;
+  const own = prim
+    .slice(r.open, r.ownEnd)
+    .replace(/^[ \t]*[\w\[\]]+\s+xformOp:[\w:!]+(?:\.timeSamples)?\s*=\s*(?:\{[^}]*\}|\([^)]*\))[^\n]*\n?/gm, '')
+    .replace(/^[ \t]*uniform\s+token\[\]\s+xformOpOrder\s*=\s*\[[^\]]*\][^\n]*\n?/gm, '');
+  return prim.slice(0, r.open) + own + prim.slice(r.ownEnd);
+}
+
+/**
+ * 给我们自己套过的文件再套一次：上一次的动画层和起始姿态层都要清成单位变换。
+ * 起始姿态层是静态的，留着的话「长出」那 0.001 的缩放会把模型永远藏起来。
+ * 认的是「直属子节点里有 def Xform "Start"」这个签名；返回 null 表示不是我们套的。
+ */
+export function neutralizeOwnWrapper(prim: string): string | null {
+  const r = ownRange(prim);
+  if (!r) return null;
+  // 第一个子节点就得是 Start
+  if (!/^[ \t]+def Xform "Start(?:_\d+)?"/.test(prim.slice(r.ownEnd))) return null;
+  const startAt = r.ownEnd;
+  const startPrim = findTopPrimAt(prim, startAt);
+  if (!startPrim) return null;
+  const cleaned = stripOwnOps(prim.slice(startAt, startPrim.end));
+  return stripOwnOps(prim.slice(0, startAt) + cleaned + prim.slice(startPrim.end));
+}
+
+/** 从 `def ...` 的位置起找到这个 prim 的结束 `}` */
+function findTopPrimAt(usda: string, at: number): { end: number } | null {
+  let depth = 0;
+  let i = at;
+  for (; i < usda.length; i++) {
+    const c = usda[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === '{' && depth === 0) break;
+  }
+  if (i >= usda.length) return null;
+  depth = 1;
+  for (let j = i + 1; j < usda.length; j++) {
+    if (usda[j] === '{') depth++;
+    else if (usda[j] === '}') {
+      depth--;
+      if (depth === 0) return { end: j + 1 };
+    }
+  }
+  return null;
+}
+
 /** 把每个 `float3[] extent = [(..), (..)]` 往外扩 margin */
 export function expandExtents(usda: string, margin: number): { text: string; count: number } {
   let count = 0;
@@ -280,6 +378,11 @@ export type WrapOptions = {
   orient: number[][];
   /** 只有入场用到缩放时才给；不给就不写 scale op，少一个 op 少一分风险 */
   scale?: number[][];
+  /**
+   * 起始姿态：动画层里面再套一层不带 timeSamples 的 Xform。
+   * Keynote 放映时开播前不理会动画层，隐藏姿态得写成静态的才藏得住（见 rebaseFrames）
+   */
+  start?: StaticPose;
   fps: number;
   /** 整段运动扫过的范围（文件坐标）。给了就放一个看不见的占位盒，让 Keynote 按它定视角 */
   bounds?: { min: number[]; max: number[] };
@@ -340,6 +443,31 @@ function motionOps(opts: WrapOptions, indent: string): string {
   return lines.join('\n');
 }
 
+/** 起始姿态那层的三个静态 op。缩放接近 1 就不写，和动画层一样能省一个 op */
+function startOps(start: StaticPose, indent: string): string {
+  const order = ['xformOp:translate', 'xformOp:orient'];
+  const lines = [
+    `${indent}double3 xformOp:translate = ${vec(start.translate)}`,
+    `${indent}quatf xformOp:orient = ${vec(start.orient)}`,
+  ];
+  if (start.scale.some((v) => Math.abs(v - 1) > 1e-6)) {
+    lines.push(`${indent}float3 xformOp:scale = ${vec(start.scale)}`);
+    order.push('xformOp:scale');
+  }
+  lines.push(`${indent}uniform token[] xformOpOrder = [${order.map((o) => `"${o}"`).join(', ')}]`);
+  return lines.join('\n');
+}
+
+/** 起始姿态那层的名字，别和被套住的 prim 撞了 */
+export function startName(inner: string): string {
+  let name = 'Start';
+  for (let n = 1; name === inner; n++) name = `Start_${n}`;
+  return name;
+}
+
+/** 把一段 prim 文本整体缩进一层 */
+const indentBlock = (text: string) => text.split('\n').map((line) => (line.length ? '\t' + line : line)).join('\n');
+
 /**
  * 在根 prim 外面套一层带动画的 Xform。纯文本操作，方便测试。
  */
@@ -360,16 +488,25 @@ export function wrapWithMotion(
   let wrapper = 'Motion';
   for (let n = 1; findTopPrim(usda, wrapper); n++) wrapper = `Motion_${n}`;
 
-  const own = stripOwnAnimation(usda.slice(prim.start, prim.end));
+  // 是我们自己套过的：动画层和起始姿态层一起清掉；别人的根节点只去它自己那层的动画
+  const primText = usda.slice(prim.start, prim.end);
+  const ours = neutralizeOwnWrapper(primText);
+  const own = ours !== null ? { text: ours, stripped: true } : stripOwnAnimation(primText);
   const nestedAnimation = (own.text.match(/\.timeSamples\s*=/g) ?? []).length;
 
-  // 绝对路径跟着搬家：</Root/...> → </Motion/Root/...>
+  // 绝对路径跟着搬家：</Root/...> → </Motion/Root/...>（有起始姿态层就是 </Motion/Start/Root/...>）
   const esc = prim.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const inner = own.text
-    .replace(new RegExp(`</${esc}(?=[/>.])`, 'g'), `</${wrapper}/${prim.name}`)
-    .split('\n')
-    .map((line) => (line.length ? '\t' + line : line))
-    .join('\n');
+  const start = opts.start ? startName(prim.name) : null;
+  const prefix = start ? `${wrapper}/${start}` : wrapper;
+  let inner = indentBlock(own.text.replace(new RegExp(`</${esc}(?=[/>.])`, 'g'), `</${prefix}/${prim.name}`));
+  if (start && opts.start) {
+    inner = indentBlock(`def Xform "${start}"
+{
+${startOps(opts.start, '\t')}
+
+${inner}
+}`);
+  }
 
   const frames = opts.translate.length - 1;
   const wrapped = `def Xform "${wrapper}"
@@ -438,6 +575,19 @@ export function readBinaryRoot(data: Uint8Array): BinaryRootInfo {
 
 export function binaryRootLayer(info: BinaryRootInfo, usdcPath: string, opts: WrapOptions): string {
   const frames = opts.translate.length - 1;
+  let inner = `def "${info.defaultPrim}" (
+\tprepend references = @./${usdcPath}@</${info.defaultPrim}>
+)
+{
+}`;
+  if (opts.start) {
+    inner = `def Xform "${startName(info.defaultPrim)}"
+{
+${startOps(opts.start, '\t')}
+
+${indentBlock(inner)}
+}`;
+  }
   return `#usda 1.0
 (
 	defaultPrim = "Motion"
@@ -453,11 +603,7 @@ def Xform "Motion"
 {
 ${motionOps(opts, '\t')}
 
-	def "${info.defaultPrim}" (
-		prepend references = @./${usdcPath}@</${info.defaultPrim}>
-	)
-	{
-	}
+${indentBlock(inner)}
 }
 ${opts.bounds ? `\n${boundsPrim(opts.bounds)}\n` : ''}`;
 }
@@ -494,17 +640,15 @@ export function addMotionToUsdz(
   const radius = Math.max(1e-4, size.length() / 2);
 
   const poses = bakeMotion(params, radius, seconds, fps);
-  const translate: number[][] = [];
-  const orient: number[][] = [];
-  const scale: number[][] = [];
   const mats: THREE.Matrix4[] = [];
+  const fileMats: THREE.Matrix4[] = [];
   for (const pose of poses) {
     const f = poseToFile(pose, center, G, Ginv);
-    translate.push(f.translate);
-    orient.push(f.orient);
-    scale.push(f.scale);
     mats.push(f.matrix);
+    fileMats.push(f.fileMatrix);
   }
+  // 第 0 帧写成静态的起始姿态层，动画层只写相对变化（放映开播前 Keynote 不看动画层）
+  const { start, translate, orient, scale } = rebaseFrames(fileMats);
   const scaled = poses.some((p) => p.scale !== 1);
   // 每个 mesh 的 extent 只按漂浮扫过的距离往外扩 —— 入场那一下（浮起、长出）扫得很远，
   // 按它扩会把每个 mesh 的框都撑大一圈，视角就变小了。入场的范围交给占位盒
@@ -514,7 +658,7 @@ export function addMotionToUsdz(
   );
   const margin = sweptMargin(floatOnly, space.min, space.max) / unit;
   const bounds = sweptBox(mats, space.min, space.max, Ginv);
-  const opts: WrapOptions = { translate, orient: alignQuaternions(orient), scale: scaled ? scale : undefined, fps, bounds };
+  const opts: WrapOptions = { translate, orient: alignQuaternions(orient), scale: scaled ? scale : undefined, start, fps, bounds };
 
   const dec = new TextDecoder();
   const enc = new TextEncoder();
