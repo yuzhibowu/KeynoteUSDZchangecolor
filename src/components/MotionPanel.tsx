@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Slider } from './Slider';
-import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, SPIN_AXES, effectiveLap, effectiveSpinLap, randomPhase, type MotionParams } from '../lib/motion';
+import { ENTRANCES, FLOAT_LEVELS, LOOP_SECONDS, PATHS, SPIN_AXES, effectiveLap, effectiveSpinLap, randomPhase, snapLap, type MotionParams } from '../lib/motion';
 import { VIDEO_FPS, VIDEO_SIZES, type VideoFormat, type VideoSizeId } from '../lib/videoExport';
 
 export type MotionSidebar = {
@@ -143,15 +143,15 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             <>
               <Slider
                 label="一圈用时"
-                value={motion.spinLap}
+                value={effectiveSpinLap(motion)}
                 min={2}
-                max={60}
-                step={0.5}
+                max={motion.seconds}
+                step={0.1}
                 digits={1}
                 suffix=" 秒"
-                note={`实际 ${effectiveSpinLap(motion).toFixed(1)} 秒`}
-                reset={12}
-                onChange={(v) => patch({ spinLap: v })}
+                note={`循环 ${motion.seconds} 秒里转 ${Math.round(motion.seconds / effectiveSpinLap(motion))} 圈`}
+                reset={snapLap(12, motion.seconds)}
+                onChange={(v) => patch({ spinLap: snapLap(v, motion.seconds) })}
               />
               <div className="opts">
                 <button type="button" className="opt" aria-pressed={motion.spinClockwise} onClick={() => patch({ spinClockwise: true })}>
@@ -162,8 +162,8 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
                 </button>
               </div>
               <p className="hint">
-                Y 轴是竖着的，像转台；X 轴前后翻，Z 轴在屏幕里打转。一圈用时会吸附到能整除循环长度的值，
-                一个循环转整数圈，接缝才闭合。
+                Y 轴是竖着的，像转台；X 轴前后翻，Z 轴在屏幕里打转。一个循环里必须转整数圈，接缝才闭合，
+                所以一圈用时只能是循环长度除以整数 —— 想要更细的档位，把下面的循环长度拉到 60 秒。
               </p>
             </>
           )}
@@ -227,15 +227,15 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
               )}
               <Slider
                 label="一圈用时"
-                value={motion.pathLap}
-                min={3}
-                max={20}
-                step={0.5}
+                value={effectiveLap(motion)}
+                min={2}
+                max={motion.seconds}
+                step={0.1}
                 digits={1}
                 suffix=" 秒"
-                note={`实际 ${effectiveLap(motion).toFixed(1)} 秒`}
-                reset={8}
-                onChange={(v) => patch({ pathLap: v })}
+                note={`循环 ${motion.seconds} 秒里跑 ${Math.round(motion.seconds / effectiveLap(motion))} 圈`}
+                reset={snapLap(8, motion.seconds)}
+                onChange={(v) => patch({ pathLap: snapLap(v, motion.seconds) })}
               />
               <div className="opts">
                 <button
@@ -260,7 +260,8 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
                 <span>沿路径倾斜</span>
               </label>
               <p className="hint">
-                在屏幕平面里跑，和漂浮叠加。一圈用时会吸附到能整除循环长度的值，接缝才闭合。
+                在屏幕平面里跑，和漂浮叠加。一个循环里必须跑整数圈，接缝才闭合，
+                所以一圈用时只能是循环长度除以整数；想要更细的档位，把循环长度拉到 60 秒。
               </p>
             </>
           )}
