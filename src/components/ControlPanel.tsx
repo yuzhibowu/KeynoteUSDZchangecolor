@@ -512,7 +512,7 @@ export function ControlPanel({
               <span className="slider-head">
                 <span>分辨率（长边）</span>
               </span>
-              {/* 默认项 1080P 排在第一位 */}
+              {/* 按分辨率从小到大排列，默认值由 DEFAULT_PARAMS 设为 1080P */}
               <div className="opts four">
                 {RESOLUTIONS.map((r) => (
                   <button

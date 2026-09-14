@@ -66,9 +66,9 @@ export type Resolution = 1280 | 1920 | 2560 | 3840;
 
 /** 分辨率按视频档位给，比 512/1024/2048 好懂 */
 export const RESOLUTIONS: { value: Resolution; label: string }[] = [
-  { value: 2560, label: '2K' },
   { value: 1280, label: '720P' },
   { value: 1920, label: '1080P' },
+  { value: 2560, label: '2K' },
   { value: 3840, label: '4K' },
 ];
 
@@ -245,7 +245,7 @@ export const DEFAULT_PARAMS: Params = {
   capColorRight: '#d9d9de',
   capColorLeft: '#d9d9de',
   separateCaps: false,
-  resolution: 2560,
+  resolution: 1920,
   bgColor: '#ffffff',
   bgTransparent: false,
   emissiveExport: false, // 内置校准档是在灯光开着的状态下测的，默认保持一致
