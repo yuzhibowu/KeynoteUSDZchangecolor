@@ -197,8 +197,19 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
           >
             随机错开一个
           </button>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={motion.floatRoll}
+              disabled={motion.floatAmount === 0}
+              onChange={(e) => patch({ floatRoll: e.target.checked })}
+            />
+            <span>微倾带侧倾</span>
+          </label>
           <p className="hint">
-            上下起伏加两个方向的微倾，三个节奏互不重合，看不出在循环。幅度管动多远，节奏管动多快。
+            上下起伏加两个方向的微倾（点头 + 摇头），三个节奏互不重合，看不出在循环。幅度管动多远，节奏管动多快。
+            「带侧倾」把摇头换成绕屏幕平面的侧倾：Keynote 画 3D 对象不抗锯齿，侧倾会让竖直的边缘出现
+            一级级滑动的台阶，默认不开。
             「起步错开」是从动作的第几秒起步：同一页放几个模型时各自错开，就不会像一队人齐步走。
             一次拖进多个时每块自动错开，左边预览里就是各自的样子。
           </p>
