@@ -73,10 +73,10 @@ export function poseToFile(pose: Pose, center: THREE.Vector3, G: THREE.Matrix4, 
   const rot = new THREE.Quaternion();
   const scl = new THREE.Vector3();
   F.decompose(pos, rot, scl);
-  // 旋转能不分解就不分解：three 的 ZYX 分解把 Y 角限制在 ±90°，旋入转过 90° 时
-  // 会把多出来的塞到 X、Z 上各加 180°，每圈两次一帧的抖动。G 没有旋转（Y-up 文件，
-  // 绝大多数）时文件坐标和预览坐标只差一个均匀缩放，角度原样照抄就是对的。
-  // Z-up 文件才真要换轴，那时自转落在 Z 角上，分解没有这个限制。
+  // 文件里写的是四元数（见 motionOps），欧拉角只是留给测试和排查看的。
+  // 能不分解就不分解：three 的 ZYX 分解把 Y 角限制在 ±90°，旋入转过 90° 时
+  // 会把多出来的塞到 X、Z 上各加 180°。G 没有旋转（Y-up 文件，绝大多数）时
+  // 角度原样照抄；Z-up 文件才真要换轴，那时自转落在 Z 角上，分解没有这个限制。
   const rotate = hasRotation(G)
     ? (() => {
         const e = new THREE.Euler().setFromQuaternion(rot, 'ZYX');
@@ -86,6 +86,8 @@ export function poseToFile(pose: Pose, center: THREE.Vector3, G: THREE.Matrix4, 
   return {
     translate: [pos.x, pos.y, pos.z],
     rotate,
+    // USD 文本里四元数是 (w, x, y, z)，实部在前
+    orient: [rot.w, rot.x, rot.y, rot.z],
     scale: [scl.x, scl.y, scl.z],
     matrix: M,
   };
@@ -151,6 +153,21 @@ export function unwrapDegrees(rows: number[][]): number[][] {
       while (v - prev < -180) v += 360;
       out[i][a] = v;
     }
+  }
+  return out;
+}
+
+/**
+ * q 和 −q 是同一个旋转，但插值走的路不一样：相邻两帧异号，渲染器会绕远路转 358°。
+ * 逐帧把符号翻到和上一帧同一侧。
+ */
+export function alignQuaternions(rows: number[][]): number[][] {
+  const out = rows.map((r) => [...r]);
+  for (let i = 1; i < out.length; i++) {
+    const a = out[i - 1];
+    const b = out[i];
+    const dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+    if (dot < 0) out[i] = b.map((v) => (v === 0 ? 0 : -v));
   }
   return out;
 }
@@ -259,7 +276,8 @@ export function expandExtents(usda: string, margin: number): { text: string; cou
 
 export type WrapOptions = {
   translate: number[][];
-  rotate: number[][];
+  /** 四元数 (w, x, y, z)，逐帧 */
+  orient: number[][];
   /** 只有入场用到缩放时才给；不给就不写 scale op，少一个 op 少一分风险 */
   scale?: number[][];
   fps: number;
@@ -295,15 +313,26 @@ export function boundsPrim(bounds: { min: number[]; max: number[] }, name = 'Mot
 }`;
 }
 
-/** 三个 op 的声明和顺序。缩放不带后缀 —— 带后缀的 scale 是实测会让苹果放弃的那种 */
+/**
+ * 三个 op 的声明和顺序。名字都不带后缀 —— 带后缀的 scale 是实测会让苹果放弃的那种。
+ *
+ * 旋转写四元数 `orient` 而不是 `rotateXYZ`：旋入那一整圈用欧拉角写到 360°，
+ * Keynote 就不播了（2026-09-14 高达实测）；苹果自家工具导出的旋转动画用的都是 orient。
+ *
+ * 每个 op 除了 timeSamples 还写一个等于第 0 帧的默认值：Keynote 开始播放之前显示的是
+ * 默认值，不写就是原大原位，一开播跳到第 0 帧 —— 「长出」会先看到模型缩没再长出来。
+ */
 function motionOps(opts: WrapOptions, indent: string): string {
   const ts = (rows: number[][]) => `{${rows.map((v, i) => `${i}: ${vec(v)}`).join(', ')}}`;
-  const order = ['xformOp:translate', 'xformOp:rotateXYZ'];
+  const order = ['xformOp:translate', 'xformOp:orient'];
   const lines = [
+    `${indent}double3 xformOp:translate = ${vec(opts.translate[0])}`,
     `${indent}double3 xformOp:translate.timeSamples = ${ts(opts.translate)}`,
-    `${indent}float3 xformOp:rotateXYZ.timeSamples = ${ts(opts.rotate)}`,
+    `${indent}quatf xformOp:orient = ${vec(opts.orient[0])}`,
+    `${indent}quatf xformOp:orient.timeSamples = ${ts(opts.orient)}`,
   ];
   if (opts.scale) {
+    lines.push(`${indent}float3 xformOp:scale = ${vec(opts.scale[0])}`);
     lines.push(`${indent}float3 xformOp:scale.timeSamples = ${ts(opts.scale)}`);
     order.push('xformOp:scale');
   }
@@ -318,6 +347,10 @@ export function wrapWithMotion(
   usda: string,
   opts: WrapOptions,
 ): { text: string; wrapper: string; root: string; replacedAnimation: boolean; nestedAnimation: number } {
+  // 给加过动效的文件再加一次：上次放的占位盒要先拿掉，不然会有两个同名 prim
+  const oldBounds = findTopPrim(usda, 'MotionBounds');
+  if (oldBounds) usda = usda.slice(0, oldBounds.start) + usda.slice(oldBounds.end).replace(/^\n+/, '');
+
   const header = findHeader(usda);
   let headerText = header ? usda.slice(header.start, header.end) : '(\n)';
   const dp = /defaultPrim\s*=\s*"([^"]+)"/.exec(headerText);
@@ -462,13 +495,13 @@ export function addMotionToUsdz(
 
   const poses = bakeMotion(params, radius, seconds, fps);
   const translate: number[][] = [];
-  const rotate: number[][] = [];
+  const orient: number[][] = [];
   const scale: number[][] = [];
   const mats: THREE.Matrix4[] = [];
   for (const pose of poses) {
     const f = poseToFile(pose, center, G, Ginv);
     translate.push(f.translate);
-    rotate.push(f.rotate);
+    orient.push(f.orient);
     scale.push(f.scale);
     mats.push(f.matrix);
   }
@@ -481,7 +514,7 @@ export function addMotionToUsdz(
   );
   const margin = sweptMargin(floatOnly, space.min, space.max) / unit;
   const bounds = sweptBox(mats, space.min, space.max, Ginv);
-  const opts: WrapOptions = { translate, rotate: unwrapDegrees(rotate), scale: scaled ? scale : undefined, fps, bounds };
+  const opts: WrapOptions = { translate, orient: alignQuaternions(orient), scale: scaled ? scale : undefined, fps, bounds };
 
   const dec = new TextDecoder();
   const enc = new TextEncoder();

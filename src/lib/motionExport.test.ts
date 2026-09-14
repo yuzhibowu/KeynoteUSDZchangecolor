@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { binaryRootLayer, expandExtents, poseToFile, stripOwnAnimation, unwrapDegrees, wrapWithMotion } from './motionExport';
+import { alignQuaternions, binaryRootLayer, expandExtents, poseToFile, stripOwnAnimation, unwrapDegrees, wrapWithMotion } from './motionExport';
 
 const SAMPLE = `#usda 1.0
 (
@@ -36,7 +36,7 @@ def DistantLight "Sun"
 
 const OPTS = {
   translate: [[0, 0, 0], [0, 0.1, 0], [0, 0, 0]],
-  rotate: [[0, 0, 0], [1, 0, 0.5], [0, 0, 0]],
+  orient: [[1, 0, 0, 0], [0.99, 0.01, 0, 0.005], [1, 0, 0, 0]],
   fps: 60,
 };
 
@@ -55,10 +55,13 @@ describe('wrapWithMotion', () => {
     expect(r.text).toMatch(/framesPerSecond = 60/);
     expect(r.text).toMatch(/timeCodesPerSecond = 60/);
   });
-  it('动画写成一行的 timeSamples，op 名不带后缀', () => {
+  it('动画写成一行的 timeSamples，op 名不带后缀，默认值等于第 0 帧', () => {
+    expect(r.text).toMatch(/double3 xformOp:translate = \(0, 0, 0\)\n/);
     expect(r.text).toMatch(/double3 xformOp:translate\.timeSamples = \{0: \(0, 0, 0\), 1: \(0, 0\.1, 0\), 2: \(0, 0, 0\)\}/);
-    expect(r.text).toMatch(/float3 xformOp:rotateXYZ\.timeSamples = \{0: \(0, 0, 0\), 1: \(1, 0, 0\.5\), 2: \(0, 0, 0\)\}/);
-    expect(r.text).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ"\]/);
+    expect(r.text).toMatch(/quatf xformOp:orient = \(1, 0, 0, 0\)\n/);
+    expect(r.text).toMatch(/quatf xformOp:orient\.timeSamples = \{0: \(1, 0, 0, 0\), 1: \(0\.99, 0\.01, 0, 0\.005\), 2: \(1, 0, 0, 0\)\}/);
+    expect(r.text).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:orient"\]/);
+    expect(r.text).not.toMatch(/rotateXYZ/);
     expect(r.text).not.toMatch(/xformOp:\w+:\w+/);
   });
   it('绝对路径跟着搬家', () => {
@@ -141,8 +144,9 @@ describe('poseToFile', () => {
 describe('缩放 op', () => {
   it('给了 scale 才写，写在 order 最后', () => {
     const r = wrapWithMotion(SAMPLE, { ...OPTS, scale: [[0.001, 0.001, 0.001], [0.5, 0.5, 0.5], [1, 1, 1]] });
+    expect(r.text).toMatch(/float3 xformOp:scale = \(0\.001, 0\.001, 0\.001\)\n/);
     expect(r.text).toMatch(/float3 xformOp:scale\.timeSamples = \{0: \(0\.001, 0\.001, 0\.001\), 1: \(0\.5, 0\.5, 0\.5\), 2: \(1, 1, 1\)\}/);
-    expect(r.text).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"\]/);
+    expect(r.text).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:orient", "xformOp:scale"\]/);
     expect(wrapWithMotion(SAMPLE, OPTS).text).not.toMatch(/xformOp:scale/);
   });
   it('绕中心缩放：中心点不动，缩放从矩阵里分解出来', () => {
@@ -187,7 +191,7 @@ describe('binaryRootLayer', () => {
     expect(t).toMatch(/endTimeCode = 2/);
     expect(t).toMatch(/def Xform "Motion"/);
     expect(t).toMatch(/def "scene" \(\n\t\tprepend references = @\.\/scene\.usdc@<\/scene>\n\t\)/);
-    expect(t).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ"\]/);
+    expect(t).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:orient"\]/);
   });
 });
 
@@ -213,6 +217,14 @@ describe('占位盒', () => {
     expect(r.text).toMatch(/int\[\] faceVertexIndices = \[0, 0, 0\]/);
     expect(wrapWithMotion(SAMPLE, OPTS).text).not.toMatch(/MotionBounds/);
   });
+  it('再加一次动效：旧占位盒被拿掉，只剩一个', () => {
+    const once = wrapWithMotion(SAMPLE, { ...OPTS, bounds: { min: [-1, -1, -1], max: [1, 1, 1] } }).text;
+    const twice = wrapWithMotion(once, { ...OPTS, bounds: { min: [-2, -2, -2], max: [2, 2, 2] } });
+    expect(twice.wrapper).toBe('Motion_1');
+    expect(twice.text.match(/def Xform "MotionBounds"/g)).toHaveLength(1);
+    expect(twice.text).toMatch(/extent = \[\(-2, -2, -2\), \(2, 2, 2\)\]/);
+    expect(twice.replacedAnimation).toBe(true);
+  });
   it('二进制根图层也放', () => {
     const t = binaryRootLayer(
       { defaultPrim: 'scene', upAxis: 'Y', metersPerUnit: 0.01, animatedOps: 0 },
@@ -221,5 +233,27 @@ describe('占位盒', () => {
     );
     expect(t).toMatch(/def Xform "MotionBounds"/);
     expect(t.indexOf('MotionBounds')).toBeGreaterThan(t.indexOf('scene.usdc'));
+  });
+});
+
+describe('四元数', () => {
+  it('poseToFile 给的是 (w, x, y, z)，Y 转 180° 是 (0, 0, 1, 0)', () => {
+    const I = new THREE.Matrix4();
+    const f = poseToFile({ position: [0, 0, 0], rotation: [0, 180, 0], scale: 1 }, new THREE.Vector3(), I, I);
+    expect(f.orient.map((v) => +v.toFixed(6))).toEqual([0, 0, 1, 0]);
+    const g = poseToFile({ position: [0, 0, 0], rotation: [0, 0, 0], scale: 1 }, new THREE.Vector3(), I, I);
+    expect(g.orient).toEqual([1, 0, 0, 0]);
+  });
+  it('旋入一整圈：相邻帧同号，没有一帧翻到另一侧', () => {
+    const I = new THREE.Matrix4();
+    const rows = [];
+    for (let y = 360; y >= 0; y -= 12) {
+      rows.push(poseToFile({ position: [0, 0, 0], rotation: [0.7, y, 0.5], scale: 1 }, new THREE.Vector3(), I, I).orient);
+    }
+    const q = alignQuaternions(rows);
+    for (let i = 1; i < q.length; i++) {
+      const dot = q[i].reduce((acc, v, k) => acc + v * q[i - 1][k], 0);
+      expect(dot).toBeGreaterThan(0.9);
+    }
   });
 });
