@@ -67,7 +67,7 @@ export type Pose = {
 };
 
 /** 浮起时从多深的地方升上来（包围球半径的倍数） */
-const RISE_DEPTH = 1.6;
+const RISE_DEPTH = 1.2;
 /** 长出时的起始缩放。不能是 0：零矩阵分解不出旋转，导出会算出 NaN */
 const GROW_FROM = 0.001;
 /** 缓出：开头快、落定慢 */

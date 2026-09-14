@@ -98,6 +98,28 @@ function hasRotation(G: THREE.Matrix4): boolean {
   return Math.abs(q.w) < 1 - 1e-9;
 }
 
+/** 运动扫过的范围：包围盒八个角在所有帧里到过的地方，换算到文件坐标后取轴对齐的框 */
+function sweptBox(frames: THREE.Matrix4[], min: number[], max: number[], Ginv: THREE.Matrix4) {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  const p = new THREE.Vector3();
+  const q = new THREE.Vector3();
+  for (const x of [min[0], max[0]])
+    for (const y of [min[1], max[1]])
+      for (const z of [min[2], max[2]]) {
+        p.set(x, y, z);
+        for (const M of frames) {
+          q.copy(p).applyMatrix4(M).applyMatrix4(Ginv);
+          for (let a = 0; a < 3; a++) {
+            const v = q.getComponent(a);
+            if (v < lo[a]) lo[a] = v;
+            if (v > hi[a]) hi[a] = v;
+          }
+        }
+      }
+  return { min: lo, max: hi };
+}
+
 /** 运动扫过的范围：包围盒八个角在所有帧里离开原位最远的距离（three 世界单位） */
 function sweptMargin(frames: THREE.Matrix4[], min: number[], max: number[]): number {
   let worst = 0;
@@ -241,7 +263,37 @@ export type WrapOptions = {
   /** 只有入场用到缩放时才给；不给就不写 scale op，少一个 op 少一分风险 */
   scale?: number[][];
   fps: number;
+  /** 整段运动扫过的范围（文件坐标）。给了就放一个看不见的占位盒，让 Keynote 按它定视角 */
+  bounds?: { min: number[]; max: number[] };
 };
+
+/**
+ * 看不见的占位盒。
+ *
+ * Keynote 按**第 0 帧**的包围盒定视角：「长出」第 0 帧缩放是 0.001，模型几乎是个点，
+ * 镜头就怼到那个点上，等模型长到原大镜头已经在它肚子里了（2026-09-14 高达实测）。
+ * 放一个不动的 Mesh 在 Motion 外面，extent 是整段运动扫过的范围，只有 8 个顶点和
+ * 一个零面积的面 —— 什么都画不出来，但包围盒在。
+ */
+export function boundsPrim(bounds: { min: number[]; max: number[] }, name = 'MotionBounds'): string {
+  const [x0, y0, z0] = bounds.min;
+  const [x1, y1, z1] = bounds.max;
+  const corners = [
+    [x0, y0, z0], [x1, y0, z0], [x0, y1, z0], [x1, y1, z0],
+    [x0, y0, z1], [x1, y0, z1], [x0, y1, z1], [x1, y1, z1],
+  ];
+  return `def Xform "${name}"
+{
+	def Mesh "Box"
+	{
+		float3[] extent = [${vec(bounds.min)}, ${vec(bounds.max)}]
+		point3f[] points = [${corners.map(vec).join(', ')}]
+		int[] faceVertexCounts = [3]
+		int[] faceVertexIndices = [0, 0, 0]
+		uniform token subdivisionScheme = "none"
+	}
+}`;
+}
 
 /** 三个 op 的声明和顺序。缩放不带后缀 —— 带后缀的 scale 是实测会让苹果放弃的那种 */
 function motionOps(opts: WrapOptions, indent: string): string {
@@ -292,7 +344,7 @@ export function wrapWithMotion(
 ${motionOps(opts, '\t')}
 
 ${inner}
-}`;
+}` + (opts.bounds ? `\n\n${boundsPrim(opts.bounds)}` : '');
 
   headerText = setHeaderField(headerText, 'timeCodesPerSecond', String(opts.fps));
   headerText = setHeaderField(headerText, 'framesPerSecond', String(opts.fps));
@@ -374,7 +426,7 @@ ${motionOps(opts, '\t')}
 	{
 	}
 }
-`;
+${opts.bounds ? `\n${boundsPrim(opts.bounds)}\n` : ''}`;
 }
 
 const CRATE_MAGIC = 'PXR-USDC';
@@ -421,10 +473,15 @@ export function addMotionToUsdz(
     mats.push(f.matrix);
   }
   const scaled = poses.some((p) => p.scale !== 1);
-  // 扫过的范围在 three 世界里量，除掉加载器的缩放才是文件单位
+  // 每个 mesh 的 extent 只按漂浮扫过的距离往外扩 —— 入场那一下（浮起、长出）扫得很远，
+  // 按它扩会把每个 mesh 的框都撑大一圈，视角就变小了。入场的范围交给占位盒
   const unit = new THREE.Vector3().setFromMatrixColumn(G, 0).length() || 1;
-  const margin = sweptMargin(mats, space.min, space.max) / unit;
-  const opts: WrapOptions = { translate, rotate: unwrapDegrees(rotate), scale: scaled ? scale : undefined, fps };
+  const floatOnly = bakeMotion({ ...params, entrance: 'none' }, radius, seconds, fps).map(
+    (pose) => poseToFile(pose, center, G, Ginv).matrix,
+  );
+  const margin = sweptMargin(floatOnly, space.min, space.max) / unit;
+  const bounds = sweptBox(mats, space.min, space.max, Ginv);
+  const opts: WrapOptions = { translate, rotate: unwrapDegrees(rotate), scale: scaled ? scale : undefined, fps, bounds };
 
   const dec = new TextDecoder();
   const enc = new TextEncoder();

@@ -201,3 +201,25 @@ describe('unwrapDegrees', () => {
     expect(r).toEqual([[1, 0, 0.5], [0.9, 0, 0.6], [0.8, 0, 0.7]]);
   });
 });
+
+describe('占位盒', () => {
+  it('给了 bounds 就在 Motion 外面放一个不动的 Mesh，extent 是扫过的范围', () => {
+    const r = wrapWithMotion(SAMPLE, { ...OPTS, bounds: { min: [-1, -2, -3], max: [1, 2, 3] } });
+    const i = r.text.indexOf('def Xform "MotionBounds"');
+    expect(i).toBeGreaterThan(r.text.indexOf('def Xform "Motion"'));
+    // 在 Motion 的大括号之外（Motion 结束的 } 在它前面）
+    expect(r.text.slice(0, i)).toMatch(/\n\}\n\n$/);
+    expect(r.text).toMatch(/float3\[\] extent = \[\(-1, -2, -3\), \(1, 2, 3\)\]/);
+    expect(r.text).toMatch(/int\[\] faceVertexIndices = \[0, 0, 0\]/);
+    expect(wrapWithMotion(SAMPLE, OPTS).text).not.toMatch(/MotionBounds/);
+  });
+  it('二进制根图层也放', () => {
+    const t = binaryRootLayer(
+      { defaultPrim: 'scene', upAxis: 'Y', metersPerUnit: 0.01, animatedOps: 0 },
+      'scene.usdc',
+      { ...OPTS, bounds: { min: [0, 0, 0], max: [1, 1, 1] } },
+    );
+    expect(t).toMatch(/def Xform "MotionBounds"/);
+    expect(t.indexOf('MotionBounds')).toBeGreaterThan(t.indexOf('scene.usdc'));
+  });
+});
