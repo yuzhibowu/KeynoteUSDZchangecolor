@@ -1,5 +1,5 @@
 import type { CheckReport, Severity } from '../lib/check';
-import type { SlimReport } from '../lib/slim';
+import { estimateSlim, type SlimOptions, type SlimReport } from '../lib/slim';
 import { formatBytes } from '../lib/exportUsdz';
 
 /**
@@ -19,6 +19,7 @@ export function CheckPane({
   busy,
   error,
   report,
+  slim,
   slimmed,
   onFile,
 }: {
@@ -26,6 +27,7 @@ export function CheckPane({
   busy: string | null;
   error: string | null;
   report: CheckReport | null;
+  slim: SlimOptions;
   slimmed: SlimReport | null;
   onFile: (f: File) => void;
 }) {
@@ -66,16 +68,16 @@ export function CheckPane({
               <>
                 <div className={`verdict ${bad.length ? 'bad' : warn.length ? 'warn' : 'ok'}`}>
                   <h2>
-                    {bad.length
-                      ? `${bad.length} 处会让 Keynote 显示出错`
-                      : warn.length
-                        ? `${warn.length} 处有问题`
-                        : 'Keynote 能直接用'}
+                    {issues.length === 0
+                      ? '没毛病，Keynote 能直接用'
+                      : `${issues.length} 个毛病${issues.some((f) => f.fixable) ? `，导出时能自动修 ${issues.filter((f) => f.fixable).length} 个` : '，都修不了'}`}
                   </h2>
                   <p className="hint">
-                    {formatBytes(report.totalBytes)}，贴图占 {formatBytes(report.textureBytes)}。
-                    {issues.some((f) => f.fixable) ? '标了「导出时修」的点右边导出就顺手修掉；' : ''}
-                    {report.textureBytes > 1024 * 1024 ? '想变小就点右边导出，贴图会瘦身。' : ''}
+                    {(() => {
+                      const est = estimateSlim(report, slim);
+                      if (est < report.totalBytes * 0.95) return `${formatBytes(report.totalBytes)}，导出能压到大约 ${formatBytes(est)}。`;
+                      return `${formatBytes(report.totalBytes)}，没什么可压的。`;
+                    })()}
                   </p>
                 </div>
 
@@ -86,9 +88,12 @@ export function CheckPane({
                         <div className="finding-head">
                           <span className="finding-tag">{SEVERITY[f.severity].label}</span>
                           <span className="finding-title">{f.title}</span>
-                          {f.fixable && <span className="finding-fix">导出时修</span>}
+                          <span className={`finding-fix${f.fixable ? '' : ' no'}`}>{f.fixable ? '导出时自动修' : '修不了，得回建模软件'}</span>
                         </div>
-                        <p className="hint">{f.detail}</p>
+                        <details className="why">
+                          <summary>为什么</summary>
+                          <p className="hint">{f.detail}</p>
+                        </details>
                       </li>
                     ))}
                   </ul>

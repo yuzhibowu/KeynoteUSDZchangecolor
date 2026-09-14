@@ -954,6 +954,7 @@ export default function App() {
             busy={checkBusy}
             error={checkError}
             report={checkReport}
+            slim={slimOpts}
             slimmed={slimOut}
             onFile={pickCheckFile}
           />

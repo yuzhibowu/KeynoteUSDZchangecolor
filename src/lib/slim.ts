@@ -46,6 +46,24 @@ export type SlimReport = {
 const IMAGE = /\.(png|jpe?g)$/i;
 const USD_TEXT = /\.usda$/i;
 
+/**
+ * 粗估导出后多大，给报告开头那句「能压到大约多少」用。
+ * 缩小按面积比；转 JPEG 按每像素 0.4 字节（质量 0.9 上下的经验值）。声明了 alpha 的 PNG
+ * 不知道是不是真透明，按不转算 —— 宁可估大。
+ */
+export function estimateSlim(check: CheckReport, opts: SlimOptions): number {
+  let textures = 0;
+  for (const t of check.textures) {
+    const w = t.width ?? 0;
+    const h = t.height ?? 0;
+    const k = opts.maxSize > 0 && Math.max(w, h) > opts.maxSize ? opts.maxSize / Math.max(w, h) : 1;
+    const toJpeg = opts.jpegOpaque && t.format === 'png' && !t.alphaChannel && !t.roles.includes('normal') && !t.roles.includes('opacity') && !t.binaryRef;
+    const est = toJpeg ? w * h * k * k * 0.4 : t.bytes * k * k;
+    textures += Math.min(t.bytes, est);
+  }
+  return check.totalBytes - check.textureBytes + textures;
+}
+
 async function decode(bytes: Uint8Array, format: string): Promise<ImageBitmap | null> {
   try {
     const blob = new Blob([bytes as unknown as BlobPart], { type: format === 'png' ? 'image/png' : 'image/jpeg' });
