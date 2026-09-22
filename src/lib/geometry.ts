@@ -172,10 +172,21 @@ export function capGeometry(
   // 横轴要跟着从外面看这个端面时的「右手边」：从 +X 往里看，右手边是 -Z；
   // 从 -X 往里看，右手边是 +Z。搞反了图就是镜像的。
   const uSign = right ? -1 : 1;
+  // UV 按多边形的**包围盒**铺：最远的顶点正好落到贴图边上。
+  // 从前按外接圆铺（顶点落在贴图的内切圆上），四边形端面只能看到贴图中间 1/√2 那一块，
+  // 整张图像被放大了 1.4 倍，和侧栏取景框对不上（2026-09-22 悟大人的方块图）。
+  // 按包围盒铺，四边形正好整张图；六边形之类角上裁一点，中心不变，和取景框一致。
+  let ymax = 1e-9;
+  let zmax = 1e-9;
+  for (let i = 0; i < sides; i++) {
+    const [y, z] = sectionVertex(sec, i);
+    ymax = Math.max(ymax, Math.abs(y));
+    zmax = Math.max(zmax, Math.abs(z));
+  }
   for (let i = 0; i < sides; i++) {
     const [y, z] = sectionVertex(sec, i);
     positions.push(x, y, z);
-    uvs.push(0.5 + uSign * (z / sec.rz) * 0.5, 0.5 + (y / sec.ry) * 0.5);
+    uvs.push(0.5 + uSign * (z / zmax) * 0.5, 0.5 + (y / ymax) * 0.5);
   }
   const index: number[] = [];
   for (let i = 0; i < sides; i++) {

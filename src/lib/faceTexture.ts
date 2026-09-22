@@ -323,7 +323,7 @@ export class FaceTextureStore {
 
   /** 返回是否真的重烘焙过 */
   bake(index: number, face: FaceState, opts: BakeOptions, force = false): boolean {
-    // 端面是正多边形，UV 按内接圆铺开，画布必须是正方形；侧面才跟着面的宽高比走
+    // 端面是正多边形，UV 按包围盒铺开，画布用正方形；侧面才跟着面的宽高比走
     const { w, h } = canvasSizeFor(isCap(index) ? 1 : opts.aspect, opts.resolution);
     const useComp = opts.compensate && !isIdentity(opts.comp);
     const compSig = useComp ? compSignature(opts.comp) : 'off';
