@@ -352,7 +352,7 @@ export function ControlPanel({
               <span className="slider-head">
                 <span>画面比例</span>
               </span>
-              <div className="opts four">
+              <div className={isPrism ? 'opts five' : 'opts four'}>
                 {/* 卡片：「适应」= 比例和圆角都按正面那张 PNG 的不透明区域来，透明留白自动裁掉 */}
                 {!isPrism && (
                   <button
@@ -363,6 +363,22 @@ export function ControlPanel({
                     onClick={() => patchGeom({ fitFront: true, aspectW: undefined, aspectH: undefined })}
                   >
                     适应
+                  </button>
+                )}
+                {/* 棱柱：「按图」= 面的比例一次性设成当前选中那张图的比例，整张图就都在面上了 */}
+                {isPrism && (
+                  <button
+                    type="button"
+                    className="opt"
+                    disabled={!face?.source}
+                    aria-pressed={!!face?.source && !isCustomAspect && Math.abs(params.aspect - face.source.width / face.source.height) < 1e-4}
+                    title="面的比例按当前选中那张图来，图就不会被裁掉"
+                    onClick={() => {
+                      if (!face?.source) return;
+                      patchGeom({ fitFront: false, aspect: face.source.width / face.source.height, aspectW: undefined, aspectH: undefined });
+                    }}
+                  >
+                    按图
                   </button>
                 )}
                 {ASPECTS.map((a) => (

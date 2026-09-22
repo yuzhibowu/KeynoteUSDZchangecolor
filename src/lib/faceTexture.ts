@@ -270,6 +270,11 @@ export class FaceTextureStore {
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
+      // 画布尺寸变了，显存里那张纹理必须整个重新分配。three 对已经上传过的纹理
+      // 用 texSubImage 就地覆盖，尺寸对不上就报 GL_INVALID_VALUE，视口里还是旧图 ——
+      // 「换了画面比例之后要刷新网页才更新」就是这么来的。dispose 只丢显存那份，
+      // 纹理对象本身照用，下一帧会按新尺寸重传。
+      this.textures[index].dispose();
     }
     const ctx = canvas.getContext('2d')!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -398,6 +403,7 @@ export class FaceTextureStore {
       this.sigs[i] = '';
       this.corrected[i] = null;
       this.correctedKey[i] = '';
+      this.textures[i].dispose();
       this.textures[i].needsUpdate = true;
     }
   }
