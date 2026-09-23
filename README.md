@@ -17,6 +17,9 @@ npm run build
 - [HANDOFF.md](./HANDOFF.md) —— 交接文档：怎么跑、目录结构、设计约束、踩过的坑、当前状态
 - [KEYNOTE-COLOR.md](./KEYNOTE-COLOR.md) —— Keynote 对 USDZ 贴图做了什么、实测数据、
   走过的死路、最终的补偿方案
+- [QUICKSTART.md](./QUICKSTART.md) —— **在别的网站里调用这套颜色补偿**：拿走哪几个文件、
+  三种调用方式、导出条件必须和标定条件对齐的那张表、API 一览、踩过的坑。接入先看这个。
+
 - [PORTING.md](./PORTING.md) —— 把这套颜色方案移植到别的实现（别的语言）上的说明。
   开头一节解释了为什么这份校准数据跨机器有效、什么时候才真需要重标
 - [FOR-AI.md](./FOR-AI.md) —— 要把这套方案交给 AI 助手去重新实现时，先看这个：
