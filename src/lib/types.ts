@@ -225,7 +225,9 @@ export function defaultProfiles(): Record<ProfileKey, ColorComp> {
     keynote: DEFAULT_COMP,
     freeform: FREEFORM_COMP,
     'keynote:card': CARD_COMP,
-    // 无边记还没按卡片实测过，先用它的棱柱档顶着（无边记的环境反射本来就温和得多）
+    // 无边记还没按卡片实测过，先用它的棱柱档顶着（2026-09-23 的棱柱档：纸张、补光 0、残差 4.2 阶）。
+    // Keynote 那边实测下来两种形状的响应几乎一样，无边记的环境反射更温和，大概率也一样；
+    // 要确认就导一张卡片成品、截图，用「上传成品截图微调」对一下预测，差得大再单独标。
     'freeform:card': FREEFORM_COMP,
   };
 }

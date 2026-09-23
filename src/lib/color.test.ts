@@ -216,14 +216,25 @@ describe('整图补偿', () => {
 describe('无边记的内置档', () => {
   it('是真正实测的那一份，不再沿用 Keynote', () => {
     expect(FREEFORM_COMP.matrix).not.toEqual(DEFAULT_COMP.matrix);
-    expect(FREEFORM_COMP.samples?.length).toBe(117);
+    expect(FREEFORM_COMP.samples?.length).toBe(1130);
   });
 
-  it('两份档都自带各自的补光条件，切目标时必须跟着走', () => {
-    // 现在两边都是 50%，但这是各自实测出来的巧合，不是一回事 ——
-    // 断言的是「档带着自己的条件」，而不是「两边相等」
-    expect(FREEFORM_COMP.calibratedLift).toBe(0.5);
+  it('两份档各带各的补光条件，切目标时必须跟着走', () => {
+    // 2026-09-23 起两边不一样了：Keynote 的纯白顶死在 244，得靠自发光顶上去；
+    // 无边记纸张下漫反射就有 226，补光 0 反而最准，立体感也完整保留。
+    expect(FREEFORM_COMP.calibratedLift).toBe(0);
     expect(DEFAULT_COMP.calibratedLift).toBe(0.5);
+  });
+
+  it('两份档都记了自己是在哪种材质下标的 —— 补光越低材质越是决定性的', () => {
+    expect(FREEFORM_COMP.calibratedMaterial).toBe('paper');
+    expect(DEFAULT_COMP.calibratedMaterial).toBe('paper');
+  });
+
+  it('比 Keynote 准：无边记的档几乎是对角阵，没有通道之间的混合', () => {
+    const m = FREEFORM_COMP.matrix!;
+    for (const i of [1, 2, 3, 5, 6, 7]) expect(Math.abs(m[i])).toBeLessThan(0.06);
+    for (const i of [0, 4, 8]) expect(m[i]).toBeGreaterThan(0.7);
   });
 
   it('色域错配比 Keynote 温和：矩阵接近单位阵', () => {
