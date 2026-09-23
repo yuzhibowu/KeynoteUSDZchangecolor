@@ -9,6 +9,7 @@ import {
   makeFaceMaterial,
   isTuned,
   materialPreset,
+  TUNABLE_BY_MATERIAL,
 } from './material';
 import { CARD_BACK, CARD_FRONT, materialOf } from './types';
 
@@ -104,16 +105,32 @@ describe('材质微调：预设只是起点', () => {
 
   /** 金属在无边记里黑不隆冬的解法：金属度 1 = 漫反射归零、全靠反射环境，降下来颜色就回来 */
   it('调金属度只动金属度，其余跟着预设', () => {
-    const t = materialPreset('metal', { metalness: 0.8 });
-    expect(t.metalness).toBeCloseTo(0.8);
+    const t = materialPreset('metal', { metalness: 0.5 });
+    expect(t.metalness).toBeCloseTo(0.5);
     expect(t.roughness).toBe(materialPreset('metal').roughness);
-    expect(isTuned('metal', { metalness: 0.8 })).toBe(true);
+    expect(isTuned('metal', { metalness: 0.5 })).toBe(true);
   });
 
-  /** 玻璃掉色的解法：opacity 0.6 会把背后的白画布透上来 */
-  it('调不透明度能把玻璃从 0.6 拉回不透', () => {
-    expect(materialPreset('glass').opacity).toBe(0.6);
+  /**
+   * 玻璃掉色的解法：opacity 低了会把背后的白画布透上来。
+   * 预设已经从 0.6 提到 0.92（2026-09-23 实拍定的），滑杆还能再调。
+   */
+  it('玻璃默认就基本不透了，还能再调', () => {
+    expect(materialPreset('glass').opacity).toBeCloseTo(0.92);
     expect(materialPreset('glass', { opacity: 1 }).opacity).toBe(1);
+  });
+
+  it('滑杆按材质出：纸张一根都没有，金属不给清漆和不透明度', () => {
+    expect(TUNABLE_BY_MATERIAL.paper).toEqual([]);
+    expect(TUNABLE_BY_MATERIAL.metal).toEqual(['metalness', 'roughness']);
+    expect(TUNABLE_BY_MATERIAL.plastic).toEqual(['roughness', 'clearcoat']);
+    expect(TUNABLE_BY_MATERIAL.glass).toEqual(['roughness', 'clearcoat', 'opacity']);
+  });
+
+  it('默认值已按实拍调过：金属不再是纯金属，玻璃不再半透', () => {
+    // 金属度 1 = 漫反射归零，在 Keynote/无边记的暗环境里就是一张黑卡
+    expect(materialPreset('metal').metalness).toBeCloseTo(0.8);
+    expect(materialPreset('glass').opacity).toBeGreaterThan(0.9);
   });
 
   it('粗糙度一调，端面/窄边跟着一起调 —— 同一块材料不该正面磨砂侧边镜面', () => {

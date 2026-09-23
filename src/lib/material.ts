@@ -48,12 +48,34 @@ export type MaterialPreset = {
   ior: number;
 };
 
+/**
+ * 预设值按 2026-09-23 的实拍结果定的（在无边记里看）：
+ *  - 金属从 metalness 1 降到 **0.8**。1 的物理含义是漫反射归零、颜色全靠反射环境，
+ *    而那边环境很暗，贴图深的地方直接归黑（实拍就是一张黑卡）。0.8 留回一部分漫反射，
+ *    颜色回来了，金属光泽还在。粗糙度 0.3 → 0.35，纯镜面在暗环境里反而没东西可反。
+ *  - 玻璃从 opacity 0.6 提到 **0.92**。0.6 会把背后的白画布透上来把颜色冲淡
+ *    （实拍截图里卡片内部扫得到画布点阵）。玻璃感主要靠低粗糙度 + 清漆，不靠透明。
+ *  - 纸张、塑料实拍没问题，原样不动。
+ */
 export const MATERIALS: MaterialPreset[] = [
   { id: 'paper', label: '纸张', roughness: 0.9, capRoughness: 0.85, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, opacity: 1, ior: 1.5 },
   { id: 'plastic', label: '塑料', roughness: 0.4, capRoughness: 0.4, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.15, opacity: 1, ior: 1.5 },
-  { id: 'metal', label: '金属', roughness: 0.3, capRoughness: 0.3, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, opacity: 1, ior: 1.5 },
-  { id: 'glass', label: '玻璃', roughness: 0.05, capRoughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03, opacity: 0.6, ior: 1.5 },
+  { id: 'metal', label: '金属', roughness: 0.35, capRoughness: 0.35, metalness: 0.8, clearcoat: 0, clearcoatRoughness: 0, opacity: 1, ior: 1.5 },
+  { id: 'glass', label: '玻璃', roughness: 0.05, capRoughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03, opacity: 0.92, ior: 1.5 },
 ];
+
+/**
+ * 每种材质该露出哪几根滑杆 —— 只给那种材质真正管用的。
+ * 纸张一根都不给：它是颜色校准的基准，参数一动校准就不成立了，而且纸就该是纸。
+ * 金属不给清漆（清漆是罩在漫反射上的漆面，金属没漫反射可罩）、不给不透明度（金属不透光）。
+ * 塑料不给金属度（一给就不是塑料了）、不给不透明度（要透就该选玻璃）。
+ */
+export const TUNABLE_BY_MATERIAL: Record<MaterialId, (keyof MaterialTune)[]> = {
+  paper: [],
+  plastic: ['roughness', 'clearcoat'],
+  metal: ['metalness', 'roughness'],
+  glass: ['roughness', 'clearcoat', 'opacity'],
+};
 
 export const DEFAULT_MATERIAL: MaterialId = 'paper';
 

@@ -25,7 +25,7 @@ import {
   type TargetId,
 } from '../lib/types';
 import type { ColorComp } from '../lib/color';
-import { MATERIALS, isTuned, materialPreset, type MaterialId, type MaterialTune } from '../lib/material';
+import { MATERIALS, TUNABLE_BY_MATERIAL, isTuned, materialPreset, type MaterialId, type MaterialTune } from '../lib/material';
 
 type Props = {
   params: Params;
@@ -58,11 +58,8 @@ type Props = {
 
 
 /**
- * 材质微调：预设只是起点，这四项可以自己拨。
- *
- * 2026-09-23 加的，起因是实拍发现「金属在无边记里黑不隆冬、玻璃掉色」——
- * 那不是 bug 是物理（金属度 1 = 漫反射归零全靠反射环境，而那边环境很暗；
- * 玻璃 opacity 0.6 把白画布透上来了）。四个死档救不了，得让人自己调。
+ * 材质微调。**滑杆按材质出**：只给那种材质真正管用的那几项（见 TUNABLE_BY_MATERIAL）。
+ * 纸张一根都没有 —— 它是颜色校准的基准，动了校准就不成立。
  * 值按材质 id 存，调的是「金属长什么样」，两面都用金属就一起变。
  */
 function MaterialTuner({
@@ -74,52 +71,32 @@ function MaterialTuner({
   tune?: MaterialTune;
   onChange: (t: MaterialTune | undefined) => void;
 }) {
+  const keys = TUNABLE_BY_MATERIAL[id];
+  if (keys.length === 0) return null;
   const base = materialPreset(id);
   const cur = materialPreset(id, tune);
-  const set = (k: keyof MaterialTune, v: number) => onChange({ ...tune, [k]: v });
   const pct = (v: number) => Math.round(v * 100);
+  const LABEL: Record<keyof MaterialTune, string> = {
+    metalness: '金属度',
+    roughness: '粗糙度（低＝镜面，高＝磨砂）',
+    clearcoat: '清漆',
+    opacity: '不透明度',
+  };
   return (
     <div className="stack tight">
-      <Slider
-        label="金属度（高了会发黑：颜色全靠反射环境，而 Keynote / 无边记那边环境很暗）"
-        reset={pct(base.metalness)}
-        value={pct(cur.metalness)}
-        min={0}
-        max={100}
-        step={5}
-        suffix="%"
-        onChange={(v) => set('metalness', v / 100)}
-      />
-      <Slider
-        label="粗糙度（低了是镜面，高了是磨砂 / 阳极氧化）"
-        reset={pct(base.roughness)}
-        value={pct(cur.roughness)}
-        min={0}
-        max={100}
-        step={5}
-        suffix="%"
-        onChange={(v) => set('roughness', v / 100)}
-      />
-      <Slider
-        label="清漆（表面那层透明漆，给塑料和玻璃的光泽）"
-        reset={pct(base.clearcoat)}
-        value={pct(cur.clearcoat)}
-        min={0}
-        max={100}
-        step={5}
-        suffix="%"
-        onChange={(v) => set('clearcoat', v / 100)}
-      />
-      <Slider
-        label="不透明度（低了背后的画布会透上来，颜色被冲淡）"
-        reset={pct(base.opacity)}
-        value={pct(cur.opacity)}
-        min={20}
-        max={100}
-        step={5}
-        suffix="%"
-        onChange={(v) => set('opacity', v / 100)}
-      />
+      {keys.map((k) => (
+        <Slider
+          key={k}
+          label={LABEL[k]}
+          reset={pct(base[k])}
+          value={pct(cur[k])}
+          min={k === 'opacity' ? 20 : 0}
+          max={100}
+          step={5}
+          suffix="%"
+          onChange={(v) => onChange({ ...tune, [k]: v / 100 })}
+        />
+      ))}
       {isTuned(id, tune) && (
         <button className="btn" type="button" onClick={() => onChange(undefined)}>
           恢复「{base.label}」默认
@@ -556,15 +533,15 @@ export function ControlPanel({
                     </button>
                   ))}
                 </div>
-                {params.materialBack !== params.material && (
-                  <MaterialTuner
-                    id={params.materialBack}
-                    tune={params.materialTune?.[params.materialBack]}
-                    onChange={(t) =>
-                      patch({ materialTune: { ...params.materialTune, [params.materialBack!]: t } })
-                    }
-                  />
-                )}
+                {/* 背面选了什么材质就出什么滑杆。原来要求「背面和正面材质不同」才显示，
+                    于是正反都选金属时背面那组滑杆整个消失，看着像丢了功能。 */}
+                <MaterialTuner
+                  id={params.materialBack}
+                  tune={params.materialTune?.[params.materialBack]}
+                  onChange={(t) =>
+                    patch({ materialTune: { ...params.materialTune, [params.materialBack!]: t } })
+                  }
+                />
               </>
             )}
             {isCard && (
@@ -588,11 +565,7 @@ export function ControlPanel({
                   : '颜色校准是按「纸张」标的，换别的材质颜色会偏一点。'}
             </p>
             <p className="hint tight">
-              预设只是起点，上面四项可以自己拨。<b>金属发黑</b>就把金属度降到 70~85%（金属度 100%
-              等于漫反射归零、颜色全靠反射环境，而 Keynote / 无边记那边环境很暗），或者把补光加上去。
-              <b>玻璃掉色</b>就把不透明度提到 90% 以上（低了背后的画布会透上来把颜色冲淡），
-              玻璃感主要靠低粗糙度 + 清漆，不靠透明。粗糙度就是「镜面 ↔ 阳极氧化」那个旋钮。
-              这些都写得进 USDZ；写不进的是各向异性（拉丝金属那种被拉长的高光），格式里没这一项。
+              预设的值已经是实拍调过的，直接用就行。要自己拨就动上面的滑杆，都会写进 USDZ。
             </p>
           </div>
         </section>
