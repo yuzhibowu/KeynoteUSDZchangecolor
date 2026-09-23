@@ -385,10 +385,11 @@ export function ColorPanel({
 
   /**
    * 密集标定的进度：三张色卡各自的实测，收齐才合成。存在 localStorage 里，
-   * 关掉页面再回来还在；按「目标 × 模型类型」分开，补光/灯光一变就作废。
+   * 关掉页面再回来还在；按「目标 × 模型类型」分开，补光/灯光/材质一变就作废 ——
+   * 三张色卡必须是同一条件下截的，中途换了任何一项，攒着的就不能再和新的混在一起。
    */
   const denseKey = `prism-usdz-exporter/dense/${profileKey(target, modelType)}`;
-  type DenseSession = { lift: number; unlit: boolean; pages: Record<string, Sample[]> };
+  type DenseSession = { lift: number; unlit: boolean; material?: string; pages: Record<string, Sample[]> };
   const readDense = (): DenseSession | null => {
     try {
       const raw = localStorage.getItem(denseKey);
@@ -456,7 +457,9 @@ export function ColorPanel({
     // 白点记录**必须按目标分开存**。原来是一个全局键，于是在无边记标一次
     // （补光 50%、纯白 247）就会把 Keynote 的记录冲掉，下次在 Keynote 标定时
     // 拿它做对比，会得出「补光从 50% 加到 75%」这种前提错误的结论。
-    const probeKey = `prism-usdz-exporter/white-probe/${target}`;
+    // 材质也要进键名 —— 2026-09-23 踩过：在金属下量的 195 和纸张下量的 226 被当成
+    // 「同一条曲线上的两点」比较，得出的「降补光白点也没掉」纯属巧合。
+    const probeKey = `prism-usdz-exporter/white-probe/${target}/${material}`;
     const prevRaw = localStorage.getItem(probeKey);
     const prev = prevRaw ? (JSON.parse(prevRaw) as { lift: number; white: number }) : null;
     try {
@@ -472,7 +475,9 @@ export function ColorPanel({
       advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 加到 ${pct(lift)} 也没抬起来 —— 到硬顶了。把补光调回 ${pct(prev.lift)} 或更低再校一次，能少损失一些立体感`;
     } else if (down && white >= prev.white - 2) {
       // 降补光而白点没掉 —— 纯赚：自发光不随角度变化，加得越多明暗越平
-      advice = `纯白 ${white}，补光从 ${pct(prev.lift)} 降到 ${pct(lift)} 白点也没掉 —— 这一档更划算，立体感更好。还可以再往下试`;
+      advice =
+        `纯白 ${white}，补光从 ${pct(prev.lift)} 降到 ${pct(lift)} 白点也没掉 —— 这一档更划算，立体感更好。` +
+        (lift <= 0.02 ? '已经是 0 了，不能再降，就用这一档' : '还可以再往下试');
     } else if (down) {
       advice = `纯白 ${white}（上次 ${pct(prev!.lift)} 时是 ${prev!.white}），降补光掉了 ${prev!.white - white} 阶。够用就留着，觉得暗就调回去`;
     } else if (white >= 252) {
@@ -508,16 +513,20 @@ export function ColorPanel({
       // 密集色卡：先攒，三张收齐再合成
       const prev = readDense();
       // 补光/灯光开关和之前收的那几张不一样 —— 那几张作废，从这一张重新开始
-      const same = prev && Math.abs(prev.lift - lift) < 0.001 && prev.unlit === unlit;
+      const same =
+        prev &&
+        Math.abs(prev.lift - lift) < 0.001 &&
+        prev.unlit === unlit &&
+        (prev.material ?? material) === material;
       const pages: Record<string, Sample[]> = { ...(same ? prev!.pages : {}), [r.densePage]: r.samples };
-      const session: DenseSession = { lift, unlit, pages };
+      const session: DenseSession = { lift, unlit, material, pages };
       const have = Object.keys(pages).map(Number).sort();
       if (have.length < DENSE_PAGES) {
         writeDense(session);
         const missing = Array.from({ length: DENSE_PAGES }, (_, i) => i).filter((i) => !pages[i]);
         return setMsg(
           `密集色卡第 ${r.densePage + 1} 张已收 · 已收 ${have.length}/${DENSE_PAGES}` +
-            (prev && !same ? '（补光或灯光和之前收的不一样，之前收的已作废）' : '') +
+            (prev && !same ? '（补光、灯光或材质和之前收的不一样，之前收的已作废）' : '') +
             ` · 还差第 ${missing.map((i) => i + 1).join('、')} 张：导出、拖进 ${label}、截图、传回来`,
         );
       }
