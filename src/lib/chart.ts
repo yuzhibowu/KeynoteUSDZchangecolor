@@ -365,6 +365,75 @@ export function sampleChartPixels(d: Uint8ClampedArray, w: number, h: number): S
   return sampleGrid(d, w, h, COLS, ROWS, chartPatches());
 }
 
+/**
+ * 标出品红外框的像素。
+ *
+ * 判据只看**色相**（绿远低于红和蓝），不设亮度地板。原来写的是
+ * `r > 90 && b > 90 && g < 0.62 * min(r, b)` —— 那个 90 是在 Keynote 的亮度下定的，
+ * 2026-09-23 在无边记补光 0 上崩了：同一圈纯品红边框，左上量到 169,0,170，
+ * 右下只剩 70,0,72（明暗差 59%），下半圈整个低于 90，在程序眼里压根不是品红，
+ * 四个角全找歪，网格作废。模型越暗、明暗越立体，这个门槛越挡事。
+ *
+ * 去掉亮度地板会放进两类杂质，各有一道对策：
+ *  - **画面里别处的紫色**（紫色的幻灯片背景、无边记画布上的其他东西）——
+ *    只保留最大的那一块连通区域，散在别处的紫色进不来。
+ *  - **色卡内部本来就偏紫的色块**（比如 150,80,180）—— 它们在框里面，
+ *    取四个极点的时候本来就轮不到它们；而且现在它们和外框不连通，也进不了最大块。
+ */
+function markFrame(d: Uint8ClampedArray, w: number, h: number): Uint8Array {
+  const n = w * h;
+  const raw = new Uint8Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const r = d[p];
+    const g = d[p + 1];
+    const b = d[p + 2];
+    // min(r,b) > 18：再暗就分不清是品红还是黑底上的噪点了
+    if (Math.min(r, b) > 18 && g < 0.62 * Math.min(r, b)) raw[i] = 1;
+  }
+  // 最大连通块（4 邻域，显式栈，避免深递归爆栈）
+  const out = new Uint8Array(n);
+  const seen = new Uint8Array(n);
+  const stack = new Int32Array(n);
+  let bestStart = -1;
+  let bestSize = 0;
+  const comp = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (!raw[i] || seen[i]) continue;
+    let top = 0;
+    let size = 0;
+    stack[top++] = i;
+    seen[i] = 1;
+    while (top > 0) {
+      const c = stack[--top];
+      comp[size++] = c;
+      const cx = c % w;
+      const cy = (c / w) | 0;
+      if (cx > 0 && raw[c - 1] && !seen[c - 1]) { seen[c - 1] = 1; stack[top++] = c - 1; }
+      if (cx < w - 1 && raw[c + 1] && !seen[c + 1]) { seen[c + 1] = 1; stack[top++] = c + 1; }
+      if (cy > 0 && raw[c - w] && !seen[c - w]) { seen[c - w] = 1; stack[top++] = c - w; }
+      if (cy < h - 1 && raw[c + w] && !seen[c + w]) { seen[c + w] = 1; stack[top++] = c + w; }
+    }
+    if (size > bestSize) { bestSize = size; bestStart = i; }
+  }
+  if (bestStart < 0) return out;
+  // 再走一遍最大的那块，写进结果
+  const seen2 = new Uint8Array(n);
+  let top = 0;
+  stack[top++] = bestStart;
+  seen2[bestStart] = 1;
+  while (top > 0) {
+    const c = stack[--top];
+    out[c] = 1;
+    const cx = c % w;
+    const cy = (c / w) | 0;
+    if (cx > 0 && raw[c - 1] && !seen2[c - 1]) { seen2[c - 1] = 1; stack[top++] = c - 1; }
+    if (cx < w - 1 && raw[c + 1] && !seen2[c + 1]) { seen2[c + 1] = 1; stack[top++] = c + 1; }
+    if (cy > 0 && raw[c - w] && !seen2[c - w]) { seen2[c - w] = 1; stack[top++] = c - w; }
+    if (cy < h - 1 && raw[c + w] && !seen2[c + w]) { seen2[c + w] = 1; stack[top++] = c + w; }
+  }
+  return out;
+}
+
 function sampleGrid(
   d: Uint8ClampedArray,
   w: number,
@@ -386,21 +455,17 @@ function sampleGrid(
   let maxSum = -Infinity;
   let minDif = Infinity;
   let maxDif = -Infinity;
+  const mask = markFrame(d, w, h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      const r = d[i];
-      const g = d[i + 1];
-      const b = d[i + 2];
-      if (r > 90 && b > 90 && g < 0.62 * Math.min(r, b)) {
-        count++;
-        const sum = x + y;
-        const dif = x - y;
-        if (sum < minSum) { minSum = sum; tl = { x, y }; }
-        if (sum > maxSum) { maxSum = sum; br = { x, y }; }
-        if (dif > maxDif) { maxDif = dif; tr = { x, y }; }
-        if (dif < minDif) { minDif = dif; bl = { x, y }; }
-      }
+      if (!mask[y * w + x]) continue;
+      count++;
+      const sum = x + y;
+      const dif = x - y;
+      if (sum < minSum) { minSum = sum; tl = { x, y }; }
+      if (sum > maxSum) { maxSum = sum; br = { x, y }; }
+      if (dif > maxDif) { maxDif = dif; tr = { x, y }; }
+      if (dif < minDif) { minDif = dif; bl = { x, y }; }
     }
   }
   const x0 = tl && bl ? Math.min(tl.x, bl.x) : 0;
@@ -443,11 +508,7 @@ function sampleGrid(
   let iMaxDif = -Infinity;
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      const i = (y * w + x) * 4;
-      const r = d[i];
-      const g = d[i + 1];
-      const b = d[i + 2];
-      if (r > 90 && b > 90 && g < 0.62 * Math.min(r, b)) continue; // 还是外框
+      if (mask[y * w + x]) continue; // 还是外框
       if (!inside(x, y)) continue;
       const sum = x + y;
       const dif = x - y;
@@ -553,8 +614,16 @@ function sampleGrid(
   const a = samples[ALIGN_REF_INDEX].got;
   const b = samples[samples.length - 1].got;
   const uneven = Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
-  if (uneven > 60) {
-    return { ok: false, reason: MISALIGNED, samples: [] };
+  // 大到这个地步就不是「报个数」的事了：同一个颜色在色卡两端差 80 多阶，
+  // 拟合出来的档只在色卡中间那块成立。但这也**不是错位**，别再甩那句误导的提示。
+  if (uneven > 80) {
+    return {
+      ok: false,
+      reason:
+        `同一个颜色在色卡左上和右下差了 ${Math.round(uneven)} 阶 —— 不是取样错位，是模型明暗太悬殊。` +
+        `这一档补光标出来的档只在色卡中间那块准，把补光调高一点再标。`,
+      samples: [],
+    };
   }
 
   return { ok: true, samples, uneven };

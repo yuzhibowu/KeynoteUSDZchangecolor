@@ -199,6 +199,45 @@ describe('色卡识别', () => {
     expect(res.uneven ?? 99).toBeLessThanOrEqual(2);
   });
 
+  /**
+   * 2026-09-23 的第二只靴子。补光调到 0 之后模型整体变暗、明暗梯度拉满，实测同一圈
+   * 纯品红外框左上 169,0,170、右下只剩 70,0,72（暗了 59%）。而认品红的判据里有一句
+   * `r > 90 && b > 90` —— 那个 90 也是在 Keynote 的亮度下定的，于是下半圈整个不算品红，
+   * 四个角找歪，网格全废。判据改成只看色相、不设亮度地板。
+   */
+  it('模型暗到外框只剩三成亮度：还得认得出品红框', () => {
+    // 只往右边暗下去：右缘的外框降到 84，低于原来那个 90 的地板
+    const shade = (U: number) => 1 - 0.67 * U;
+    const res = sampleChartPixels(render(W, H, full(W, H), patches, { shade }), W, H);
+    expect(res.ok).toBe(true);
+    expect(res.samples.length).toBe(COLS * ROWS);
+  });
+
+  it('明暗悬殊到没法标定：说清是光照问题，不说成取样错位', () => {
+    const shade = (U: number, V: number) => 1 - 0.9 * ((U + V) / 2);
+    const res = sampleChartPixels(render(W, H, full(W, H), patches, { shade }), W, H);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('明暗太悬殊');
+    expect(res.reason).not.toContain('没套准');
+  });
+
+  /**
+   * 去掉亮度地板的代价：画面里别处的紫色也会被认成外框。靠「只留最大的连通块」挡掉。
+   * 典型场景是把色卡放在紫色背景的幻灯片上。
+   */
+  it('画面别处有紫色（紫底幻灯片）：只认最大那块，不受干扰', () => {
+    const d = render(W, H, full(W, H), patches);
+    // 在角落刷一片紫色，面积小于色卡外框
+    for (let y = 0; y < 40; y++)
+      for (let x = 0; x < 40; x++) {
+        const i = (y * W + x) * 4;
+        d[i] = 150; d[i + 1] = 20; d[i + 2] = 160; d[i + 3] = 255;
+      }
+    const res = sampleChartPixels(d, W, H);
+    expect(res.ok).toBe(true);
+    expect(maxErr(res.samples, patches)).toBeLessThanOrEqual(3);
+  });
+
   it('行距一路漂（非等比拉伸）：灰阶那一行还是对的，也必须抓住', () => {
     // 第一行完全正常，所以灰阶单调自检抓不到 —— 这正是当初要那条「一头一尾」检查的场景，
     // 换成格内极差之后必须照样抓住，否则就是把误杀改成了漏杀
