@@ -510,9 +510,13 @@ export default function App() {
       // 从前这里写的是 isInner ? MAX_SLOTS : MAX_SIDES，加了端面槽位之后
       // 往端面上拖图会因为 startIndex >= MAX_SIDES 而**一张都放不进去**。
       const limit = spreadLimit(startIndex);
+      // 卡片只有正反两个槽位能贴图，中间隔着一条窄边（槽位 1）。按 startIndex + k 顺着往下排
+      // 会把第二张图塞进窄边，而窄边走纯色材质、根本不挂贴图 —— 图就这么无声无息没了。
+      const cardSlots = startIndex === CARD_BACK ? [CARD_BACK] : [CARD_FRONT, CARD_BACK];
+      const isCard = paramsRef.current.modelType === 'card';
       loaded.forEach((it, k) => {
-        const idx = startIndex + k;
-        if (idx >= limit) return;
+        const idx = isCard ? cardSlots[k] : startIndex + k;
+        if (idx === undefined || idx >= limit) return;
         void saveFace(idx, it.file, it.name);
         next[idx] = {
           ...next[idx],
@@ -528,7 +532,10 @@ export default function App() {
     });
     const limit = spreadLimit(startIndex);
     setSelected(Math.min(startIndex, limit - 1));
-    const overflow = startIndex + loaded.length - limit;
+    const overflow =
+      paramsRef.current.modelType === 'card'
+        ? loaded.length - (startIndex === CARD_BACK ? 1 : 2)
+        : startIndex + loaded.length - limit;
     setStatus(overflow > 0 ? `有 ${overflow} 张图没地方放，已忽略` : null);
   }, [prepareSource]);
 
@@ -980,7 +987,14 @@ export default function App() {
           selected={selected}
           onSelect={setSelected}
           onTransform={onTransform}
-          onDropFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? 0)}
+          /**
+           * 拖进预览区：正好拖在某个面上就贴那个面（拾取到了，那是明确的手势）；
+           * 没拖在面上（空白处、或者模型没转到那一面）就贴**当前选中的面**。
+           *
+           * 原来这里写死 `?? 0`，于是「先在下面选中卡片背面、再把图拖进画面」会跑到正面去 ——
+           * 而同一件事走 ⌘V 那条路是认选中面的，两条路行为不一致，用户当然觉得是 bug。
+           */
+          onDropFiles={(files, faceIndex) => assignFiles(files, faceIndex ?? selected ?? 0)}
           viewerRef={viewerRef}
           frozen={frozen}
           onResetFace={handleResetFace}

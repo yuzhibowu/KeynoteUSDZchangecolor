@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PrismViewer } from '../lib/viewer';
 import type { FaceTextureStore } from '../lib/faceTexture';
-import type { FaceState, FaceTransform, Params } from '../lib/types';
+import { CARD_BACK, type FaceState, type FaceTransform, type Params } from '../lib/types';
 
 type Props = {
   store: FaceTextureStore;
@@ -87,6 +87,21 @@ export function Viewport({
   }, [params, faces, selected, viewerRef]);
 
   const dropping = dropFace !== undefined;
+
+  /**
+   * 拖放提示要说人话。原来一律说「第 N 个面」，卡片模式下背面是槽位 2，于是提示写着
+   * 「贴到第 3 个面」—— 卡片总共就正反两面，这句话没人看得懂。
+   * 没拖在面上时也不再说「从第 1 个面开始」，而是说清楚会落到当前选中的那一面。
+   */
+  const card = params.modelType === 'card';
+  const slotName = (slot: number) =>
+    card ? (slot === CARD_BACK ? '卡片背面' : '卡片正面') : `第 ${slot + 1} 个面`;
+  const dropHint =
+    dropFace !== null && dropFace !== undefined
+      ? `松手 → 贴到${slotName(dropFace)}`
+      : card
+        ? `松手 → 贴到${slotName(selected ?? 0)}（下面选中的那一面）`
+        : `松手 → 从${slotName(selected ?? 0)}开始依次分配`;
   const hasImage = selected !== null && !!faces[selected]?.source;
   // 「移除图片」只管当前这一面，剩下的面从别的角度还看得见 —— 所以再给一个一次清干净的入口
   const hasAnyImage = faces.some((f) => !!f.source);
@@ -115,11 +130,7 @@ export function Viewport({
       }}
     >
       {frozen && <img className="viewport-freeze" src={frozen} alt="" />}
-      {dropping && (
-        <div className="drop-hint">
-          {dropFace === null ? '松手 → 从第 1 个面开始依次分配' : `松手 → 贴到第 ${dropFace + 1} 个面`}
-        </div>
-      )}
+      {dropping && <div className="drop-hint">{dropHint}</div>}
       {/* 范式：恢复视角这类辅助操作贴近预览边角 */}
       <div className="stage-tools">
         <button
