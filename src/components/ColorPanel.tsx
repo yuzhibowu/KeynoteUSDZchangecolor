@@ -416,7 +416,7 @@ export function ColorPanel({
   }, [denseKey]);
 
   /** 一批实测 → 拟合 → 写进档。普通色卡和密集色卡最后都走这里 */
-  const applyCalibration = (measured: Sample[], label: string) => {
+  const applyCalibration = (measured: Sample[], label: string, uneven?: number) => {
     const fit = fitChart(measured);
     if (!fit) return setMsg('可用色块太少，解不出来。确认截图里色卡完整。');
     setSamples(measured);
@@ -477,7 +477,17 @@ export function ColorPanel({
     } else {
       advice = `纯白能到 ${white}。想再高就把补光往上调再校一次；如果调了不涨就是到顶了`;
     }
-    setMsg(`校准完成 · 残差 ${(fit.rms * 255).toFixed(1)} 阶 · 已标定 ${merged.length} 个颜色 · ${advice}`);
+    // 光照不均单独报一行：它和残差、白点是三个不同的指标，选补光那一档时三个都要看。
+    // 同一个颜色在模型左上和右下差这么多，校准只能校到平均值 —— 这就是精度的天花板。
+    const light =
+      uneven === undefined
+        ? ''
+        : uneven >= 10
+          ? ` · 光照不均 ${Math.round(uneven)} 阶（补光越低越明显，立体感的代价；超过 15 阶就别再往下降了）`
+          : ` · 光照不均 ${Math.round(uneven)} 阶（很均匀）`;
+    setMsg(
+      `校准完成 · 残差 ${(fit.rms * 255).toFixed(1)} 阶 · 已标定 ${merged.length} 个颜色${light} · ${advice}`,
+    );
   };
 
   const onChartShot = async (file: File) => {
@@ -488,7 +498,7 @@ export function ColorPanel({
       if (!r.ok) return setMsg(r.reason ?? '识别失败');
       const stamp = new Date().toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' });
 
-      if (r.densePage === undefined) return applyCalibration(r.samples, stamp);
+      if (r.densePage === undefined) return applyCalibration(r.samples, stamp, r.uneven);
 
       // 密集色卡：先攒，三张收齐再合成
       const prev = readDense();

@@ -54,7 +54,15 @@ function render(
   h: number,
   corners: Pt[],
   patches: RGB[],
-  opts: { crop?: number; cols?: number; rows?: number } = {},
+  opts: {
+    crop?: number;
+    cols?: number;
+    rows?: number;
+    /** 明暗梯度：按整张卡的坐标返回一个亮度系数，模拟「模型左上亮、右下暗」 */
+    shade?: (U: number, V: number) => number;
+    /** 行距漂移：画的时候行距比版式大一点，下面几行会一路漂，模拟非等比拉伸导致的错位 */
+    pitch?: number;
+  } = {},
 ): Uint8ClampedArray {
   const COLS = opts.cols ?? 13;
   const ROWS = opts.rows ?? 9;
@@ -70,7 +78,7 @@ function render(
   };
   const inner = 1 - FRAME_RATIO * 2;
   const cw = (inner - GUTTER_RATIO * (COLS + 1)) / COLS;
-  const ch = (inner - GUTTER_RATIO * (ROWS + 1)) / ROWS;
+  const ch = ((inner - GUTTER_RATIO * (ROWS + 1)) / ROWS) * (opts.pitch ?? 1);
   const steps = Math.max(w, h) * 3;
   for (let a = 0; a <= steps; a++) {
     for (let b = 0; b <= steps; b++) {
@@ -95,7 +103,8 @@ function render(
         }
       }
       const q = map(t, s2);
-      put(q.x, q.y, col);
+      const k = opts.shade ? opts.shade(U, V) : 1;
+      put(q.x, q.y, k === 1 ? col : (col.map((v) => Math.round(v * k)) as RGB));
     }
   }
   return d;
@@ -161,6 +170,41 @@ describe('色卡识别', () => {
     const w3 = 30, h3 = 20;
     const res = sampleChartPixels(render(w3, h3, full(w3, h3), patches), w3, h3);
     expect(res.ok).toBe(false);
+  });
+
+  /**
+   * 2026-09-23 在无边记上抓到的误杀。
+   *
+   * 旧的自检二是「一头一尾两个同色灰格差超过 18 阶 = 错位」。可那两格分别在左上和右下，
+   * 模型只要有明暗梯度，同一个颜色在两处本来就不一样。Keynote 一直没暴露是因为补光开得高，
+   * 自发光把面压平了；补光一往下调（无边记不需要靠补光顶亮度，正该这么干），
+   * 一张取样完全正确的截图就被判成错位，而且提示还让人「重新导一张色卡」—— 越导越错。
+   *
+   * 现在改用格内极差：真错位时取样窗会吃到黑缝，格子内部炸开上百阶；
+   * 光照不均只是整格一起偏移，格内还是纯色。
+   */
+  it('模型左上亮右下暗：不许再误判成错位，而且要把光照不均量出来', () => {
+    // 实拍那张的梯度：同一级灰左上量到 104、右下量到 83，约 0.8 倍
+    const shade = (U: number, V: number) => 1 - 0.2 * ((U + V) / 2);
+    const res = sampleChartPixels(render(W, H, full(W, H), patches, { shade }), W, H);
+    expect(res.ok).toBe(true);
+    expect(res.samples.length).toBe(COLS * ROWS);
+    // 同色两格的差要如实报出来 —— 补光选档时拿它当指标
+    expect(res.uneven).toBeGreaterThan(10);
+  });
+
+  it('光照均匀时，光照不均报出来接近 0', () => {
+    const res = sampleChartPixels(render(W, H, full(W, H), patches), W, H);
+    expect(res.ok).toBe(true);
+    expect(res.uneven ?? 99).toBeLessThanOrEqual(2);
+  });
+
+  it('行距一路漂（非等比拉伸）：灰阶那一行还是对的，也必须抓住', () => {
+    // 第一行完全正常，所以灰阶单调自检抓不到 —— 这正是当初要那条「一头一尾」检查的场景，
+    // 换成格内极差之后必须照样抓住，否则就是把误杀改成了漏杀
+    const res = sampleChartPixels(render(W, H, full(W, H), patches, { pitch: 1.07 }), W, H);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('没套准');
   });
 
   it('取样错位时自检要抓住 —— 灰阶乱序就必须报错', () => {

@@ -258,8 +258,14 @@ export function drawDenseChart(canvas: HTMLCanvasElement, page: number, size = 2
   drawGrid(canvas, size, DENSE_COLS, DENSE_ROWS, densePatches(page));
 }
 
+/**
+ * 真错位时的提示。原来这句写的是「排版更新过，旧色卡不能用」—— 那是色卡改版那阵的
+ * 历史原因，早就不是主因了，照着做也修不好，反而把人往「再导一张」的死胡同里带。
+ * 现在只说真正还会发生的三种：截歪了、外框没截全、画面太小。
+ */
 const MISALIGNED =
-  '色卡取样对不上。请重新点「导出色卡棱柱」拿一张新色卡（排版更新过，旧色卡不能用），正对着重截一张图';
+  '色卡取样对不上：网格没套准。检查三件事 —— 模型是不是正对着镜头（别转到能看见第二个面）、' +
+  '截图有没有把整圈品红外框都框进去、色卡在画面里够不够大（太小了格子只剩几个像素）';
 
 export type Sample = { ref: RGB; got: RGB };
 export type SampleResult = {
@@ -268,6 +274,11 @@ export type SampleResult = {
   samples: Sample[];
   /** 识别为密集色卡的第几张（0 起）；普通色卡没有这一项 */
   densePage?: number;
+  /**
+   * 光照不均：色卡上相隔最远的两个**同色**格子量出来差了几阶。
+   * 补光越低、明暗越立体，这个数越大；它是这一档补光下校准精度的天花板。
+   */
+  uneven?: number;
 };
 
 type Pt = { x: number; y: number };
@@ -346,6 +357,7 @@ export function sampleChartPixels(d: Uint8ClampedArray, w: number, h: number): S
       return {
         ok: true,
         densePage: page,
+        uneven: dense.uneven,
         samples: samples.filter((_, i) => i !== GRAYS.length && i !== samples.length - 1),
       };
     }
@@ -463,6 +475,9 @@ function sampleGrid(
   }
 
   const N = 5; // 每个格子取 5×5 个点，落在中间 50% 里
+  // 每个格子内部 25 个取样点的极差。格子本身是纯色，对齐正确时这个数只有抗锯齿那
+  // 两三阶；一旦网格错位，取样窗会吃到黑缝或邻格，立刻炸到上百阶。见下面的自检二。
+  const spreads: number[] = [];
   const samples: Sample[] = patches.map((ref, i) => {
     const c = i % COLS;
     const r = (i / COLS) | 0;
@@ -472,6 +487,8 @@ function sampleGrid(
     let sg = 0;
     let sb = 0;
     let n = 0;
+    const lo: RGB = [255, 255, 255];
+    const hi: RGB = [0, 0, 0];
     for (let a = 0; a < N; a++) {
       for (let b2 = 0; b2 < N; b2++) {
         // 只取色块中间 50%，避开边缘的抗锯齿和压缩噪点
@@ -485,9 +502,14 @@ function sampleGrid(
         sr += d[i2];
         sg += d[i2 + 1];
         sb += d[i2 + 2];
+        for (let k = 0; k < 3; k++) {
+          if (d[i2 + k] < lo[k]) lo[k] = d[i2 + k];
+          if (d[i2 + k] > hi[k]) hi[k] = d[i2 + k];
+        }
         n++;
       }
     }
+    spreads.push(n ? Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) : 0);
     return { ref, got: (n ? [sr / n, sg / n, sb / n] : [0, 0, 0]) as RGB };
   });
 
@@ -499,15 +521,43 @@ function sampleGrid(
     }
   }
 
-  // 自检二：一头一尾那两个相同的灰必须量出相同的值。灰阶自检只管第一行，
-  // 最后一行的错位（色卡被非等比拉伸时最容易出）只有靠这个才能抓到。
-  const a = samples[ALIGN_REF_INDEX].got;
-  const b = samples[samples.length - 1].got;
-  if (Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2])) > 18) {
+  /**
+   * 自检二：格内一致性。灰阶自检只管第一行，最后一行的错位（色卡被非等比拉伸时
+   * 最容易出）得靠别的办法抓。
+   *
+   * 原来这里比的是「一头一尾那两个同色灰格的绝对差 > 18 就算错位」。**那条判据是错的**，
+   * 2026-09-23 在无边记上被抓了现行：一张取样完全正确的截图（内区四角是干净矩形、
+   * 灰阶 0→17→43→72→104→135→165→192 完美单调）照样被判错位 —— 左上那格量到 104、
+   * 右下那格量到 83，差 20.6 阶。可那 21 阶不是错位，是**模型左上亮右下暗的光照梯度**。
+   * Keynote 那边一直没暴露，是因为补光开得高，自发光把整个面压平了，同色两格差不到 18；
+   * 补光一往下调（无边记不需要靠补光顶亮度，正可以这么干），立体感回来了，这条检查就开始误杀。
+   *
+   * 换成格内极差之后两者分得很开（同一张图实测）：对齐正确时中位数 2 阶（最大 7），
+   * 故意横移半格 127 阶、纵移半格 174 阶。真错位时取样窗会吃到黑缝，格子内部必然炸开；
+   * 光照不均只是整格一起偏移，格内还是纯色。阈值 30 落在这两档中间，两边都有十几倍余量。
+   */
+  const sorted = [...spreads].sort((p, q) => p - q);
+  // 取 90 百分位而不是中位数：错位未必是全局的 —— 色卡被非等比拉伸时行距会一路漂，
+  // 只有下面几行错得厉害，中位数看不出来。也不用最大值，那个太脆（一个光标、
+  // 一点压缩块就能顶上去）。p90 = 至少一成格子在吃黑缝，才算错位。
+  if (sorted[Math.floor(sorted.length * 0.9)] > 40) {
     return { ok: false, reason: MISALIGNED, samples: [] };
   }
 
-  return { ok: true, samples };
+  /**
+   * 同色两格的差不再当失败理由，改成**量出来报给用户**：它就是这一档补光下的光照不均。
+   * 这个数对校准是有意义的 —— 同一个颜色在模型不同位置显示不同，校准只能校到平均值，
+   * 它有多大，整份档的精度天花板就在那儿。补光选档时正好拿它当第三个指标。
+   * 只有大到离谱（> 60）才说明是真错位：整格平移一格也可能格内干净，得留一道粗筛。
+   */
+  const a = samples[ALIGN_REF_INDEX].got;
+  const b = samples[samples.length - 1].got;
+  const uneven = Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+  if (uneven > 60) {
+    return { ok: false, reason: MISALIGNED, samples: [] };
+  }
+
+  return { ok: true, samples, uneven };
 }
 
 // ---- 解模型 ----
