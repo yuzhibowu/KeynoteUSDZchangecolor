@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { applyLift, applyMaterialPreset, makeCapMaterial, makeFaceMaterial } from './material';
+import { applyLift, applyMaterialPreset, makeCapMaterial, makeFaceMaterial, type MaterialId } from './material';
 import { STUDIO_ENV_INTENSITY, makeStudioEnvironment } from './studioEnv';
 import { capGeometry, cardGeometry, faceCenterAngle, faceFrame, sideGeometry, type FaceFrame } from './geometry';
 import { compensateToLinear, srgbToLinear } from './color';
@@ -11,7 +11,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import type { FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, sectionOf, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -329,7 +329,8 @@ export class PrismViewer {
     // 所以开关一打开，视口里看到的就是 Keynote 里会看到的。
     const unlit = params.emissiveExport;
     const lift = this.liftNow();
-    // 材质预设跟着 params.material 走：侧面、内面、端面、卡片窄边一套（导出走 syncSideMaterials 同样会套）
+    // 材质预设：端面、内面、卡片窄边跟着正面的材质；卡片背面可以单独设（materialOf）。
+    // 预览和导出走同一套（导出走 syncSideMaterials，那边也用 materialOf）。
     const preview = !this.exportMode;
     this.applyPreviewLights();
     applyMaterialPreset(this.capRightMat, params.material, true, preview);
@@ -338,9 +339,10 @@ export class PrismViewer {
     this.applyEnv(this.capLeftMat);
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
-      applyMaterialPreset(m, params.material, isCardEdge(params, i), preview);
+      const id = materialOf(params, i);
+      applyMaterialPreset(m, id, isCardEdge(params, i), preview);
       applyMaterialPreset(this.innerMaterials[i], params.material, false, preview);
-      this.applyEnv(m);
+      this.applyEnv(m, id);
       this.applyEnv(this.innerMaterials[i]);
       if (isCardEdge(params, i)) {
         // 卡片的窄边：纯色。默认跟着正面贴图的平均色走 —— 红卡片的侧边不该是灰的
@@ -596,9 +598,10 @@ export class PrismViewer {
    * 纸张不挂环境、不动灯 —— 预览和校准时一模一样。
    * 别的材质挂上按 Keynote 拟合出来的环境（见文件顶部 ENV_* 常量）。只影响视口，不进文件。
    */
-  private applyEnv(m: THREE.MeshPhysicalMaterial) {
+  private applyEnv(m: THREE.MeshPhysicalMaterial, id?: MaterialId) {
     if (!this.envMap) this.envMap = makeStudioEnvironment(this.renderer);
-    const want = this.state!.params.material === 'paper' ? null : this.envMap;
+    // 按**这一块**的材质决定挂不挂环境 —— 卡片背面可以和正面不一样
+    const want = (id ?? this.state!.params.material) === 'paper' ? null : this.envMap;
     if (m.envMap !== want) {
       m.envMap = want;
       m.needsUpdate = true;
@@ -611,6 +614,8 @@ export class PrismViewer {
    * 拟合 Keynote 的布光时不需要它们，留着只会在金属上加出 Keynote 没有的硬亮斑。
    */
   private applyPreviewLights() {
+    // 按正面的材质决定 —— 灯是整个场景的，没法逐块开关。卡片背面单独设了别的材质时，
+    // 预览里背面的质感会略有出入；这只影响视口，不进文件。
     const k = this.state!.params.material === 'paper' ? 1 : 0;
     this.directLights.forEach((l, i) => (l.intensity = this.directBase[i] * k));
   }
@@ -619,7 +624,8 @@ export class PrismViewer {
     const p = this.state!.params;
     const unlit = p.emissiveExport;
     const lift = this.liftNow();
-    // 材质预设：侧面、内面、端面、卡片窄边都跟着 params.material 走，视口和导出一套
+    // 材质预设：端面、内面、卡片窄边跟着正面的材质走；卡片背面可以单独设（materialOf）。
+    // 视口和导出用同一套。
     const preview = !this.exportMode;
     applyMaterialPreset(this.capRightMat, p.material, true, preview);
     applyMaterialPreset(this.capLeftMat, p.material, true, preview);
@@ -627,9 +633,10 @@ export class PrismViewer {
     this.applyEnv(this.capLeftMat);
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
-      applyMaterialPreset(m, p.material, isCardEdge(p, i), preview);
+      const id = materialOf(p, i);
+      applyMaterialPreset(m, id, isCardEdge(p, i), preview);
       applyMaterialPreset(this.innerMaterials[i], p.material, false, preview);
-      this.applyEnv(m);
+      this.applyEnv(m, id);
       this.applyEnv(this.innerMaterials[i]);
       // 挂当前的 map，不是 store 里那张。导出时 exportUsdz 会先把 map 换成一批全新的
       // texture 对象（为了不让 Keynote 按名字缓存旧贴图），如果这里仍然挂 store 的那张，

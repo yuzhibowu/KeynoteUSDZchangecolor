@@ -25,7 +25,7 @@ import {
   type TargetId,
 } from '../lib/types';
 import type { ColorComp } from '../lib/color';
-import { MATERIALS } from '../lib/material';
+import { MATERIALS, materialPreset } from '../lib/material';
 
 type Props = {
   params: Params;
@@ -87,6 +87,7 @@ export function ControlPanel({
   /** 宽度、比例、边数任何一个变了，都要重算半径来保住选定的比例 */
   const recolorInput = useRef<HTMLInputElement>(null);
   const isPrism = params.modelType === 'prism';
+  const isCard = !isPrism;
   // 宽度滑杆上标出来的档位，按数值从小到大排，刻度才不会左右乱跳
   // 标签用短名，不然 720P / 1080P 两个挤在一起会叠字
   const WIDTH_MARKS = [...RESOLUTIONS]
@@ -203,6 +204,7 @@ export function ControlPanel({
             lift={params.emissiveLift ?? 0}
             setLift={(v) => patch({ emissiveLift: v })}
             material={params.material}
+            materialBack={params.materialBack}
           />
           <section className="export-block">
             <button className="btn-primary" disabled={!recolorReady} onClick={onExportRecolor}>
@@ -444,6 +446,9 @@ export function ControlPanel({
         <section>
           <h2>材质</h2>
           <div className="stack">
+            {/* 卡片可以正反两面各用各的材质（三块独立网格，USDZ 本来就支持）。
+                开了之后上面这排是正面、下面那排是背面；窄边跟着正面走。 */}
+            {isCard && params.materialBack && <span className="row-label">正面</span>}
             <div className="opts four">
               {MATERIALS.map((m) => (
                 <button
@@ -457,10 +462,43 @@ export function ControlPanel({
                 </button>
               ))}
             </div>
+            {isCard && params.materialBack && (
+              <>
+                <span className="row-label">背面</span>
+                <div className="opts four">
+                  {MATERIALS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="opt"
+                      aria-pressed={params.materialBack === m.id}
+                      onClick={() => patch({ materialBack: m.id })}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {isCard && (
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!!params.materialBack}
+                  onChange={(e) =>
+                    patch({ materialBack: e.target.checked ? params.material : undefined })
+                  }
+                />
+                <span>背面单独设材质</span>
+              </label>
+            )}
             <p className="hint tight">
-              {params.material === 'paper'
+              {params.material === 'paper' && !params.materialBack
                 ? '「纸张」就是颜色校准时用的材质，颜色最准。'
-                : '颜色校准是按「纸张」标的；实测金属材质导出后 Keynote 里色准依然准。补光越高，质感越看不出来。'}
+                : params.materialBack && params.materialBack !== params.material
+                  ? `正面「${materialPreset(params.material).label}」、背面「${materialPreset(params.materialBack).label}」。` +
+                    '颜色校准是按「纸张」标的，用了别的材质那一面颜色会偏一点，补光越低偏得越多。'
+                  : '颜色校准是按「纸张」标的；实测金属材质导出后 Keynote 里色准依然准。补光越高，质感越看不出来。'}
             </p>
           </div>
         </section>
@@ -597,6 +635,7 @@ export function ControlPanel({
           lift={params.emissiveLift ?? 0}
           setLift={(v) => patch({ emissiveLift: v })}
           material={params.material}
+          materialBack={params.materialBack}
         />
 
         {/* 不要标题、不要上面那条分隔线 —— 到这儿已经是面板最底下了 */}

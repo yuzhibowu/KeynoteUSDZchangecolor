@@ -151,6 +151,16 @@ export type Params = {
   /** 表面材质。「纸张」是校准条件，颜色只对它精确 */
   material: MaterialId;
   /**
+   * 卡片背面单独的材质。`undefined` = 跟着正面走（默认）。
+   *
+   * 只对卡片生效：卡片就是三块独立网格（正面 / 一圈窄边 / 背面），各挂各的材质本来就合法，
+   * USDZ 也支持。窄边跟着正面走 —— 它是正反之间的过渡，跟哪边都别扭，跟正面至少是确定的。
+   *
+   * **颜色校准是按「纸张」标的**，背面换成别的材质，背面的颜色就会偏（补光越低偏得越多，
+   * 见 KEYNOTE-COLOR.md）。这是用户明确要的效果，不拦，但界面上要说清楚。
+   */
+  materialBack?: MaterialId;
+  /**
    * 卡片「适应」：比例和圆角都跟着正面那张图走（按不透明区域算），
    * 而不是手选一个预设。开着时预设按钮和圆角滑杆都让位。
    */
@@ -301,6 +311,16 @@ export function textureAspect(p: Pick<Params, 'modelType' | 'sides' | 'radius' |
 /** 卡片模式下真正能贴图的两个槽位：正面（面 0）和背面（面 2），中间隔着一条窄边 */
 export const CARD_FRONT = 0;
 export const CARD_BACK = 2;
+
+/** 某个槽位实际用哪种材质。卡片背面可以单独设，其余一律跟着 params.material */
+export function materialOf(
+  p: Pick<Params, 'modelType' | 'material' | 'materialBack'>,
+  slot: number,
+): MaterialId {
+  return p.modelType === 'card' && slot === CARD_BACK && p.materialBack
+    ? p.materialBack
+    : p.material;
+}
 
 /**
  * 需要烘贴图的槽位。

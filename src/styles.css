@@ -942,6 +942,14 @@ details.tweaks[open] > summary { margin-bottom: 12px; }
 /* dock 分正反两行 */
 .dock-row { display: flex; align-items: center; gap: 10px; justify-content: center; }
 .dock-row + .dock-row { margin-top: 8px; }
+/* 一组选项上方的小标题，例如材质里的「正面」「背面」两排 —— 和 dock-label 一个调子 */
+.row-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
 .dock-label {
   flex: none;
   width: 26px;

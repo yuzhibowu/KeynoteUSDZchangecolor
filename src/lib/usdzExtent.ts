@@ -19,9 +19,15 @@ import { unzipSync, zipSync } from 'fflate';
  * 但这是我们的导出文件和「在 Keynote 里确认能显示金属」的最小对照之间
  * **唯一剩下的差异** —— 排查到最后只剩这一条，那就别留着。
  * clearcoat 真的大于 0 时（亮面塑料、铜版纸）原样保留。
+ *
+ * **数字后面必须跟着换行**（下面那个 `(?=\n)`）。少了它就是个真事故：
+ * 2026-09-23 给卡片背面挂「塑料」（clearcoat = 0.6）时发现，`= 0` 会匹配上 `0.6` 的那个 0，
+ * 于是整行被删掉、只剩个孤零零的 `.6` 粘到上一行末尾 —— 文件里变成
+ * `float inputs:opacity = 1.6`（不合法，opacity 最大就是 1），而塑料的清漆被整条吞掉，
+ * 导出之后根本不是塑料。玻璃（clearcoat = 1）侥幸躲过，因为 `1` 不匹配 `0`。
  */
 export function stripInertClearcoat(usda: string): string {
-  return usda.replace(/(\n[^\n]*float inputs:clearcoat = 0(?:\.0+)?)((?:\n[^\n]*float inputs:clearcoatRoughness = [^\n]*)?)((?:\n[^\n]*float inputs:ior = [^\n]*)?)/g, '');
+  return usda.replace(/(\n[^\n]*float inputs:clearcoat = 0(?:\.0+)?(?=\n))((?:\n[^\n]*float inputs:clearcoatRoughness = [^\n]*)?)((?:\n[^\n]*float inputs:ior = [^\n]*)?)/g, '');
 }
 
 /** 从一段 usda 文本里，给每个 def Mesh 块补 extent */

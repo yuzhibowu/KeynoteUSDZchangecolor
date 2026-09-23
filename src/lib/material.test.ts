@@ -8,6 +8,7 @@ import {
   makeCapMaterial,
   makeFaceMaterial,
 } from './material';
+import { CARD_BACK, CARD_FRONT, materialOf } from './types';
 
 /**
  * 这一组测试守的是一件事：**色卡棱柱和实际导出的模型必须是同一个东西**。
@@ -68,5 +69,27 @@ describe('补光', () => {
     expect(m.emissive.r).toBe(1);
     applyLift(m, tex(), -2, false);
     expect(m.emissive.r).toBe(0);
+  });
+});
+
+describe('卡片背面单独设材质', () => {
+  const base = { modelType: 'card' as const, material: 'paper' as const };
+
+  it('没单独设时，正反都跟着 params.material', () => {
+    expect(materialOf(base, CARD_FRONT)).toBe('paper');
+    expect(materialOf(base, CARD_BACK)).toBe('paper');
+  });
+
+  it('设了之后只有背面变，正面和窄边不受影响', () => {
+    const p = { ...base, materialBack: 'plastic' as const };
+    expect(materialOf(p, CARD_FRONT)).toBe('paper');
+    expect(materialOf(p, CARD_BACK)).toBe('plastic');
+    // 槽位 1 是卡片那圈窄边 —— 跟着正面走
+    expect(materialOf(p, 1)).toBe('paper');
+  });
+
+  it('棱柱不吃这一项 —— 它没有「背面」这个概念，槽位 2 是第 3 个侧面', () => {
+    const p = { modelType: 'prism' as const, material: 'paper' as const, materialBack: 'metal' as const };
+    expect(materialOf(p, CARD_BACK)).toBe('paper');
   });
 });

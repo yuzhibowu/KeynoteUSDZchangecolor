@@ -35,6 +35,8 @@ type Props = {
   setLift: (v: number) => void;
   /** 当前材质 —— 也是校准条件之一，补光低的时候它对亮度是压倒性的 */
   material: MaterialId;
+  /** 卡片背面单独设的材质（没单独设就是 undefined）—— 它和正面一样要参与条件核对 */
+  materialBack?: MaterialId;
 };
 
 async function decode(file: File): Promise<ImageBitmap> {
@@ -379,6 +381,7 @@ export function ColorPanel({
   lift,
   setLift,
   material,
+  materialBack,
 }: Props) {
   const [samples, setSamples] = useState<Sample[] | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -674,7 +677,9 @@ export function ColorPanel({
    * 得出「补光不能降」的结论，其实量的是金属的账 —— 金属漫反射几乎为零，
    * 补光 0 时纯白只有 124，纸张高得多。补光越低这条越要命，所以要说出来。
    */
-  const matMismatch = comp.calibratedMaterial !== null && comp.calibratedMaterial !== material;
+  const inUse = materialBack && materialBack !== material ? [material, materialBack] : [material];
+  const matMismatch =
+    comp.calibratedMaterial !== null && inUse.some((m) => m !== comp.calibratedMaterial);
 
   const label = targetLabel(target);
 
@@ -739,9 +744,12 @@ export function ColorPanel({
       </label>
       {matMismatch && (
         <p className="hint warn tight">
-          当前校准是在「{materialPreset(comp.calibratedMaterial as MaterialId).label}」下测的，现在的材质是「
-          {materialPreset(material).label}」—— 材质变了亮度就变了，补光越低差得越多
-          （实测金属在补光 0 时纯白只有 124，纸张高得多）。要标定就先把材质调回去。
+          当前校准是在「{materialPreset(comp.calibratedMaterial as MaterialId).label}」下测的，现在用的是
+          {inUse.length > 1
+            ? `正面「${materialPreset(material).label}」、背面「${materialPreset(materialBack!).label}」`
+            : `「${materialPreset(material).label}」`}
+          —— 材质变了亮度就变了，补光越低差得越多（实测金属在补光 0 时纯白只有 124，纸张高得多）。
+          要标定就先把材质调回去。
         </p>
       )}
       {mismatch && (
