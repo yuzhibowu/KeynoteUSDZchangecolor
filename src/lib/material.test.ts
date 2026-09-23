@@ -7,6 +7,8 @@ import {
   applyLift,
   makeCapMaterial,
   makeFaceMaterial,
+  isTuned,
+  materialPreset,
 } from './material';
 import { CARD_BACK, CARD_FRONT, materialOf } from './types';
 
@@ -91,5 +93,36 @@ describe('卡片背面单独设材质', () => {
   it('棱柱不吃这一项 —— 它没有「背面」这个概念，槽位 2 是第 3 个侧面', () => {
     const p = { modelType: 'prism' as const, material: 'paper' as const, materialBack: 'metal' as const };
     expect(materialOf(p, CARD_BACK)).toBe('paper');
+  });
+});
+
+describe('材质微调：预设只是起点', () => {
+  it('没调过就完全等于预设', () => {
+    expect(materialPreset('metal')).toEqual(materialPreset('metal', undefined));
+    expect(isTuned('metal')).toBe(false);
+  });
+
+  /** 金属在无边记里黑不隆冬的解法：金属度 1 = 漫反射归零、全靠反射环境，降下来颜色就回来 */
+  it('调金属度只动金属度，其余跟着预设', () => {
+    const t = materialPreset('metal', { metalness: 0.8 });
+    expect(t.metalness).toBeCloseTo(0.8);
+    expect(t.roughness).toBe(materialPreset('metal').roughness);
+    expect(isTuned('metal', { metalness: 0.8 })).toBe(true);
+  });
+
+  /** 玻璃掉色的解法：opacity 0.6 会把背后的白画布透上来 */
+  it('调不透明度能把玻璃从 0.6 拉回不透', () => {
+    expect(materialPreset('glass').opacity).toBe(0.6);
+    expect(materialPreset('glass', { opacity: 1 }).opacity).toBe(1);
+  });
+
+  it('粗糙度一调，端面/窄边跟着一起调 —— 同一块材料不该正面磨砂侧边镜面', () => {
+    const t = materialPreset('paper', { roughness: 0.2 });
+    expect(t.roughness).toBeCloseTo(0.2);
+    expect(t.capRoughness).toBeCloseTo(0.2);
+  });
+
+  it('把值调回预设的数，就不算「已改」', () => {
+    expect(isTuned('metal', { metalness: materialPreset('metal').metalness })).toBe(false);
   });
 });

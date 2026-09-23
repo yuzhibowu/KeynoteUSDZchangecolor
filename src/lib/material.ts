@@ -57,8 +57,53 @@ export const MATERIALS: MaterialPreset[] = [
 
 export const DEFAULT_MATERIAL: MaterialId = 'paper';
 
-export function materialPreset(id: MaterialId | undefined): MaterialPreset {
-  return MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
+/**
+ * 在预设之上微调的那几项。存在 params.materialTune 里，**按材质 id 分开存** ——
+ * 调的是「金属这种材质长什么样」，所以卡片正反两面都用金属时，调一次两面都跟着变。
+ *
+ * 为什么要可调（2026-09-23 实拍现场）：
+ *  - **金属在无边记里黑不隆冬。** 金属度 = 1 的物理含义是漫反射归零、颜色全部来自反射的环境，
+ *    而 Keynote / 无边记给 USDZ 的环境很暗（金属下纯白贴图只显示到 124，纸张是 226），
+ *    贴图深的地方就直接归黑。把金属度降到 0.7~0.85 能留回一部分漫反射，颜色就回来了，
+ *    光泽还在（业内叫「半金属」，物理不纯，但视觉上正是大家要的那个效果）。
+ *    另一条路是把补光加上去 —— 自发光是加法、逐像素跟着贴图，提黑但不糊。
+ *  - **玻璃掉色。** opacity 0.6 意味着四成画布从后面透上来，无边记画布是白的，颜色就被冲淡
+ *    （实拍截图里卡片内部能扫到 74~75 px 等间距的暗点，那是画布点阵透过来了）。
+ *    玻璃感主要靠低粗糙度 + 清漆，不靠透明，把不透明度提到 0.9~1 颜色就回来了。
+ *  - **粗糙度就是「光滑金属 / 阳极氧化」的那个旋钮**：0.05 是镜面，0.4~0.6 是磨砂、阳极氧化。
+ *    这些都写得进 USDZ。写不进的是各向异性（真拉丝那种被拉长的高光），
+ *    UsdPreviewSurface 规范里没这一项，苹果的渲染器也不认。
+ */
+export type MaterialTune = {
+  metalness?: number;
+  roughness?: number;
+  clearcoat?: number;
+  opacity?: number;
+};
+
+/** 这几项可调，其余（清漆粗糙度、折射率）跟着预设走 */
+export const TUNABLE = ['metalness', 'roughness', 'clearcoat', 'opacity'] as const;
+
+export function materialPreset(id: MaterialId | undefined, tune?: MaterialTune): MaterialPreset {
+  const base = MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
+  if (!tune) return base;
+  const r = tune.roughness;
+  return {
+    ...base,
+    metalness: tune.metalness ?? base.metalness,
+    // 粗糙度调了，端面 / 窄边跟着一起调 —— 同一块材料不该正面磨砂、侧边镜面
+    roughness: r ?? base.roughness,
+    capRoughness: r ?? base.capRoughness,
+    clearcoat: tune.clearcoat ?? base.clearcoat,
+    opacity: tune.opacity ?? base.opacity,
+  };
+}
+
+/** 这份微调是不是等于没调 —— 用来决定要不要在界面上显示「已改」 */
+export function isTuned(id: MaterialId, tune?: MaterialTune): boolean {
+  if (!tune) return false;
+  const base = MATERIALS.find((m) => m.id === id) ?? MATERIALS[0];
+  return TUNABLE.some((k) => tune[k] !== undefined && Math.abs(tune[k]! - base[k]) > 1e-6);
 }
 
 /** 把预设写到一个现成的材质上（视口里材质对象是复用的，参数变了就地改） */
@@ -72,8 +117,9 @@ export function applyMaterialPreset(
   id: MaterialId | undefined,
   cap = false,
   preview = false,
+  tune?: MaterialTune,
 ) {
-  const m = materialPreset(id);
+  const m = materialPreset(id, tune);
   const roughness = cap ? m.capRoughness : m.roughness;
   const transparent = preview && m.opacity < 1;
   if (
@@ -102,23 +148,31 @@ export function applyMaterialPreset(
  * 清漆和折射率只有它才会被 USDZExporter 写进文件（导出器里那段是
  * isMeshPhysicalMaterial 才走的）。它是 Standard 的超集，默认值下渲染完全一样。
  */
-export function makeFaceMaterial(map?: THREE.Texture | null, material?: MaterialId): THREE.MeshPhysicalMaterial {
+export function makeFaceMaterial(
+  map?: THREE.Texture | null,
+  material?: MaterialId,
+  tune?: MaterialTune,
+): THREE.MeshPhysicalMaterial {
   const mat = new THREE.MeshPhysicalMaterial({
     map: map ?? null,
     roughness: FACE_ROUGHNESS,
     metalness: METALNESS,
   });
-  applyMaterialPreset(mat, material, false);
+  applyMaterialPreset(mat, material, false, false, tune);
   return mat;
 }
 
-export function makeCapMaterial(color: THREE.ColorRepresentation, material?: MaterialId): THREE.MeshPhysicalMaterial {
+export function makeCapMaterial(
+  color: THREE.ColorRepresentation,
+  material?: MaterialId,
+  tune?: MaterialTune,
+): THREE.MeshPhysicalMaterial {
   const mat = new THREE.MeshPhysicalMaterial({
     color,
     roughness: CAP_ROUGHNESS,
     metalness: METALNESS,
   });
-  applyMaterialPreset(mat, material, true);
+  applyMaterialPreset(mat, material, true, false, tune);
   return mat;
 }
 

@@ -1,5 +1,5 @@
 import { CARD_COMP, DEFAULT_COMP, FREEFORM_COMP, type ColorComp } from './color';
-import { DEFAULT_MATERIAL, type MaterialId } from './material';
+import { DEFAULT_MATERIAL, type MaterialId, type MaterialTune } from './material';
 import { cardSection, prismSection, type Section } from './geometry';
 
 export const MAX_SIDES = 12;
@@ -161,6 +161,11 @@ export type Params = {
    */
   materialBack?: MaterialId;
   /**
+   * 在预设之上的微调，**按材质 id 分开存**（调的是「金属长什么样」，不是「这一面长什么样」）。
+   * 没调过就是 undefined，完全等同于旧行为。为什么要可调见 material.ts 的 MaterialTune。
+   */
+  materialTune?: Partial<Record<MaterialId, MaterialTune>>;
+  /**
    * 卡片「适应」：比例和圆角都跟着正面那张图走（按不透明区域算），
    * 而不是手选一个预设。开着时预设按钮和圆角滑杆都让位。
    */
@@ -313,6 +318,14 @@ export const CARD_FRONT = 0;
 export const CARD_BACK = 2;
 
 /** 某个槽位实际用哪种材质。卡片背面可以单独设，其余一律跟着 params.material */
+/** 某个材质当前的微调（没调过是 undefined） */
+export function tuneOf(
+  p: Pick<Params, 'materialTune'>,
+  id: MaterialId,
+): MaterialTune | undefined {
+  return p.materialTune?.[id];
+}
+
 export function materialOf(
   p: Pick<Params, 'modelType' | 'material' | 'materialBack'>,
   slot: number,

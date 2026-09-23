@@ -11,7 +11,7 @@ function hexToLinear(hex: string): [number, number, number] {
   return [srgbToLinear(((n >> 16) & 255) / 255), srgbToLinear(((n >> 8) & 255) / 255), srgbToLinear((n & 255) / 255)];
 }
 import type { FaceTextureStore } from './faceTexture';
-import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, type FaceState, type FaceTransform, type Params } from './types';
+import { CAP_LEFT, CAP_RIGHT, CARD_BACK, CARD_FRONT, MAX_SIDES, innerSlot, isCap, isCardEdge, materialOf, sectionOf, tuneOf, type FaceState, type FaceTransform, type Params } from './types';
 
 type ViewerState = { params: Params; faces: FaceState[]; selected: number | null };
 
@@ -333,15 +333,15 @@ export class PrismViewer {
     // 预览和导出走同一套（导出走 syncSideMaterials，那边也用 materialOf）。
     const preview = !this.exportMode;
     this.applyPreviewLights();
-    applyMaterialPreset(this.capRightMat, params.material, true, preview);
-    applyMaterialPreset(this.capLeftMat, params.material, true, preview);
+    applyMaterialPreset(this.capRightMat, params.material, true, preview, tuneOf(params, params.material));
+    applyMaterialPreset(this.capLeftMat, params.material, true, preview, tuneOf(params, params.material));
     this.applyEnv(this.capRightMat);
     this.applyEnv(this.capLeftMat);
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
       const id = materialOf(params, i);
-      applyMaterialPreset(m, id, isCardEdge(params, i), preview);
-      applyMaterialPreset(this.innerMaterials[i], params.material, false, preview);
+      applyMaterialPreset(m, id, isCardEdge(params, i), preview, tuneOf(params, id));
+      applyMaterialPreset(this.innerMaterials[i], params.material, false, preview, tuneOf(params, params.material));
       this.applyEnv(m, id);
       this.applyEnv(this.innerMaterials[i]);
       if (isCardEdge(params, i)) {
@@ -627,15 +627,15 @@ export class PrismViewer {
     // 材质预设：端面、内面、卡片窄边跟着正面的材质走；卡片背面可以单独设（materialOf）。
     // 视口和导出用同一套。
     const preview = !this.exportMode;
-    applyMaterialPreset(this.capRightMat, p.material, true, preview);
-    applyMaterialPreset(this.capLeftMat, p.material, true, preview);
+    applyMaterialPreset(this.capRightMat, p.material, true, preview, tuneOf(p, p.material));
+    applyMaterialPreset(this.capLeftMat, p.material, true, preview, tuneOf(p, p.material));
     this.applyEnv(this.capRightMat);
     this.applyEnv(this.capLeftMat);
     for (let i = 0; i < MAX_SIDES; i++) {
       const m = this.sideMaterials[i];
       const id = materialOf(p, i);
-      applyMaterialPreset(m, id, isCardEdge(p, i), preview);
-      applyMaterialPreset(this.innerMaterials[i], p.material, false, preview);
+      applyMaterialPreset(m, id, isCardEdge(p, i), preview, tuneOf(p, id));
+      applyMaterialPreset(this.innerMaterials[i], p.material, false, preview, tuneOf(p, p.material));
       this.applyEnv(m, id);
       this.applyEnv(this.innerMaterials[i]);
       // 挂当前的 map，不是 store 里那张。导出时 exportUsdz 会先把 map 换成一批全新的

@@ -4,7 +4,7 @@ import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js';
 import { DENSE_PAGES, drawChart, drawDenseChart, setChartExtra, pickCovering, EXTRA_SLOTS, type RGB } from './chart';
 import { isIdentity, solveWritten } from './color';
 import { capGeometry, cardGeometry, prismSection, sideGeometry } from './geometry';
-import { MAX_SIDES, type Params } from './types';
+import { MAX_SIDES, tuneOf, type Params } from './types';
 
 /**
  * 标定色卡直接做成「和你实际用的一模一样的棱柱」，而不是一张平板。
@@ -137,13 +137,13 @@ export async function exportChartCard(
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.wrapS = THREE.ClampToEdgeWrapping;
       tex.wrapT = THREE.ClampToEdgeWrapping;
-      const mat = makeFaceMaterial(tex, params.material);
+      const mat = makeFaceMaterial(tex, params.material, tuneOf(params, params.material));
       applyLift(mat, tex, lift, unlit);
       group.add(new THREE.Mesh(geo, mat));
       disposables.push(tex, mat, geo);
     }
     const edge = params.edgeAuto ? averageHex(canvas) : params.capColorRight;
-    const mat = makeCapMaterial(edge, params.material);
+    const mat = makeCapMaterial(edge, params.material, tuneOf(params, params.material));
     applyLift(mat, null, lift, unlit);
     if (unlit) mat.emissive.set(edge);
     group.add(new THREE.Mesh(band, mat));
@@ -156,7 +156,7 @@ export async function exportChartCard(
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
-    const mat = makeFaceMaterial(tex, params.material);
+    const mat = makeFaceMaterial(tex, params.material, tuneOf(params, params.material));
     applyLift(mat, tex, lift, unlit);
     const geo = sideGeometry(i, prismSection(sides, radius), length);
     group.add(new THREE.Mesh(geo, mat));
@@ -170,7 +170,7 @@ export async function exportChartCard(
   if (params.capMode !== 'none') {
     for (const right of [true, false]) {
       const hex = right ? params.capColorRight : params.separateCaps ? params.capColorLeft : params.capColorRight;
-      const mat = makeCapMaterial(hex, params.material);
+      const mat = makeCapMaterial(hex, params.material, tuneOf(params, params.material));
       applyLift(mat, null, lift, unlit);
       if (unlit) mat.emissive.set(hex);
       const geo = capGeometry(prismSection(sides, radius), length, right);

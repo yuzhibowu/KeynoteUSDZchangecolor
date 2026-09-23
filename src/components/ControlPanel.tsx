@@ -25,7 +25,7 @@ import {
   type TargetId,
 } from '../lib/types';
 import type { ColorComp } from '../lib/color';
-import { MATERIALS, materialPreset } from '../lib/material';
+import { MATERIALS, isTuned, materialPreset, type MaterialId, type MaterialTune } from '../lib/material';
 
 type Props = {
   params: Params;
@@ -55,6 +55,79 @@ type Props = {
   sizeText: string;
   busy: string | null;
 };
+
+
+/**
+ * 材质微调：预设只是起点，这四项可以自己拨。
+ *
+ * 2026-09-23 加的，起因是实拍发现「金属在无边记里黑不隆冬、玻璃掉色」——
+ * 那不是 bug 是物理（金属度 1 = 漫反射归零全靠反射环境，而那边环境很暗；
+ * 玻璃 opacity 0.6 把白画布透上来了）。四个死档救不了，得让人自己调。
+ * 值按材质 id 存，调的是「金属长什么样」，两面都用金属就一起变。
+ */
+function MaterialTuner({
+  id,
+  tune,
+  onChange,
+}: {
+  id: MaterialId;
+  tune?: MaterialTune;
+  onChange: (t: MaterialTune | undefined) => void;
+}) {
+  const base = materialPreset(id);
+  const cur = materialPreset(id, tune);
+  const set = (k: keyof MaterialTune, v: number) => onChange({ ...tune, [k]: v });
+  const pct = (v: number) => Math.round(v * 100);
+  return (
+    <div className="stack tight">
+      <Slider
+        label="金属度（高了会发黑：颜色全靠反射环境，而 Keynote / 无边记那边环境很暗）"
+        reset={pct(base.metalness)}
+        value={pct(cur.metalness)}
+        min={0}
+        max={100}
+        step={5}
+        suffix="%"
+        onChange={(v) => set('metalness', v / 100)}
+      />
+      <Slider
+        label="粗糙度（低了是镜面，高了是磨砂 / 阳极氧化）"
+        reset={pct(base.roughness)}
+        value={pct(cur.roughness)}
+        min={0}
+        max={100}
+        step={5}
+        suffix="%"
+        onChange={(v) => set('roughness', v / 100)}
+      />
+      <Slider
+        label="清漆（表面那层透明漆，给塑料和玻璃的光泽）"
+        reset={pct(base.clearcoat)}
+        value={pct(cur.clearcoat)}
+        min={0}
+        max={100}
+        step={5}
+        suffix="%"
+        onChange={(v) => set('clearcoat', v / 100)}
+      />
+      <Slider
+        label="不透明度（低了背后的画布会透上来，颜色被冲淡）"
+        reset={pct(base.opacity)}
+        value={pct(cur.opacity)}
+        min={20}
+        max={100}
+        step={5}
+        suffix="%"
+        onChange={(v) => set('opacity', v / 100)}
+      />
+      {isTuned(id, tune) && (
+        <button className="btn" type="button" onClick={() => onChange(undefined)}>
+          恢复「{base.label}」默认
+        </button>
+      )}
+    </div>
+  );
+}
 
 export function ControlPanel({
   params,
@@ -462,6 +535,11 @@ export function ControlPanel({
                 </button>
               ))}
             </div>
+            <MaterialTuner
+              id={params.material}
+              tune={params.materialTune?.[params.material]}
+              onChange={(t) => patch({ materialTune: { ...params.materialTune, [params.material]: t } })}
+            />
             {isCard && params.materialBack && (
               <>
                 <span className="row-label">背面</span>
@@ -478,6 +556,15 @@ export function ControlPanel({
                     </button>
                   ))}
                 </div>
+                {params.materialBack !== params.material && (
+                  <MaterialTuner
+                    id={params.materialBack}
+                    tune={params.materialTune?.[params.materialBack]}
+                    onChange={(t) =>
+                      patch({ materialTune: { ...params.materialTune, [params.materialBack!]: t } })
+                    }
+                  />
+                )}
               </>
             )}
             {isCard && (
@@ -498,7 +585,14 @@ export function ControlPanel({
                 : params.materialBack && params.materialBack !== params.material
                   ? `正面「${materialPreset(params.material).label}」、背面「${materialPreset(params.materialBack).label}」。` +
                     '颜色校准是按「纸张」标的，用了别的材质那一面颜色会偏一点，补光越低偏得越多。'
-                  : '颜色校准是按「纸张」标的；实测金属材质导出后 Keynote 里色准依然准。补光越高，质感越看不出来。'}
+                  : '颜色校准是按「纸张」标的，换别的材质颜色会偏一点。'}
+            </p>
+            <p className="hint tight">
+              预设只是起点，上面四项可以自己拨。<b>金属发黑</b>就把金属度降到 70~85%（金属度 100%
+              等于漫反射归零、颜色全靠反射环境，而 Keynote / 无边记那边环境很暗），或者把补光加上去。
+              <b>玻璃掉色</b>就把不透明度提到 90% 以上（低了背后的画布会透上来把颜色冲淡），
+              玻璃感主要靠低粗糙度 + 清漆，不靠透明。粗糙度就是「镜面 ↔ 阳极氧化」那个旋钮。
+              这些都写得进 USDZ；写不进的是各向异性（拉丝金属那种被拉长的高光），格式里没这一项。
             </p>
           </div>
         </section>

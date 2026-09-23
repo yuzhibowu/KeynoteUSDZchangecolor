@@ -237,6 +237,8 @@ button, input, select { font: inherit; color: inherit; }
 .side-body h2 { font-size: 14px; font-weight: 780; margin: 0 0 9px; }
 
 .stack { display: flex; flex-direction: column; gap: 9px; }
+/* 材质微调那一组滑块：挨得紧一点，视觉上从属于上面那排材质按钮 */
+.stack.tight { gap: 6px; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; min-width: 0; }
 
