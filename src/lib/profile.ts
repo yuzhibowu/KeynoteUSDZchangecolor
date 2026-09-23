@@ -9,7 +9,7 @@ import { CURVE_K } from './chart';
 import { DEFAULT_COMP, type ColorComp, type Triple } from './color';
 
 const FORMAT = 'prism-usdz-color-profile';
-const VERSION = 2;
+const VERSION = 3;
 
 export type ProfileFile = {
   format: string;
@@ -31,6 +31,11 @@ export type ProfileFile = {
   lift: number | null;
   /** 同上：「关掉灯光」开着还是关着 */
   unlit: boolean | null;
+  /**
+   * 同上：在哪种材质下测的。v3 起有。补光低的时候材质对亮度是压倒性的
+   * （金属漫反射几乎为零，补光 0 时纯白只有 124，纸张则高得多），不记下来就会拿错档标错结论。
+   */
+  material?: string | null;
   matrix: number[];
   offset: number[];
   curve: number[][];
@@ -48,6 +53,7 @@ export function serializeProfile(c: ColorComp, target?: string, shape?: string):
     calibratedAt: c.calibratedAt,
     lift: c.calibratedLift,
     unlit: c.calibratedUnlit,
+    material: c.calibratedMaterial,
     matrix: c.matrix ?? [],
     offset: c.offset ?? [0, 0, 0],
     curve: c.curve ?? [],
@@ -61,6 +67,8 @@ export type ParseResult =
       comp: Partial<ColorComp>;
       lift: number | null;
       unlit: boolean | null;
+      /** 这份档是在哪种材质下测的；v2 以前的老档没有，是 null */
+      material: string | null;
       sampleCount: number;
       /** 这份档标的是哪个目标；v1 的老档没有这个字段，是 null */
       target: string | null;
@@ -133,6 +141,7 @@ export function parseProfile(text: string): ParseResult {
     shape: typeof d.shape === 'string' ? d.shape : null,
     lift: typeof d.lift === 'number' ? d.lift : null,
     unlit: typeof d.unlit === 'boolean' ? d.unlit : null,
+    material: typeof d.material === 'string' ? d.material : null,
     comp: {
       on: true,
       matrix: d.matrix as number[],
@@ -142,6 +151,8 @@ export function parseProfile(text: string): ParseResult {
       calibratedAt: typeof d.calibratedAt === 'string' ? d.calibratedAt : '导入的档',
       calibratedLift: typeof d.lift === 'number' ? d.lift : DEFAULT_COMP.calibratedLift,
       calibratedUnlit: typeof d.unlit === 'boolean' ? d.unlit : DEFAULT_COMP.calibratedUnlit,
+      // 老档没记材质，按「不知道」处理 —— 猜一个 'paper' 会凭空造出一条假的前提
+      calibratedMaterial: typeof d.material === 'string' ? d.material : null,
     },
   };
 }

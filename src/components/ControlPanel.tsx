@@ -202,6 +202,7 @@ export function ControlPanel({
             setUnlit={(v) => patch({ emissiveExport: v })}
             lift={params.emissiveLift ?? 0}
             setLift={(v) => patch({ emissiveLift: v })}
+            material={params.material}
           />
           <section className="export-block">
             <button className="btn-primary" disabled={!recolorReady} onClick={onExportRecolor}>
@@ -595,6 +596,7 @@ export function ControlPanel({
           setUnlit={(v) => patch({ emissiveExport: v })}
           lift={params.emissiveLift ?? 0}
           setLift={(v) => patch({ emissiveLift: v })}
+          material={params.material}
         />
 
         {/* 不要标题、不要上面那条分隔线 —— 到这儿已经是面板最底下了 */}

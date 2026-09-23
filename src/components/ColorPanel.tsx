@@ -12,6 +12,7 @@ import { parseProfile, profileFileName, serializeProfile } from '../lib/profile'
 import type { FaceTextureStore } from '../lib/faceTexture';
 import { defaultProfiles, profileKey, TARGETS, targetLabel, type ModelType, type TargetId } from '../lib/types';
 import { COVER_RADIUS, NEAR_ENOUGH, coverageOf, coverageVerdict, type CoverageReport } from '../lib/coverage';
+import { materialPreset, type MaterialId } from '../lib/material';
 
 type Props = {
   comp: ColorComp;
@@ -32,6 +33,8 @@ type Props = {
   setUnlit: (v: boolean) => void;
   lift: number;
   setLift: (v: number) => void;
+  /** 当前材质 —— 也是校准条件之一，补光低的时候它对亮度是压倒性的 */
+  material: MaterialId;
 };
 
 async function decode(file: File): Promise<ImageBitmap> {
@@ -375,6 +378,7 @@ export function ColorPanel({
   setUnlit,
   lift,
   setLift,
+  material,
 }: Props) {
   const [samples, setSamples] = useState<Sample[] | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -440,6 +444,7 @@ export function ColorPanel({
       calibratedAt: label,
       calibratedUnlit: unlit,
       calibratedLift: lift,
+      calibratedMaterial: material,
     });
     // 纯白能到多少决定了颜色上限。但上限未必能靠补光一直抬 —— Keynote 的色调曲线
     // 有个硬顶，到了之后再加补光白点也不动，只会白白压平立体感。所以要和上一次比。
@@ -655,6 +660,12 @@ export function ColorPanel({
   const mismatch =
     (comp.calibratedUnlit !== null && comp.calibratedUnlit !== unlit) ||
     (comp.calibratedLift !== null && Math.abs(comp.calibratedLift - lift) > 0.02);
+  /**
+   * 材质对不上单独提示。2026-09-23 的教训：在金属材质下量了三轮补光，
+   * 得出「补光不能降」的结论，其实量的是金属的账 —— 金属漫反射几乎为零，
+   * 补光 0 时纯白只有 124，纸张高得多。补光越低这条越要命，所以要说出来。
+   */
+  const matMismatch = comp.calibratedMaterial !== null && comp.calibratedMaterial !== material;
 
   const label = targetLabel(target);
 
@@ -717,6 +728,13 @@ export function ColorPanel({
         <input type="checkbox" checked={unlit} onChange={(e) => setUnlit(e.target.checked)} />
         <span>完全关掉灯光（补光拉满）</span>
       </label>
+      {matMismatch && (
+        <p className="hint warn tight">
+          当前校准是在「{materialPreset(comp.calibratedMaterial as MaterialId).label}」下测的，现在的材质是「
+          {materialPreset(material).label}」—— 材质变了亮度就变了，补光越低差得越多
+          （实测金属在补光 0 时纯白只有 124，纸张高得多）。要标定就先把材质调回去。
+        </p>
+      )}
       {mismatch && (
         <p className="hint warn tight">
           当前校准是在「补光 {Math.round((comp.calibratedLift ?? 0) * 100)}%、灯光

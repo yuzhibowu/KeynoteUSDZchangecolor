@@ -23,6 +23,7 @@ function calibrate(extra: Sample[] = []): ColorComp {
     calibratedAt: 'test',
     samples: samples.map((s) => ({ ref: s.ref as Triple, got: s.got as Triple })),
     calibratedUnlit: false,
+    calibratedMaterial: 'paper',
     calibratedLift: 1,
   };
 }

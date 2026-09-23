@@ -175,6 +175,26 @@ describe('校准档要记住自己属于哪个目标', () => {
     if (r.ok) expect(r.target).toBe(null);
   });
 
+  it('材质要进档，也要读得回来 —— 2026-09-23 在金属下量了三轮补光才发现档里没记这个', () => {
+    const c = { ...DEFAULT_COMP, calibratedMaterial: 'metal' };
+    const r = parseProfile(JSON.stringify(serializeProfile(c, 'freeform', 'prism')));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.material).toBe('metal');
+    expect(r.comp.calibratedMaterial).toBe('metal');
+  });
+
+  it('老档没记材质：按「不知道」处理，不许猜一个出来', () => {
+    const raw = JSON.parse(JSON.stringify(serializeProfile(DEFAULT_COMP, 'keynote', 'prism')));
+    delete raw.material;
+    raw.version = 2;
+    const r = parseProfile(JSON.stringify(raw));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.material).toBe(null);
+    expect(r.comp.calibratedMaterial).toBe(null);
+  });
+
   it('文件名带上目标 —— 一份无边记的档不该叫 keynote-', () => {
     expect(profileFileName(DEFAULT_COMP, 'freeform').startsWith('freeform-')).toBe(true);
     expect(profileFileName(DEFAULT_COMP, 'keynote').startsWith('keynote-')).toBe(true);

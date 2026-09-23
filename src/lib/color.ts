@@ -28,6 +28,16 @@ export type ColorComp = {
   calibratedUnlit: boolean | null;
   /** 这份校准是在多少补光下测的 —— 补光一变，整条响应曲线就变了，必须重测 */
   calibratedLift: number | null;
+  /**
+   * 这份校准是在哪种材质下测的。
+   *
+   * 2026-09-23 栽在这儿：在无边记上量补光该开多少，三轮（0 / 25% / 40%）全是在**金属**下测的，
+   * 而金属的漫反射几乎为零、颜色全靠反射环境，无边记的环境又暗 —— 补光 0 时纯白只有 124，
+   * 于是得出「补光不能降」的错误结论。工具当时一声不吭，因为档里只记了补光和灯光开关。
+   * 补光低的时候材质对亮度的影响是压倒性的（补光高时自发光占大头，材质反而无所谓，
+   * 这就是 Keynote 那边一直没暴露的原因）。老档没有这一项，是 null，按「不知道」处理，不报警。
+   */
+  calibratedMaterial: string | null;
 };
 
 /**
@@ -89,6 +99,7 @@ export const DEFAULT_COMP: ColorComp = {
   calibratedAt: BUILT_IN_PROFILE.label,
   samples: BUILT_IN_PROFILE.samples,
   calibratedUnlit: false,
+  calibratedMaterial: 'paper',
   // 补光 50%，不是拉满。三档实测下来纯白**始终是 244**（100%/75%/50% 纹丝不动），
   // 说明 244 是 Keynote 色调曲线的硬顶，跟补光无关 —— 那就没必要多给自发光。
   // 自发光不随角度变化，加得越多明暗越平，砍掉一半等于白赚这部分立体感。
@@ -129,6 +140,7 @@ export const CARD_COMP: ColorComp = {
   samples: BUILT_IN_CARD_PROFILE.samples,
   calibratedUnlit: false,
   calibratedLift: 0.5,
+  calibratedMaterial: 'paper',
 };
 
 /**
@@ -206,6 +218,7 @@ export const FREEFORM_COMP: ColorComp = {
   samples: FREEFORM_PROFILE.samples,
   calibratedUnlit: false,
   calibratedLift: 0.5,
+  calibratedMaterial: 'paper',
 };
 
 /**
@@ -221,6 +234,7 @@ export const BLANK_COMP: ColorComp = {
   samples: null,
   calibratedUnlit: null,
   calibratedLift: null,
+  calibratedMaterial: null,
 };
 
 export function isIdentity(c: ColorComp): boolean {
