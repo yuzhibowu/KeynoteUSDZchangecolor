@@ -10,6 +10,8 @@ export type MotionSidebar = {
   extraNames: string[];
   loaded: boolean;
   motion: MotionParams;
+  /** 当前预览模型自带动画的完整周期 */
+  sourceDuration?: number;
   patch: (p: Partial<MotionParams>) => void;
   drawing: boolean;
   setDrawing: (v: boolean) => void;
@@ -38,8 +40,9 @@ export type MotionSidebar = {
  * 参数故意少：做 PPT 的人要的是「轻一点 / 明显一点」，不是「幅度 1.5%、微旋 1.5°」。
  * 漂浮本身就包含上下位移和两个轴的微倾，不让用户自己拼。
  */
-export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawing, setDrawing, background, setBackground, zoom, setZoom, onPick, onExport, exportBusy, video }: MotionSidebar) {
+export function MotionPanel({ fileName, extraNames, loaded, motion, sourceDuration, patch, drawing, setDrawing, background, setBackground, zoom, setZoom, onPick, onExport, exportBusy, video }: MotionSidebar) {
   const input = useRef<HTMLInputElement>(null);
+  const videoSeconds = Math.min(motion.seconds, 60);
   return (
     <>
       <section className="bare">
@@ -76,6 +79,9 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
       <section>
         <h2>循环长度</h2>
         <div className="stack">
+          {sourceDuration ? (
+            <p className="hint">跟随原 USDZ 动画：{Number(sourceDuration.toFixed(2))} 秒一圈。整体自转也在这一圈内完成；批量导出时，每个模型各用自己的原动画周期。</p>
+          ) : (
           <div className="opts five">
             {LOOP_SECONDS.map((s) => (
               <button
@@ -89,8 +95,10 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
               </button>
             ))}
           </div>
+          )}
           <p className="hint">
-            所有动作都在这一圈里：漂浮末尾平滑接回开头，自转和轨迹要转整数圈。
+            所有动作都在这一圈里；
+            漂浮末尾平滑接回开头，自转和轨迹要转整数圈。
             越长越看不出重复、一圈用时的档位越细。5 / 10 分钟是给「播放一次」用的：入场只演一次，
             漂到结束，一页讲完都不会重演；按 {bakeFps(motion.seconds)} fps 烘，文件会大几 MB。
             导出视频的时长也是它，最多取前 60 秒。
@@ -229,6 +237,9 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
           </div>
           {motion.spin !== 'none' && (
             <>
+              {sourceDuration ? (
+                <p className="hint">整体一圈用时 {Number(sourceDuration.toFixed(2))} 秒，与小卡片的原动画同步。</p>
+              ) : (
               <Slider
                 label="一圈用时"
                 value={effectiveSpinLap(motion)}
@@ -241,6 +252,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
                 reset={snapLap(12, motion.seconds)}
                 onChange={(v) => patch({ spinLap: snapLap(v, motion.seconds) })}
               />
+              )}
               <div className="opts">
                 <button type="button" className="opt" aria-pressed={motion.spinClockwise} onClick={() => patch({ spinClockwise: true })}>
                   顺时针
@@ -251,7 +263,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
               </div>
               <p className="hint">
                 Y 轴是竖着的，像转台；X 轴前后翻，Z 轴在屏幕里打转。一个循环里必须转整数圈，接缝才闭合，
-                所以一圈用时只能是循环长度除以整数 —— 想要更细的档位，把下面的循环长度拉到 60 秒。
+                {sourceDuration ? '这里跟随原动画，每周期整体转一圈。' : '所以一圈用时只能是循环长度除以整数 —— 想要更细的档位，把循环长度调到 60 秒。'}
               </p>
             </>
           )}
@@ -413,7 +425,7 @@ export function MotionPanel({ fileName, extraNames, loaded, motion, patch, drawi
             ))}
           </div>
           <p className="hint">
-            透明背景，时长就是循环长度（{Math.min(motion.seconds, 60)} 秒，{Math.min(motion.seconds, 60) * video.fps} 帧），用当前的视角。
+            透明背景，时长就是循环长度（{Number(videoSeconds.toFixed(2))} 秒，{Math.round(videoSeconds * video.fps)} 帧），用当前的视角。
             MOV 是 ProRes 4444 带 alpha，直接拖进 Keynote 或视频画布。全在浏览器里算，第一次要先下 32 MB 的编码器。
           </p>
           {video.busy ? (

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MOTION, bakeMotion, effectiveLap, effectiveSpinLap, pathAt, poseAt, randomPhase, spinAt } from './motion';
+import { DEFAULT_MOTION, bakeMotion, effectiveLap, effectiveSpinLap, pathAt, poseAt, randomPhase, spinAt, synchronizeMotion } from './motion';
+
+describe('已有动画决定整体周期', () => {
+  it('整体旋转一圈恰好跟随小卡片的完整周期', () => {
+    const p = synchronizeMotion({ ...DEFAULT_MOTION, spin: 'y', spinLap: 12 }, 4);
+    expect(p.seconds).toBe(4);
+    expect(effectiveSpinLap(p)).toBe(4);
+    expect(spinAt(p, 4)).toBe(-360);
+    expect(bakeMotion(p, 1, p.seconds, 60)).toHaveLength(241);
+  });
+  it('静态模型仍用菜单选定的时长', () => {
+    expect(synchronizeMotion(DEFAULT_MOTION)).toBe(DEFAULT_MOTION);
+  });
+});
 
 describe('poseAt', () => {
   it('幅度 0 全是零', () => {

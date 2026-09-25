@@ -9,7 +9,7 @@ import { USDCParser } from '../vendor/usd/USDCParser.js';
  * 把运动写进 usdz。
  *
  * 做法是在原模型外面**套一层新的 Xform 父节点**，动画只写在这一层：
- * 一个 `xformOp:translate` 加一个 `xformOp:rotateXYZ`，都是不带后缀的名字 ——
+ * 一个 `xformOp:translate` 加一个 `xformOp:orient`，都是不带后缀的名字 ——
  * 带后缀的 xformOp 苹果会整层放弃（见 usdaCompat.ts 的实测记录），
  * 所以不能用 `xformOp:translate:motion` 那种写法，也别指望 `!invert!` 的 pivot 语法。
  * 旋转中心的补偿直接折进每帧的平移里：T = d + c − R·c。
@@ -24,6 +24,8 @@ export type ModelSpace = {
   groupMatrix: number[];
   min: [number, number, number];
   max: [number, number, number];
+  /** 原模型动画的完整周期（秒）；没有原动画时省略 */
+  animationDuration?: number;
 };
 
 export type MotionReport = {
@@ -34,9 +36,9 @@ export type MotionReport = {
   wrapper: string;
   /** 被套住的原根节点 */
   root: string;
-  /** 原文件根节点上自带的动画被替换掉了 */
+  /** 再次处理本工具的输出时，上一次添加的整体动画被更新 */
   replacedAnimation: boolean;
-  /** 原文件更深处还有动画，会和新加的叠在一起 */
+  /** 原文件保留下来的动画属性数，会和新加的叠在一起 */
   nestedAnimation: number;
   /** 扩大了多少个 extent */
   extents: number;
@@ -325,8 +327,11 @@ function stripOwnOps(prim: string): string {
 export function neutralizeOwnWrapper(prim: string): string | null {
   const r = ownRange(prim);
   if (!r) return null;
-  // 第一个子节点就得是 Start
-  if (!/^[ \t]+def Xform "Start(?:_\d+)?"/.test(prim.slice(r.ownEnd))) return null;
+  const marked = /\bcustom string prismMotionWrapper = "1"/.test(prim.slice(r.open, r.ownEnd));
+  // 旧文件靠 Start 识别；新文件用明确标记，也兼容没有 Start 的包装层。
+  if (!/^[ \t]+def Xform "Start(?:_\d+)?"/.test(prim.slice(r.ownEnd))) {
+    return marked ? stripOwnOps(prim) : null;
+  }
   const startAt = r.ownEnd;
   const startPrim = findTopPrimAt(prim, startAt);
   if (!startPrim) return null;
@@ -384,6 +389,8 @@ export type WrapOptions = {
    */
   start?: StaticPose;
   fps: number;
+  /** 原文件的每秒时间码；保留原动画的播放速度 */
+  timeCodesPerSecond?: number;
   /** 整段运动扫过的范围（文件坐标）。给了就放一个看不见的占位盒，让 Keynote 按它定视角 */
   bounds?: { min: number[]; max: number[] };
 };
@@ -426,7 +433,7 @@ export function boundsPrim(bounds: { min: number[]; max: number[] }, name = 'Mot
  * 默认值，不写就是原大原位，一开播跳到第 0 帧 —— 「长出」会先看到模型缩没再长出来。
  */
 function motionOps(opts: WrapOptions, indent: string): string {
-  const ts = (rows: number[][]) => `{${rows.map((v, i) => `${i}: ${vec(v)}`).join(', ')}}`;
+  const ts = (rows: number[][]) => `{${rows.map((v, i) => `${num(i * (opts.timeCodesPerSecond ?? opts.fps) / opts.fps)}: ${vec(v)}`).join(', ')}}`;
   const order = ['xformOp:translate', 'xformOp:orient'];
   const lines = [
     `${indent}double3 xformOp:translate = ${vec(opts.translate[0])}`,
@@ -488,10 +495,10 @@ export function wrapWithMotion(
   let wrapper = 'Motion';
   for (let n = 1; findTopPrim(usda, wrapper); n++) wrapper = `Motion_${n}`;
 
-  // 是我们自己套过的：动画层和起始姿态层一起清掉；别人的根节点只去它自己那层的动画
+  // 再次处理本工具的输出时，更新旧整体动画；原模型的根节点和子节点动画全部保留。
   const primText = usda.slice(prim.start, prim.end);
   const ours = neutralizeOwnWrapper(primText);
-  const own = ours !== null ? { text: ours, stripped: true } : stripOwnAnimation(primText);
+  const own = ours !== null ? { text: ours, stripped: true } : { text: primText, stripped: false };
   const nestedAnimation = (own.text.match(/\.timeSamples\s*=/g) ?? []).length;
 
   // 绝对路径跟着搬家：</Root/...> → </Motion/Root/...>（有起始姿态层就是 </Motion/Start/Root/...>）
@@ -509,16 +516,20 @@ ${inner}
   }
 
   const frames = opts.translate.length - 1;
+  const timeCodesPerSecond = opts.timeCodesPerSecond ?? Number(/timeCodesPerSecond\s*=\s*([\d.]+)/.exec(headerText)?.[1] ?? /framesPerSecond\s*=\s*([\d.]+)/.exec(headerText)?.[1] ?? opts.fps);
+  if (!Number.isFinite(timeCodesPerSecond) || timeCodesPerSecond <= 0) throw new Error('原文件的时间码频率无效');
+  const timedOpts = { ...opts, timeCodesPerSecond };
   const wrapped = `def Xform "${wrapper}"
 {
-${motionOps(opts, '\t')}
+	custom string prismMotionWrapper = "1"
+${motionOps(timedOpts, '\t')}
 
 ${inner}
 }` + (opts.bounds ? `\n\n${boundsPrim(opts.bounds)}` : '');
 
-  headerText = setHeaderField(headerText, 'timeCodesPerSecond', String(opts.fps));
+  headerText = setHeaderField(headerText, 'timeCodesPerSecond', String(timeCodesPerSecond));
   headerText = setHeaderField(headerText, 'framesPerSecond', String(opts.fps));
-  headerText = setHeaderField(headerText, 'endTimeCode', String(frames));
+  headerText = setHeaderField(headerText, 'endTimeCode', num(frames * timeCodesPerSecond / opts.fps));
   headerText = setHeaderField(headerText, 'startTimeCode', '0');
   headerText = setHeaderField(headerText, 'defaultPrim', `"${wrapper}"`);
 
@@ -548,6 +559,7 @@ export type BinaryRootInfo = {
   metersPerUnit: number;
   /** 里面已有的动画 op 数 */
   animatedOps: number;
+  timeCodesPerSecond?: number;
 };
 
 export function readBinaryRoot(data: Uint8Array): BinaryRootInfo {
@@ -570,11 +582,14 @@ export function readBinaryRoot(data: Uint8Array): BinaryRootInfo {
     upAxis: (root.upAxis as string | undefined) ?? 'Y',
     metersPerUnit: (root.metersPerUnit as number | undefined) ?? 1,
     animatedOps,
+    timeCodesPerSecond: (root.timeCodesPerSecond as number | undefined) ?? (root.framesPerSecond as number | undefined),
   };
 }
 
 export function binaryRootLayer(info: BinaryRootInfo, usdcPath: string, opts: WrapOptions): string {
   const frames = opts.translate.length - 1;
+  const timeCodesPerSecond = info.timeCodesPerSecond ?? opts.fps;
+  const timedOpts = { ...opts, timeCodesPerSecond };
   let inner = `def "${info.defaultPrim}" (
 \tprepend references = @./${usdcPath}@</${info.defaultPrim}>
 )
@@ -594,14 +609,14 @@ ${indentBlock(inner)}
 	upAxis = "${info.upAxis}"
 	metersPerUnit = ${num(info.metersPerUnit)}
 	startTimeCode = 0
-	endTimeCode = ${frames}
+	endTimeCode = ${num(frames * timeCodesPerSecond / opts.fps)}
 	framesPerSecond = ${opts.fps}
-	timeCodesPerSecond = ${opts.fps}
+	timeCodesPerSecond = ${timeCodesPerSecond}
 )
 
 def Xform "Motion"
 {
-${motionOps(opts, '\t')}
+${motionOps(timedOpts, '\t')}
 
 ${indentBlock(inner)}
 }

@@ -6,7 +6,7 @@ import { CheckPane } from './components/CheckPane';
 import { checkUsdz, type CheckReport } from './lib/check';
 import { DEFAULT_SLIM, slimUsdz, type SlimOptions, type SlimReport } from './lib/slim';
 import { MotionPane, PHASE_STEP, type FrameRenderer } from './components/MotionPane';
-import { bakeFps, loadMotion, saveMotion, type MotionParams } from './lib/motion';
+import { bakeFps, loadMotion, saveMotion, synchronizeMotion, type MotionParams } from './lib/motion';
 import { addMotionToUsdz, type ModelSpace } from './lib/motionExport';
 import { measureUsdz } from './lib/usdzScene';
 import { normalizeUsdzForLoader } from './lib/recolor';
@@ -147,6 +147,7 @@ export default function App() {
   const [motionSpaces, setMotionSpaces] = useState<(ModelSpace | null)[]>([]);
   const motionSrc = motionFiles[0] ?? null;
   const motionSpace = motionSpaces[0] ?? null;
+  const effectiveMotion = synchronizeMotion(motion, motionSpace?.animationDuration);
   const [motionBusy, setMotionBusy] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
   // 导视频：帧从视口抓，编码在浏览器里跑
@@ -692,16 +693,17 @@ export default function App() {
     try {
       const outName = (n: string) => n.replace(/\.usdz$/i, '') + '-加动效.usdz';
       if (motionFiles.length === 1) {
-        const { bytes, report } = addMotionToUsdz(motionSrc.buf, motion, motionSpace, motion.seconds, bakeFps(motion.seconds));
+        const params = synchronizeMotion(motion, motionSpace.animationDuration);
+        const { bytes, report } = addMotionToUsdz(motionSrc.buf, params, motionSpace, params.seconds, bakeFps(params.seconds));
         const name = outName(motionSrc.name);
         const blob = new Blob([bytes as unknown as BlobPart], { type: 'model/vnd.usdz+zip' });
         download(blob, name);
         setLastFile({ blob, name });
         const notes = [
-          `${report.seconds} 秒 ${report.frames} 帧（${report.fps} fps）`,
+          `${Number(report.seconds.toFixed(2))} 秒 ${report.frames} 帧（${report.fps} fps）`,
           report.binaryRoot ? '原文件是二进制场景，已另写一层文本图层把它引用进来' : null,
-          report.replacedAnimation ? '原文件自带的动画已替换' : null,
-          report.nestedAnimation ? `原文件深处还有 ${report.nestedAnimation} 段动画会叠加` : null,
+          report.replacedAnimation ? '上次添加的整体动画已更新' : null,
+          report.nestedAnimation ? `原文件的 ${report.nestedAnimation} 项动画已保留并叠加` : null,
         ].filter(Boolean);
         setStatus(`已存到「下载」文件夹 · ${name} · ${formatBytes(blob.size)} · ${notes.join(' · ')}`);
         return;
@@ -715,8 +717,8 @@ export default function App() {
         await yieldToBrowser();
         try {
           const space = motionSpaces[i] ?? (await measureUsdz(normalizeUsdzForLoader(all[i].buf.slice(0))));
-          const params = { ...motion, phase: motion.phase + i * PHASE_STEP };
-          files[outName(all[i].name)] = addMotionToUsdz(all[i].buf, params, space, motion.seconds, bakeFps(motion.seconds)).bytes;
+          const params = synchronizeMotion({ ...motion, phase: motion.phase + i * PHASE_STEP }, space.animationDuration);
+          files[outName(all[i].name)] = addMotionToUsdz(all[i].buf, params, space, params.seconds, bakeFps(params.seconds)).bytes;
         } catch (e) {
           failed.push(`${all[i].name}（${e instanceof Error ? e.message : String(e)}）`);
         }
@@ -748,7 +750,7 @@ export default function App() {
       const base = safeBaseName(motionSrc.name.replace(/\.usdz$/i, '') + '-加动效');
       try {
         // 几分钟的长循环是给 Keynote 播放一次用的，视频最多导前 60 秒
-        const videoSeconds = Math.min(motion.seconds, 60);
+        const videoSeconds = Math.min(effectiveMotion.seconds, 60);
         const total = validateExport({ width: size.width, height: size.height, fps: videoFps, seconds: videoSeconds }, fr.maxTextureSize);
         setVideoBusy(`正在渲染 0 / ${total} 帧`);
         setDrawing(false);
@@ -785,7 +787,7 @@ export default function App() {
         videoAbort.current = null;
       }
     },
-    [motionSrc, motionSpace, motion.seconds, videoSize, videoFps],
+    [motionSrc, motionSpace, effectiveMotion.seconds, videoSize, videoFps],
   );
 
   const exportRecolor = useCallback(() => {
@@ -1035,7 +1037,8 @@ export default function App() {
           fileName: motionSrc?.name ?? null,
           extraNames: motionFiles.slice(1).map((x) => x.name),
           loaded: !!motionSpace,
-          motion,
+          motion: effectiveMotion,
+          sourceDuration: motionSpace?.animationDuration,
           patch: patchMotion,
           drawing,
           setDrawing,

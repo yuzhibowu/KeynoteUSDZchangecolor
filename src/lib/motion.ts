@@ -120,6 +120,12 @@ export const DEFAULT_MOTION: MotionParams = {
   seconds: 30,
 };
 
+/** 有原动画时，整体动作以它的完整周期为准；整体自转每周期恰好一圈。 */
+export function synchronizeMotion(p: MotionParams, sourceDuration?: number): MotionParams {
+  if (sourceDuration === undefined || !Number.isFinite(sourceDuration) || sourceDuration <= 0) return p;
+  return { ...p, seconds: sourceDuration, spinLap: sourceDuration };
+}
+
 /** 一个瞬间的姿态。位移和 radius 同单位，旋转是度，缩放是倍数（1 = 原大） */
 export type Pose = {
   position: [number, number, number];

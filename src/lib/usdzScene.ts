@@ -28,6 +28,7 @@ export async function measureUsdz(buf: ArrayBuffer): Promise<{
   groupMatrix: number[];
   min: [number, number, number];
   max: [number, number, number];
+  animationDuration?: number;
 }> {
   const obj = await loadUsdz(buf);
   obj.updateMatrix();
@@ -36,6 +37,7 @@ export async function measureUsdz(buf: ArrayBuffer): Promise<{
     groupMatrix: obj.matrix.toArray(),
     min: [box.min.x, box.min.y, box.min.z],
     max: [box.max.x, box.max.y, box.max.z],
+    animationDuration: Math.max(0, ...obj.animations.map((clip) => clip.duration)) || undefined,
   };
 }
 

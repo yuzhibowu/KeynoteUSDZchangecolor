@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { normalizeUsdzForLoader } from '../lib/recolor';
 import { frameCamera, loadUsdz, makeScene } from '../lib/usdzScene';
-import { bakeMotion, motionReach, pathAt, poseAt, effectiveLap, type MotionParams } from '../lib/motion';
+import { bakeMotion, motionReach, pathAt, poseAt, effectiveLap, synchronizeMotion, type MotionParams } from '../lib/motion';
 import { FRAME_MEMORY_LIMIT, checkCancelled, waitForExport } from '../lib/videoExport';
 import type { Pt } from '../lib/drawnPath';
 import type { ModelSpace } from '../lib/motionExport';
@@ -117,20 +117,35 @@ function MotionTile({
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const radius = Math.max(1e-4, size.length() / 2);
+      const animationDuration = Math.max(0, ...obj.animations.map((clip) => clip.duration)) || undefined;
       const space: ModelSpace = {
         groupMatrix,
         min: [box.min.x, box.min.y, box.min.z],
         max: [box.max.x, box.max.y, box.max.z],
+        animationDuration,
       };
+      const currentMotion = () => synchronizeMotion(motionRef.current, animationDuration);
 
       part = makeScene(host, { transparent: true });
       part.renderer.setClearColor(new THREE.Color(bgRef.current), 1);
       rendererRef.current = part.renderer;
-      // 旋转轴要在包围盒中心 —— 第三方模型的原点经常在脚底或某个角上
-      obj.position.sub(center);
+      // 居中作用在模型外层；原模型根节点自己的位移动画仍交给它自己播放。
+      const centered = new THREE.Group();
+      centered.position.copy(center).negate();
+      centered.add(obj);
       const mover = new THREE.Group();
-      mover.add(obj);
+      mover.add(centered);
       part.pivot.add(mover);
+      const clips = obj.animations.filter((clip) => clip.duration > 0).map((clip) => clip.clone());
+      const mixer = clips.length ? new THREE.AnimationMixer(obj) : null;
+      for (const clip of clips) mixer!.clipAction(clip).setLoop(THREE.LoopRepeat, Infinity).play();
+      const applyOriginalAnimation = (t: number) => {
+        if (!mixer) return;
+        const cycle = currentMotion().seconds;
+        // 原动画和整体动作共用原模型的完整周期，到终点一起重播。
+        for (const clip of clips) clip.duration = cycle;
+        mixer.setTime(((t % cycle) + cycle) % cycle);
+      };
 
       // 路径线：预设轨迹画一圈，手绘画那一笔。挂在 pivot 下，跟着视角转
       const lineGeo = new THREE.BufferGeometry();
@@ -143,7 +158,7 @@ function MotionTile({
         line.visible = pts.length > 1;
       };
       const refreshLine = () => {
-        const m = motionRef.current;
+        const m = currentMotion();
         const key = JSON.stringify([m.path, m.pathSize, m.pathAspect, m.pathClockwise, m.customPath, m.customClosed, m.seconds, m.pathLap]);
         if (key === lineKey) return;
         lineKey = key;
@@ -174,7 +189,7 @@ function MotionTile({
 
       let framedKey = '';
       let exporting = false;
-      const frameKey = () => `${motionReach(motionRef.current, radius)}/${zoomRef.current}`;
+      const frameKey = () => `${motionReach(currentMotion(), radius)}/${zoomRef.current}`;
       const resize = () => {
         if (!part || exporting) return;
         const w = host.clientWidth || 1;
@@ -183,7 +198,7 @@ function MotionTile({
         part.camera.aspect = w / h;
         // 取景要把整段运动装下：轨迹开大了模型会跑出画面。zoom 再在这个基础上拉近
         framedKey = frameKey();
-        frameCamera(part.camera, (radius + motionReach(motionRef.current, radius)) / zoomRef.current, 1.1);
+        frameCamera(part.camera, (radius + motionReach(currentMotion(), radius)) / zoomRef.current, 1.1);
       };
       const applyPose = (pose: ReturnType<typeof poseAt>) => {
         mover.position.set(pose.position[0], pose.position[1], pose.position[2]);
@@ -216,13 +231,14 @@ function MotionTile({
             r.setPixelRatio(1);
             r.setSize(width, height, false);
             cam.aspect = width / height;
-            frameCamera(cam, (radius + motionReach(motionRef.current, radius)) / zoomRef.current, 1.1);
+            frameCamera(cam, (radius + motionReach(currentMotion(), radius)) / zoomRef.current, 1.1);
             r.setClearColor(0x000000, 0);
             line.visible = false;
-            const poses = bakeMotion(motionRef.current, radius, seconds, fps);
+            const poses = bakeMotion(currentMotion(), radius, seconds, fps);
             const total = Math.max(1, Math.round(seconds * fps)); // 最后一帧和第 0 帧重合，不要
             for (let i = 0; i < total; i++) {
               checkCancelled(signal);
+              applyOriginalAnimation(i / fps);
               applyPose(poses[i]);
               part.pivot.rotation.set(viewRef.current.pitch, viewRef.current.yaw, 0);
               r.render(part.scene, cam);
@@ -263,7 +279,8 @@ function MotionTile({
         if (frameKey() !== framedKey) resize();
         if (exporting) return; // 导视频时画面归导出那边管
         if (stroke.length === 0) refreshLine();
-        applyPose(poseAt(motionRef.current, t, radius));
+        applyOriginalAnimation(t);
+        applyPose(poseAt(currentMotion(), t, radius));
         part.pivot.rotation.set(viewRef.current.pitch, viewRef.current.yaw, 0);
         part.renderer.render(part.scene, part.camera);
       };

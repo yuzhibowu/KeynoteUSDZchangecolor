@@ -85,19 +85,29 @@ describe('wrapWithMotion', () => {
     expect(x.text).toMatch(/defaultPrim = "Motion"/);
     expect(x.text).toMatch(/^def Xform "Motion"/m);
   });
-  it('根节点自带的动画被替换、深处的会报出来', () => {
+  it('根节点与卡片自己的动画都保留，整体旋转写在外层', () => {
     const s = SAMPLE.replace(
       'def Xform "Root" (\n\tkind = "component"\n)\n{',
       'def Xform "Root" (\n\tkind = "component"\n)\n{\n\tdouble3 xformOp:translate.timeSamples = {0: (0, 0, 0), 1: (0, 1, 0)}\n\tfloat3 xformOp:rotateXYZ = (0, 90, 0)\n\tuniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]',
     ).replace('float3[] extent', 'double3 xformOp:translate.timeSamples = {0: (0, 0, 0)}\n\t\tfloat3[] extent');
     const x = wrapWithMotion(s, OPTS);
-    expect(x.replacedAnimation).toBe(true);
-    expect(x.nestedAnimation).toBe(1);
-    // 根节点自己的动画没了，静态旋转留着，order 也对
+    expect(x.replacedAnimation).toBe(false);
+    expect(x.nestedAnimation).toBe(2);
     const inner = x.text.slice(x.text.indexOf('def Xform "Root"'), x.text.indexOf('def Mesh'));
-    expect(inner).not.toMatch(/timeSamples/);
+    expect(inner).toMatch(/xformOp:translate\.timeSamples = \{0: \(0, 0, 0\), 1: \(0, 1, 0\)\}/);
     expect(inner).toMatch(/xformOp:rotateXYZ = \(0, 90, 0\)/);
-    expect(inner).toMatch(/xformOpOrder = \["xformOp:rotateXYZ"\]/);
+    expect(inner).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:rotateXYZ"\]/);
+    expect(x.text).toMatch(/<\/Motion\/Root\/Materials\/M>/);
+  });
+  it('保留原时间码频率，让两层动画按秒同步', () => {
+    const s = SAMPLE.replace('metersPerUnit = 1', 'metersPerUnit = 1\n\ttimeCodesPerSecond = 24')
+      .replace('float3[] extent', 'float3 xformOp:rotateXYZ.timeSamples = {0: (0, 0, 0), 24: (0, 90, 0)}\n\t\tfloat3[] extent');
+    const x = wrapWithMotion(s, OPTS);
+    expect(x.text).toMatch(/timeCodesPerSecond = 24/);
+    expect(x.text).toMatch(/framesPerSecond = 60/);
+    expect(x.text).toMatch(/endTimeCode = 0\.8/);
+    expect(x.text).toMatch(/xformOp:translate\.timeSamples = \{0: \(0, 0, 0\), 0\.4: \(0, 0\.1, 0\), 0\.8: \(0, 0, 0\)\}/);
+    expect(x.text).toMatch(/xformOp:rotateXYZ\.timeSamples = \{0: \(0, 0, 0\), 24: \(0, 90, 0\)\}/);
   });
 });
 
@@ -193,6 +203,15 @@ describe('binaryRootLayer', () => {
     expect(t).toMatch(/def "scene" \(\n\t\tprepend references = @\.\/scene\.usdc@<\/scene>\n\t\)/);
     expect(t).toMatch(/xformOpOrder = \["xformOp:translate", "xformOp:orient"\]/);
   });
+  it('二进制模型的原动画也保持原来的时间码频率', () => {
+    const t = binaryRootLayer(
+      { defaultPrim: 'scene', upAxis: 'Y', metersPerUnit: 1, animatedOps: 2, timeCodesPerSecond: 24 },
+      'scene.usdc', OPTS,
+    );
+    expect(t).toMatch(/timeCodesPerSecond = 24/);
+    expect(t).toMatch(/endTimeCode = 0\.8/);
+    expect(t).toMatch(/0\.4: \(0, 0\.1, 0\)/);
+  });
 });
 
 describe('unwrapDegrees', () => {
@@ -262,7 +281,7 @@ describe('起始姿态层（放映开播前 Keynote 不看动画层）', () => {
   const START = { translate: [0, -2, 0], orient: [1, 0, 0, 0], scale: [0.001, 0.001, 0.001] };
   it('动画层里面再套一层静态 Xform，第 0 帧姿态写在它身上，绝对路径多一级', () => {
     const r = wrapWithMotion(SAMPLE, { ...OPTS, start: START });
-    expect(r.text).toMatch(/^def Xform "Motion"\n\{\n\tdouble3 xformOp:translate = /m);
+    expect(r.text).toMatch(/^def Xform "Motion"\n\{\n\tcustom string prismMotionWrapper = "1"\n\tdouble3 xformOp:translate = /m);
     expect(r.text).toMatch(/\n\tdef Xform "Start"\n\t\{\n\t\tdouble3 xformOp:translate = \(0, -2, 0\)\n\t\tquatf xformOp:orient = \(1, 0, 0, 0\)\n\t\tfloat3 xformOp:scale = \(0\.001, 0\.001, 0\.001\)\n\t\tuniform token\[\] xformOpOrder = \["xformOp:translate", "xformOp:orient", "xformOp:scale"\]\n/);
     // 静态层没有 timeSamples
     const startBlock = r.text.slice(r.text.indexOf('def Xform "Start"'), r.text.indexOf('def Xform "Root"'));
