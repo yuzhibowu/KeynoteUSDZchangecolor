@@ -5,6 +5,7 @@ import { DENSE_PAGES, drawChart, drawDenseChart, setChartExtra, pickCovering, EX
 import { isIdentity, solveWritten } from './color';
 import { capGeometry, cardGeometry, prismSection, sideGeometry } from './geometry';
 import { MAX_SIDES, tuneOf, type Params } from './types';
+import type { CardOutline } from './cardOutline';
 
 /**
  * 标定色卡直接做成「和你实际用的一模一样的棱柱」，而不是一张平板。
@@ -90,6 +91,7 @@ export async function exportChartCard(
   params: Params,
   canvases?: HTMLCanvasElement[],
   densePage?: number,
+  outline?: CardOutline | null,
 ): Promise<{ blob: Blob; name: string }> {
   const dense = densePage !== undefined;
   if (canvases && !dense) setChartExtra(probeColorsFrom(canvases, params.sides, params));
@@ -131,7 +133,7 @@ export async function exportChartCard(
    */
   if (params.modelType === 'card') {
     const height = params.length / params.aspect;
-    const { front, back, band } = cardGeometry(params.length, height, params.thickness, params.corner);
+    const { front, back, band } = cardGeometry(params.length, height, params.thickness, params.corner, outline);
     for (const geo of [front, back]) {
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { CardOutline, OutlinePoint } from './cardOutline';
 
 /**
  * 棱柱躺倒：长轴 = X，多边形端面朝左右（±X）。
@@ -217,7 +218,8 @@ export function capGeometry(
  * 返回三块：正面、背面、一圈侧边。正面朝 +Z，和四棱柱模式下的面 0 一致，
  * 所以 faceFrame 那套拖拽/缩放的坐标系原样能用。
  */
-export function cardGeometry(width: number, height: number, thickness: number, corner: number) {
+export function cardGeometry(width: number, height: number, thickness: number, corner: number, outline?: CardOutline | null) {
+  if (outline?.length) return outlinedCardGeometry(width, height, thickness, outline);
   const hw = width / 2;
   const hh = height / 2;
   const hz = thickness / 2;
@@ -228,6 +230,68 @@ export function cardGeometry(width: number, height: number, thickness: number, c
   const back = faceOfOutline(pts, -hz, hw, hh, false);
   const band = bandOfOutline(pts, hz);
   return { front, back, band };
+}
+
+/** 正面的轮廓作为唯一几何来源：背面镜像 UV，洞和侧边也随之成型。 */
+function outlinedCardGeometry(width: number, height: number, thickness: number, outline: CardOutline) {
+  const xy = ([u, v]: OutlinePoint): [number, number] => [(u - 0.5) * width, (v - 0.5) * height];
+  const face = (front: boolean) => {
+    const position: number[] = [];
+    const uv: number[] = [];
+    const normal: number[] = [];
+    const index: number[] = [];
+    for (const island of outline) {
+      const loops = [island.outer, ...island.holes];
+      const points = loops.flat();
+      const offset = position.length / 3;
+      for (const p of points) {
+        const [x, y] = xy(p);
+        position.push(x, y, front ? thickness / 2 : -thickness / 2);
+        uv.push(front ? p[0] : 1 - p[0], p[1]);
+        normal.push(0, 0, front ? 1 : -1);
+      }
+      const contour = island.outer.map((p) => new THREE.Vector2(...xy(p)));
+      const holes = island.holes.map((loop) => loop.map((p) => new THREE.Vector2(...xy(p))));
+      for (const tri of THREE.ShapeUtils.triangulateShape(contour, holes)) {
+        const [a, b, c] = tri;
+        const pa = points[a], pb = points[b], pc = points[c];
+        const cross = (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]);
+        if (Math.abs(cross) < 1e-12) continue;
+        if ((cross > 0) === front) index.push(offset + a, offset + b, offset + c);
+        else index.push(offset + a, offset + c, offset + b);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(index);
+    return g;
+  };
+  const position: number[] = [];
+  const normal: number[] = [];
+  const uv: number[] = [];
+  const index: number[] = [];
+  for (const island of outline) for (const loop of [island.outer, ...island.holes]) {
+    for (let i = 0; i < loop.length; i++) {
+      const [x0, y0] = xy(loop[i]);
+      const [x1, y1] = xy(loop[(i + 1) % loop.length]);
+      const dx = x1 - x0, dy = y1 - y0;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-10) continue;
+      const base = position.length / 3;
+      position.push(x0, y0, thickness / 2, x1, y1, thickness / 2, x1, y1, -thickness / 2, x0, y0, -thickness / 2);
+      for (let k = 0; k < 4; k++) normal.push(dy / len, -dx / len, 0);
+      uv.push(0, 1, 1, 1, 1, 0, 0, 0);
+      index.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+  }
+  const band = new THREE.BufferGeometry();
+  band.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  band.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+  band.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  band.setIndex(index);
+  return { front: face(true), back: face(false), band };
 }
 
 /** 圆角矩形的轮廓点，逆时针（从 +Z 方向看），起点在右下角那段圆弧 */

@@ -5,6 +5,7 @@ import { useRef } from 'react';
 import { Slider } from './Slider';
 import { FramePreview } from './FramePreview';
 import type { FaceTextureStore } from '../lib/faceTexture';
+import type { CardOutline } from '../lib/cardOutline';
 import {
   ASPECTS,
   fromPx,
@@ -49,6 +50,9 @@ type Props = {
   patchColor: (c: Partial<ColorComp>) => void;
   setTarget: (t: TargetId) => void;
   store: FaceTextureStore;
+  frontOutline?: CardOutline | null;
+  hasFrontImage: boolean;
+  hasBackImage: boolean;
   tick: number;
   onExportChart: () => void;
   onExport: () => void;
@@ -127,6 +131,9 @@ export function ControlPanel({
   patchColor,
   setTarget,
   store,
+  frontOutline,
+  hasFrontImage,
+  hasBackImage,
   tick,
   onExportChart,
   onExport,
@@ -145,7 +152,7 @@ export function ControlPanel({
     .map((r) => ({ value: r.value, label: r.label.replace(/P$/, '') }));
   // 侧边色默认取正面贴图的平均色；tick 变了要重取（贴图换了平均色就变了）
   void tick;
-  const edgeColor = params.edgeAuto ? store.averageColor(CARD_FRONT) : params.capColorRight;
+  const edgeColor = params.edgeAuto ? store.averageColor(CARD_FRONT, params.fitFront ? frontOutline : null) : params.capColorRight;
   const patchGeom = (p: Partial<Params>) => {
     const next = { ...params, ...p };
     patch({ ...p, radius: radiusFor(next.length, next.aspect, next.sides) });
@@ -356,7 +363,7 @@ export function ControlPanel({
                 />
                 {params.fitFront ? (
                   <p className="hint tight">
-                    圆角 {toPx(params.corner)} px —— 「适应」开着，跟着正面图片的圆角走。想手调就把画面比例换成别的预设。
+                    「适应」开着，卡片外形跟着正面图片的透明轮廓走。想手调圆角就把画面比例换成别的预设。
                   </p>
                 ) : (
                   <Slider
@@ -384,6 +391,17 @@ export function ControlPanel({
                     </button>
                   )}
                 </div>
+                {!hasBackImage && (
+                  <div className="color-row">
+                    <input
+                      type="color"
+                      aria-label="背面颜色"
+                      value={params.cardBackColor ?? DEFAULT_PARAMS.cardBackColor}
+                      onChange={(e) => patch({ cardBackColor: e.target.value })}
+                    />
+                    <span>背面颜色（未贴图时）</span>
+                  </div>
+                )}
               </>
             )}
             <Slider
@@ -406,13 +424,13 @@ export function ControlPanel({
                 <span>画面比例</span>
               </span>
               <div className={isPrism ? 'opts five' : 'opts four'}>
-                {/* 卡片：「适应」= 比例和圆角都按正面那张 PNG 的不透明区域来，透明留白自动裁掉 */}
+                {/* 卡片：「适应」= 自动按正面 PNG 的透明轮廓成型，透明留白自动裁掉 */}
                 {!isPrism && (
                   <button
                     type="button"
                     className="opt"
                     aria-pressed={params.fitFront}
-                    title="比例和圆角跟着正面图片走，透明留白自动裁掉"
+                    title="自动按正面 PNG 的透明轮廓成型，反面沿用同一形状"
                     onClick={() => patchGeom({ fitFront: true, aspectW: undefined, aspectH: undefined })}
                   >
                     适应
@@ -462,9 +480,9 @@ export function ControlPanel({
               </div>
               {!isPrism && params.fitFront && (
                 <p className="hint tight">
-                  {face?.source && params.modelType === 'card'
-                    ? `按正面图片：${params.aspect.toFixed(3)}（透明留白已裁掉）`
-                    : '贴上正面图片后，比例和圆角自动跟着它走'}
+                  {hasFrontImage
+                    ? `按正面图片：${params.aspect.toFixed(3)}（轮廓自动成型，反面沿用）`
+                    : '贴上正面 PNG 后，比例和轮廓自动跟着它走'}
                 </p>
               )}
               {isCustomAspect && (

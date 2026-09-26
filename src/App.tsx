@@ -21,6 +21,7 @@ import { yieldToBrowser } from './lib/yieldToBrowser';
 import { applyTheme, isDark, loadTheme, type Theme } from './lib/theme';
 import { exportChartCard } from './lib/exportCard';
 import { trimToAlpha } from './lib/fitImage';
+import { outlineOfBitmap, type CardOutline } from './lib/cardOutline';
 import { isIdentity, type ColorComp } from './lib/color';
 import { load, save } from './lib/storage';
 import { clearAllFaces, clearFace, loadFaces, saveFace } from './lib/imageStore';
@@ -218,11 +219,11 @@ export default function App() {
     let alive = true;
     loadFaces().then(async (stored) => {
       if (!alive || stored.length === 0) return;
-      const decoded: { index: number; bmp: ImageBitmap; name: string; trimmed: boolean; cornerPx?: number }[] = [];
+      const decoded: { index: number; bmp: ImageBitmap; name: string; trimmed: boolean; cornerPx?: number; outline?: CardOutline | null }[] = [];
       for (const s of stored) {
         try {
           const fit = await prepareSource(await decode(s.blob as File), s.index);
-          decoded.push({ index: s.index, bmp: fit.bmp, name: s.name, trimmed: fit.trimmed, cornerPx: fit.cornerPx });
+          decoded.push({ index: s.index, bmp: fit.bmp, name: s.name, trimmed: fit.trimmed, cornerPx: fit.cornerPx, outline: fit.outline });
         } catch {
           /* 坏数据跳过 */
         }
@@ -239,6 +240,7 @@ export default function App() {
             sourceName: d.name,
             trimmed: d.trimmed,
             cornerPx: d.cornerPx,
+            outline: d.outline,
           };
         }
         return next;
@@ -297,12 +299,13 @@ export default function App() {
       slots: textureSlots(params),
       capColorRight: params.capColorRight,
       capColorLeft: params.capColorLeft,
+      cardBackColor: params.modelType === 'card' ? params.cardBackColor ?? DEFAULT_PARAMS.cardBackColor : undefined,
       comp: params.color,
       compensate: false,
     };
     store.bakeAll(next, opts);
     if (changed) setFaces(next);
-  }, [faces, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.bgTransparent, params.capMode, params.separateCaps, params.capColorRight, params.capColorLeft, params.color, store]);
+  }, [faces, params.modelType, params.aspect, params.radius, params.sides, params.length, params.resolution, params.bgColor, params.bgTransparent, params.capMode, params.separateCaps, params.capColorRight, params.capColorLeft, params.cardBackColor, params.color, store]);
 
   // 主题：写到 <html> 上，顺便把视口底色也换掉（它是 WebGL 画的，管不到 CSS）
   useEffect(() => {
@@ -356,6 +359,7 @@ export default function App() {
           slots: textureSlots(params),
           capColorRight: params.capColorRight,
           capColorLeft: params.capColorLeft,
+          cardBackColor: params.modelType === 'card' ? params.cardBackColor ?? DEFAULT_PARAMS.cardBackColor : undefined,
           comp: params.color,
           compensate: true,
         }, token)
@@ -372,6 +376,8 @@ export default function App() {
     tick,
     faces,
     params.sides,
+    params.modelType,
+    params.aspect,
     params.resolution,
     params.radius,
     params.length,
@@ -381,6 +387,7 @@ export default function App() {
     params.separateCaps,
     params.capColorRight,
     params.capColorLeft,
+    params.cardBackColor,
     params.color,
     store,
   ]);
@@ -427,16 +434,17 @@ export default function App() {
   paramsRef.current = params;
 
   /**
-   * 卡片「适应」：正反两面的图先把透明留白裁掉，再顺手量出圆角。
+   * 卡片「适应」：正反两面的图先把透明留白裁掉；正面再提取完整轮廓。
    * 别的模式、别的槽位原样返回。裁过的图记上 trimmed，切换开关时不重复裁。
    */
   const prepareSource = useCallback(
-    async (bmp: ImageBitmap, idx: number): Promise<{ bmp: ImageBitmap; trimmed: boolean; cornerPx?: number }> => {
+    async (bmp: ImageBitmap, idx: number): Promise<{ bmp: ImageBitmap; trimmed: boolean; cornerPx?: number; outline?: CardOutline | null }> => {
       const p = paramsRef.current;
       const wants = p.modelType === 'card' && p.fitFront && (idx === CARD_FRONT || idx === CARD_BACK);
       if (!wants) return { bmp, trimmed: false };
       const r = await trimToAlpha(bmp);
-      return { bmp: r.bmp, trimmed: true, cornerPx: r.info?.cornerPx };
+      if (idx === CARD_FRONT && !r.info) throw new Error('正面图片全透明，无法生成卡片轮廓');
+      return { bmp: r.bmp, trimmed: true, cornerPx: r.info?.cornerPx, outline: idx === CARD_FRONT ? outlineOfBitmap(r.bmp) : undefined };
     },
     [],
   );
@@ -448,18 +456,22 @@ export default function App() {
     if (params.modelType !== 'card' || !params.fitFront) return;
     let alive = true;
     (async () => {
-      const updates: { idx: number; bmp: ImageBitmap; cornerPx?: number }[] = [];
+      const updates: { idx: number; bmp: ImageBitmap; cornerPx?: number; outline?: CardOutline | null }[] = [];
       for (const idx of [CARD_FRONT, CARD_BACK]) {
         const f = faces[idx];
         if (!f?.source || f.trimmed) continue;
         const r = await trimToAlpha(f.source);
-        updates.push({ idx, bmp: r.bmp, cornerPx: r.info?.cornerPx });
+        if (idx === CARD_FRONT && !r.info) {
+          setStatus('正面图片全透明，无法生成卡片轮廓');
+          continue;
+        }
+        updates.push({ idx, bmp: r.bmp, cornerPx: r.info?.cornerPx, outline: idx === CARD_FRONT ? outlineOfBitmap(r.bmp) : undefined });
       }
       if (!alive || updates.length === 0) return;
       setFaces((prev) => {
         const next = prev.slice();
         for (const u of updates) {
-          next[u.idx] = { ...next[u.idx], source: u.bmp, sourceKey: sourceKey.current++, trimmed: true, cornerPx: u.cornerPx };
+          next[u.idx] = { ...next[u.idx], source: u.bmp, sourceKey: sourceKey.current++, trimmed: true, cornerPx: u.cornerPx, outline: u.outline };
         }
         return next;
       });
@@ -494,14 +506,17 @@ export default function App() {
     const sorted = [...files].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
     );
-    const loaded: { name: string; bmp: ImageBitmap; file: File; trimmed: boolean; cornerPx?: number }[] = [];
+    const loaded: { name: string; bmp: ImageBitmap; file: File; trimmed: boolean; cornerPx?: number; outline?: CardOutline | null }[] = [];
     for (const [k, f] of sorted.entries()) {
       try {
         const raw = await decode(f);
-        const fit = await prepareSource(raw, startIndex + k);
-        loaded.push({ name: f.name, bmp: fit.bmp, file: f, trimmed: fit.trimmed, cornerPx: fit.cornerPx });
-      } catch {
-        setStatus(`${f.name} 解码失败，跳过`);
+        const fitIndex = paramsRef.current.modelType === 'card'
+          ? (startIndex === CARD_BACK ? CARD_BACK : k === 0 ? CARD_FRONT : CARD_BACK)
+          : startIndex + k;
+        const fit = await prepareSource(raw, fitIndex);
+        loaded.push({ name: f.name, bmp: fit.bmp, file: f, trimmed: fit.trimmed, cornerPx: fit.cornerPx, outline: fit.outline });
+      } catch (err) {
+        setStatus(`${f.name} 导入失败：${err instanceof Error ? err.message : String(err)}`);
       }
     }
     if (loaded.length === 0) return;
@@ -527,6 +542,7 @@ export default function App() {
           sourceName: it.name,
           trimmed: it.trimmed,
           cornerPx: it.cornerPx,
+          outline: it.outline,
         };
       });
       return next;
@@ -578,6 +594,9 @@ export default function App() {
           source: img.bmp,
           sourceKey: sourceKey.current++,
           sourceName: `test-${i}`,
+          trimmed: false,
+          cornerPx: undefined,
+          outline: null,
         };
       });
       return next;
@@ -816,7 +835,7 @@ export default function App() {
   const handleResetFace = useCallback(() => patchFace(DEFAULT_TRANSFORM), [patchFace]);
   const handleClearFace = useCallback(() => {
     if (selected !== null) void clearFace(selected);
-    patchFace({ ...DEFAULT_TRANSFORM, source: null, sourceName: null, sourceKey: sourceKey.current++ });
+    patchFace({ ...DEFAULT_TRANSFORM, source: null, sourceName: null, sourceKey: sourceKey.current++, outline: null, trimmed: false, cornerPx: undefined });
   }, [patchFace, selected]);
 
   /**
@@ -834,6 +853,9 @@ export default function App() {
         source: null,
         sourceName: null,
         sourceKey: sourceKey.current++,
+        outline: null,
+        trimmed: false,
+        cornerPx: undefined,
       })),
     );
     setStatus('所有面的图片都清掉了');
@@ -841,7 +863,7 @@ export default function App() {
 
   const handleExportChart = useCallback(async (densePage?: number) => {
     try {
-      const { blob, name } = await exportChartCard(params, store.canvases, densePage);
+      const { blob, name } = await exportChartCard(params, store.canvases, densePage, params.fitFront ? faces[CARD_FRONT]?.outline : null);
       download(blob, name);
       setStatus(
         densePage === undefined
@@ -851,7 +873,7 @@ export default function App() {
     } catch (err) {
       setStatus(`色卡导出失败：${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [params]);
+  }, [params, faces]);
 
   const handleExport = useCallback(async () => {
     const viewer = viewerRef.current;
@@ -876,6 +898,7 @@ export default function App() {
         slots: textureSlots(params),
         capColorRight: params.capColorRight,
         capColorLeft: params.capColorLeft,
+        cardBackColor: params.modelType === 'card' ? params.cardBackColor ?? DEFAULT_PARAMS.cardBackColor : undefined,
         comp: params.color,
       };
       await store.bakeAllAsync(faces, { ...base, compensate: true }, (done, total) =>
@@ -1080,6 +1103,9 @@ export default function App() {
         patchColor={patchColor}
         setTarget={setTarget}
         store={store}
+        frontOutline={faces[CARD_FRONT]?.outline}
+        hasFrontImage={!!faces[CARD_FRONT]?.source}
+        hasBackImage={!!faces[CARD_BACK]?.source}
         tick={tick}
         onExportChart={handleExportChart}
         onExport={handleExport}

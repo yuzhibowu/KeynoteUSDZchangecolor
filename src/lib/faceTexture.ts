@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { applyToHex, applyToImageData, compSignature, isIdentity, type ColorComp } from './color';
 import { yieldToBrowser } from './yieldToBrowser';
-import { CAP_LEFT, MAX_SLOTS, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
+import { CAP_LEFT, CARD_BACK, MAX_SLOTS, isCap, type FaceState, type FaceTransform, type Resolution } from './types';
+import type { CardOutline } from './cardOutline';
 
 export type BakeOptions = {
   aspect: number;
@@ -14,6 +15,8 @@ export type BakeOptions = {
   /** 端面还没贴图时铺的底色 */
   capColorRight?: string;
   capColorLeft?: string;
+  /** 仅卡片背面无图时使用；棱柱不传，避免改动第 3 个棱柱面。 */
+  cardBackColor?: string;
   comp: ColorComp;
   /** true = 把颜色预补偿烘进去（只有导出时才开） */
   compensate: boolean;
@@ -143,7 +146,7 @@ export class FaceTextureStore {
   private estimateCanvas: HTMLCanvasElement | null = null;
   /** 求平均色用的 1×1 画布，和它的结果缓存（按贴图版本号） */
   private avgCanvas: HTMLCanvasElement | null = null;
-  private avg: ({ v: number; hex: string } | null)[] = [];
+  private avg: ({ v: number; outline: CardOutline | null; hex: string } | null)[] = [];
   private corrected: (HTMLCanvasElement | null)[] = [];
   private correctedKey: string[] = [];
   private listeners = new Set<(index: number) => void>();
@@ -183,10 +186,10 @@ export class FaceTextureStore {
    * 一张红底白字的图会被判成纯白。缩到 32 再平均，结果稳定也不依赖浏览器的缩放质量。
    * 按版本号缓存：贴图没变就不重算，否则每帧都要拷一张 2K 画布。
    */
-  averageColor(index: number): string {
+  averageColor(index: number, outline?: CardOutline | null): string {
     const v = this.versions[index];
     const hit = this.avg[index];
-    if (hit && hit.v === v) return hit.hex;
+    if (hit && hit.v === v && hit.outline === (outline ?? null)) return hit.hex;
     const N = 32;
     const src = this.canvases[index];
     const probe = this.avgCanvas ?? (this.avgCanvas = document.createElement('canvas'));
@@ -199,16 +202,31 @@ export class FaceTextureStore {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(src, 0, 0, N, N);
+      if (outline?.length) {
+        // 异形卡只统计真正存在的正面；外接矩形的底色不该把侧边染白。
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        for (const island of outline) for (const loop of [island.outer, ...island.holes]) {
+          loop.forEach(([x, y], i) => i ? ctx.lineTo(x * N, (1 - y) * N) : ctx.moveTo(x * N, (1 - y) * N));
+          ctx.closePath();
+        }
+        ctx.fill('evenodd');
+        ctx.restore();
+      }
       const d = ctx.getImageData(0, 0, N, N).data;
       let r = 0;
       let g = 0;
       let b = 0;
+      let weight = 0;
       for (let i = 0; i < d.length; i += 4) {
-        r += d[i];
-        g += d[i + 1];
-        b += d[i + 2];
+        const a = outline?.length ? d[i + 3] / 255 : 1;
+        r += d[i] * a;
+        g += d[i + 1] * a;
+        b += d[i + 2] * a;
+        weight += a;
       }
-      const n = d.length / 4;
+      const n = Math.max(1, weight);
       hex =
         '#' +
         [r / n, g / n, b / n]
@@ -217,7 +235,7 @@ export class FaceTextureStore {
     } catch {
       /* 画布还没画过，退回默认灰 */
     }
-    this.avg[index] = { v, hex };
+    this.avg[index] = { v, outline: outline ?? null, hex };
     return hex;
   }
 
@@ -290,7 +308,9 @@ export class FaceTextureStore {
       // 勾了「两端分别设置」才会各走各的）
       const c = isCap(index)
         ? safeHex(index === CAP_LEFT ? opts.capColorLeft : opts.capColorRight)
-        : FACE_FILL;
+        : index === CARD_BACK && opts.cardBackColor
+          ? safeHex(opts.cardBackColor)
+          : FACE_FILL;
       ctx.fillStyle = useComp ? applyToHex(c, opts.comp) : c;
       ctx.fillRect(0, 0, w, h);
     } else if (!opts.bgTransparent) {
@@ -337,6 +357,7 @@ export class FaceTextureStore {
       h,
       opts.bgColor,
       opts.bgTransparent ? 'alpha' : 'opaque',
+      index === CARD_BACK && !face.source ? opts.cardBackColor ?? '' : '',
       compSig,
     ].join('|');
     if (!force && sig === this.sigs[index]) return false;

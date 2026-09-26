@@ -318,7 +318,7 @@ export class PrismViewer {
     // faces 复制一份：拖拽时视口会就地改自己这份，不去动 React 的状态对象
     this.state = { ...next, faces: next.faces.slice() };
     const { params } = next;
-    const sig = `${params.modelType}|${params.sides}|${params.radius}|${params.length}|${params.aspect}|${params.thickness}|${params.corner}|${params.capMode}`;
+    const sig = `${params.modelType}|${params.sides}|${params.radius}|${params.length}|${params.aspect}|${params.thickness}|${params.corner}|${params.capMode}|${params.fitFront}|${params.fitFront && params.modelType === 'card' ? next.faces[CARD_FRONT]?.sourceKey : ''}`;
     if (sig !== this.geomSig) {
       this.geomSig = sig;
       this.rebuildGeometry();
@@ -446,7 +446,8 @@ export class PrismViewer {
   private rebuildCard() {
     const p = this.state!.params;
     const height = p.length / p.aspect;
-    const { front, back, band } = cardGeometry(p.length, height, p.thickness, p.corner);
+    const outline = p.fitFront ? this.state!.faces[CARD_FRONT]?.outline : null;
+    const { front, back, band } = cardGeometry(p.length, height, p.thickness, p.corner, outline);
     const put = (i: number, g: THREE.BufferGeometry | null) => {
       const mesh = this.sideMeshes[i];
       mesh.geometry.dispose();
@@ -538,7 +539,7 @@ export class PrismViewer {
   /** 卡片侧边的颜色：默认取正面贴图的平均色，用户手动调过就用他调的 */
   private edgeColor(): string {
     const p = this.state!.params;
-    return p.edgeAuto ? this.store.averageColor(CARD_FRONT) : p.capColorRight;
+    return p.edgeAuto ? this.store.averageColor(CARD_FRONT, p.fitFront ? this.state!.faces[CARD_FRONT]?.outline : null) : p.capColorRight;
   }
 
   private paintSolid(mat: THREE.MeshPhysicalMaterial, hex: string, compensate: boolean) {

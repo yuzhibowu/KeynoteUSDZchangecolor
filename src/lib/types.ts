@@ -1,6 +1,7 @@
 import { CARD_COMP, DEFAULT_COMP, FREEFORM_COMP, type ColorComp } from './color';
 import { DEFAULT_MATERIAL, type MaterialId, type MaterialTune } from './material';
 import { cardSection, prismSection, type Section } from './geometry';
+import type { CardOutline } from './cardOutline';
 
 export const MAX_SIDES = 12;
 
@@ -60,6 +61,8 @@ export type FaceState = FaceTransform & {
   trimmed?: boolean;
   /** 从这张图量出来的圆角半径（图片像素）；直角或没量过是 undefined */
   cornerPx?: number;
+  /** 适应模式下从正面 PNG alpha 提取；背面只使用这条轮廓，不自行决定形状。 */
+  outline?: CardOutline | null;
 };
 
 export type Resolution = 1280 | 1920 | 2560 | 3840;
@@ -148,6 +151,8 @@ export type Params = {
   capMode: CapMode; // 端面：实心 or 镂空
   /** 卡片侧边的颜色跟着正面贴图走（默认）；用户手动调过就变成 false */
   edgeAuto: boolean;
+  /** 卡片背面未贴图时显示的颜色；贴上背面图片后保留设置，移除图片再生效。 */
+  cardBackColor: string;
   /** 表面材质。「纸张」是校准条件，颜色只对它精确 */
   material: MaterialId;
   /**
@@ -166,7 +171,7 @@ export type Params = {
    */
   materialTune?: Partial<Record<MaterialId, MaterialTune>>;
   /**
-   * 卡片「适应」：比例和圆角都跟着正面那张图走（按不透明区域算），
+   * 卡片「适应」：比例和完整轮廓都跟着正面那张图走（按不透明区域算），
    * 而不是手选一个预设。开着时预设按钮和圆角滑杆都让位。
    */
   fitFront: boolean;
@@ -257,6 +262,7 @@ export const DEFAULT_PARAMS: Params = {
   length: 0.192, // 1920 px —— 和 1080P 那一档对齐
   capMode: 'solid',
   edgeAuto: true,
+  cardBackColor: '#d9d9de',
   material: DEFAULT_MATERIAL,
   fitFront: true,
   capColorRight: '#d9d9de',
