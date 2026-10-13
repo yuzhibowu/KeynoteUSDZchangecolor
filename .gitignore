@@ -22,3 +22,13 @@ for-codex/
 # 测试
 coverage/
 public/_test/
+
+# 本机配置 / 密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 独立模块构建
+artifacts/

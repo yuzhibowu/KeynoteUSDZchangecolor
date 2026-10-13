@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>几棱体：独立 USDZ 色彩模块示例</title>
+<style>body{margin:0;background:#f5f4ef;color:#262622;font:16px system-ui,sans-serif}main{max-width:960px;margin:40px auto;padding:0 24px}h1{font-size:28px}p{line-height:1.7}select,button{font:inherit;padding:10px 16px;border:1px solid #b9b8b0;border-radius:8px;background:white;margin:4px 6px 4px 0}button{cursor:pointer}.views{display:grid;grid-template-columns:1fr 1fr;gap:16px}canvas{display:block;width:100%;border-radius:12px;background:#ddd}#status{min-height:30px}small{display:block;line-height:1.6;color:#595950}@media(max-width:600px){.views{grid-template-columns:1fr}}</style></head>
+<body><main><h1>独立模块 · USDZ 色彩校正</h1><p>只调用公共模块与 Three.js，不使用几棱体主界面。下载两个模型，在同一 Apple 应用中以相同姿态对照；右侧是导出写入值的网页预览。</p>
+<label>实测档 <select id="preset"><option value="keynote-card">Keynote · 卡片 · 补光 0.5</option><option value="keynote-prism">Keynote · 棱柱 · 补光 0.5</option><option value="freeform-prism">无边记 · 棱柱 · 补光 0</option></select></label>
+<div class="views"><section><p>原始写入值</p><canvas id="raw"></canvas><button id="raw-export">下载未补偿 USDZ</button></section><section><p>补偿写入值</p><canvas id="corrected"></canvas><button id="corrected-export">下载补偿 USDZ</button></section></div>
+<p id="status" role="status">准备中…</p><small>这些模型用于接入和比较，不是新增实机标定证据。颜色来自生成的色块与渐变，无私人素材。当前网页光照不代表 Apple 实际显示；任意照片、姿态和模型需另行验收。</small></main><script type="module" src="./main.ts"></script></body></html>

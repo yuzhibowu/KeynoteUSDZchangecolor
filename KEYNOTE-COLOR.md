@@ -1,3 +1,5 @@
+> 2026-10-13 整理说明：本文保留历史研究/交接记录。现行算法在 `src/color-correction/core.ts`，数值档在该目录 `profiles/`；`src/lib/color.ts` 为兼容转发。接入以 [docs/COLOR_CORRECTION.md](docs/COLOR_CORRECTION.md) 和 [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) 为准。早期推断、旧档及绝对跨设备表述不代表任意条件保证。
+
 # Keynote 会对 USDZ 贴图做什么，以及我们怎么抵消它
 
 > 最后更新：2026-09-05。所有数字都是在这台机器上实测出来的，不是推导的。

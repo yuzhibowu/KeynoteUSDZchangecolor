@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:color": "node scripts/build-color-correction.mjs",
+    "test:color:standalone": "node scripts/test-color-standalone.mjs",
+    "example:color": "vite --open /examples/color-correction/",
+    "audit:source": "python3 scripts/audit-source.py"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
@@ -25,6 +29,8 @@
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
-    "vitest": "^2.1.9"
-  }
+    "vitest": "^2.1.9",
+    "esbuild": "0.21.5"
+  },
+  "license": "MIT"
 }

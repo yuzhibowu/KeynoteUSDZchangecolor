@@ -1,10 +1,12 @@
+import { CURVE_K, pwInvert } from '../color-correction/math';
+
 /**
  * 色卡标定。
  *
  * 逐通道曲线修不了色域错位（那是通道之间的混合），靠肉眼猜更是不可能。
  * 所以：导一张已知颜色的色卡进 Keynote，截图传回来，直接量出
- * 「送进去什么颜色 → 出来什么颜色」这 24 组对应关系，再解一个线性光下的仿射模型
- *   y = M · x + b      （M 是 3×3，x、y 是线性光 RGB）
+ * 「送进去什么颜色 → 出来什么颜色」这 24 组对应关系，拟合 sRGB 编码空间的矩阵 + 单调曲线模型
+ *   y = curve(M · x + b)      （M 是 3×3，x、y 是 sRGB 编码值）
  * 这个模型能同时吃下色域错位（M 的非对角项）、曝光（M 的对角项）和环境光抬升（b）。
  */
 
@@ -659,7 +661,7 @@ function solve(A: number[][], y: number[]): number[] | null {
 }
 
 /** 曲线节点数。5 个是交叉验证选出来的：更多节点在这 24 个色块上会过拟合。 */
-export const CURVE_K = 5;
+export { CURVE_K, pwInvert } from '../color-correction/math';
 
 export type ChartFit = {
   matrix: number[];
@@ -694,19 +696,6 @@ const pwBasis = (t: number) => {
   r[i + 1] = s - i;
   return r;
 };
-
-/** 单调分段线性求逆 */
-export function pwInvert(y: number, ys: number[]): number {
-  if (y <= ys[0]) return 0;
-  if (y >= ys[CURVE_K - 1]) return 1;
-  for (let i = 0; i < CURVE_K - 1; i++) {
-    if (y <= ys[i + 1]) {
-      const d = ys[i + 1] - ys[i];
-      return (i + (d > 1e-9 ? (y - ys[i]) / d : 0)) / (CURVE_K - 1);
-    }
-  }
-  return 1;
-}
 
 function ridge(rows: number[][], ys: number[], reg: number, ws?: number[]): number[] | null {
   const n = rows[0].length;

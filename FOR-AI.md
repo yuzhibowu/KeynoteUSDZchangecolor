@@ -1,54 +1,9 @@
-# 给 AI 编程助手：Keynote USDZ 颜色补偿方案
+# 给 AI 编程助手
 
-这个文件夹是一份**可以直接交给 AI 助手（Codex / Claude / Cursor 等）去实现的资料包**。
-原实现是 TypeScript，目标可以是任何语言（Swift 等）。
+现行入口是 [AGENTS.md](AGENTS.md)。网页接入按 [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) 直接复用 `src/color-correction/`，不要根据研究笔记重写。
 
-## 先读哪个
+算法精确实现是 `src/color-correction/core.ts`；校准数据是该目录 `profiles/*.json`。`src/lib/chart.ts` 负责重标流程。旧 `src/lib/color.ts`、`profile.ts` 只是兼容转发。
 
-| 文件 | 是什么 | 怎么用 |
-|---|---|---|
-| `PORTING.md` | **方法说明**：为什么这么做、哪些路是死的、踩过哪些坑 | **先读这个**。它决定实现的方向对不对 |
-| `src/lib/color.ts` | 正向模型、带约束反解、局部修正、3D LUT | 算法的**精确规格**，照着翻译 |
-| `src/lib/chart.ts` | 色卡绘制、截图识别、拟合（含删失回归） | 同上 |
+技术原理、接口和限制见 [docs/COLOR_CORRECTION.md](docs/COLOR_CORRECTION.md)。跨语言移植再读 [PORTING.md](PORTING.md)，以当前代码为准；旧研究中的早期档、线性光模型或跨设备保证不能直接当当前结论。
 
-`PORTING.md` 讲**为什么**，两个 `.ts` 文件讲**具体怎么算**。只看文档会漏掉大量参数，
-只看代码会不知道哪些设计是有意为之、哪些改不得 —— 两个都要给。
-
-> 要打包发给别人时，把 `PORTING.md`、`FOR-AI.md`、`src/lib/color.ts`、`src/lib/chart.ts`
-> 这四个文件放进一个文件夹即可。
-
-## ⚠️ 三件必须注意的事
-
-**1. `src/lib/color.ts` 里的 `BUILT_IN_PROFILE` 是实测数据，可以当默认值用。**
-它是跨机器有效的 —— 显示器那一层在「标定」和「验收」里同时出现，会互相抵消，
-剩下的是纯粹的 Keynote 变换（软件行为）。详见 PORTING.md 开头那节。
-**但仍要保留完整的重新标定流程**：换 Keynote 大版本或改了补光设置之后必须能重标。
-
-**2. 不要「优化」掉这些设计，它们都是撞出来的：**
-
-- 模型建在 sRGB 编码空间，**不要**改成线性光空间（实测比不校正还差）
-- 局部修正用**径向基插值**，**不要**改成加权平均或移动最小二乘（文档第四节有实测对比）
-- 反解用**带约束搜索**，**不要**改成「算完再逐通道截断」（会让色相跑偏）
-- 拟合时被夹到 0/255 的样本**不要**丢弃，要作为单边约束参与（删失回归）
-- 「该写什么值」全流程**只能有一个求解器**（`solveWritten`），不要为不同调用方分叉
-
-**3. 验收必须拿照片，不能只用纯色块。**
-纯色只有一个颜色，很多问题（尤其是色卡挑色的分布问题）在纯色上永远不会暴露。
-文档第五、七节专门讲了这个。
-
-## 建议给 AI 的开场白
-
-> 这是一套「Keynote 渲染 USDZ 模型时会改变贴图颜色，如何反向补偿」的完整方案。
-> 先读 PORTING.md 理解方法和为什么这么设计，再读 color.ts 和 chart.ts 拿具体算法。
-> 网页项目不用重新实现：`for-codex/QUICKSTART.md` 三行接入。别的语言才需要照 PORTING.md 重写。
-> 内置档（`profiles/*.json`）是 Keynote 14.5 实测的，跨机器有效，可以直接当默认值用。
-
-## 实现顺序建议
-
-1. 导出时把贴图同时挂到 diffuse 和 emissive（**同一个纹理对象**）—— 先解决亮度上限
-2. 画色卡 + 从截图识别（`chart.ts` 的 `drawChart` / `sampleChart`）
-3. 拟合（`chart.ts` 的 `fitChart`）
-4. 正向模型 + 反解（`color.ts` 的 `forwardModel` / `makeSolver` / `solveWritten`）
-5. 局部修正（`color.ts` 的 `solveRbfWeights`）
-6. 闭环微调：成品截图打锚点，锚点累积
-7. **拿照片验收**
+使用步骤也可从 [skills/usdz-color-correction/SKILL.md](skills/usdz-color-correction/SKILL.md) 进入。真正的功能由代码提供，技能不包含另一套算法。

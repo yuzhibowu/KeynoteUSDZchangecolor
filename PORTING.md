@@ -1,3 +1,5 @@
+> 2026-10-13 整理说明：本文保留历史研究/交接记录。现行算法在 `src/color-correction/core.ts`，数值档在该目录 `profiles/`；`src/lib/color.ts` 为兼容转发。接入以 [docs/COLOR_CORRECTION.md](docs/COLOR_CORRECTION.md) 和 [docs/AI_INTEGRATION.md](docs/AI_INTEGRATION.md) 为准。早期推断、旧档及绝对跨设备表述不代表任意条件保证。
+
 # 把 Keynote 颜色补偿方案移植到别的实现上
 
 > 这份文档是给「已经能导出 USDZ、但颜色进 Keynote 就变」的人看的。
