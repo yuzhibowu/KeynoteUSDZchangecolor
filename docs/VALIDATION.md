@@ -44,3 +44,9 @@
 ## 提交前复核
 
 在精确暂存快照的隔离目录中重新运行：270 项测试、TypeScript、Vite 构建和独立包消费/类型检查全部通过。本次提交不包含工作区另一组导出助手接入改动。仓库继续保持私有，FFmpeg 源码与许可分发事项尚未解决。
+
+## 官方编码内核替代验证
+
+采用上游 npm `@ffmpeg/core@0.12.10`，CDN 文件与 npm tarball 内 ESM 文件逐字节一致。使用真实 ProRes 4444 XQ 参数编码两帧 64×64 RGBA（alpha 0、64、128、255）。本机 FFprobe 识别 ProRes XQ、64×64、2 帧、含 alpha 的像素格式；本机 FFmpeg 独立解码最大 alpha 误差 1/255、平均 0.25/255。浏览器验证入口 `examples/ffmpeg-validation/` 使用真正 @ffmpeg/ffmpeg Worker、哈希校验下载、MOV 编解码回环。当前仓库和 dist 不携带内核二进制。
+
+最终精确暂存快照验证：26 个测试文件、273 项测试全部通过，类型检查、Vite 构建、独立色彩包消费测试通过。真实浏览器 Worker 返回 `ok:true`、2 帧、alphaMaxError=1；生成 MOV 为 2574 字节。生产 dist 不包含 ffmpeg-core JS/WASM 或其他 WASM。

@@ -1,13 +1,13 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { toBlobURL } from '@ffmpeg/util';
+import { downloadFfmpegCore } from './ffmpegCore';
 import { zipSync } from 'fflate';
 
 /**
  * 把逐帧的透明 PNG 编成文件。整套从 3D 项目（~/Documents/3D）搬过来的，那边在
  * Keynote 里验证过：ProRes 4444 XQ 的 MOV 带 alpha，Keynote 直接认。
  *
- * ffmpeg 跑在浏览器里（wasm，单线程，不需要跨域隔离头），内核文件在 public/ffmpeg-core，
- * 32 MB，第一次导出时才下载。
+ * ffmpeg 跑在浏览器独立 Worker 中（单线程，不需要跨域隔离头）。
+ * 上游固定版本内核第一次导出时从 CDN 下载并校验，不随仓库/本站分发。
  */
 
 /** 帧数据总量上限：都是 PNG Blob 攒在内存里，超过就停 */
@@ -76,16 +76,11 @@ export function waitForExport<T>(promise: Promise<T> | T, signal?: AbortSignal, 
   });
 }
 
-const CORE_BASE = '/ffmpeg-core';
-const CORE_REV = 'turntable-7.1-r1';
 let coreUrls: Promise<[string, string]> | null = null;
 
 async function loadFfmpeg(signal?: AbortSignal) {
   if (!coreUrls) {
-    coreUrls = Promise.all([
-      toBlobURL(`${CORE_BASE}/ffmpeg-core.js?v=${CORE_REV}`, 'text/javascript'),
-      toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm?v=${CORE_REV}`, 'application/wasm'),
-    ]);
+    coreUrls = downloadFfmpegCore();
   }
   let coreURL: string;
   let wasmURL: string;

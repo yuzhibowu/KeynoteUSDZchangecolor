@@ -32,3 +32,6 @@ public/_test/
 
 # 独立模块构建
 artifacts/
+
+# 编码内核由上游按需提供，不将本地副本纳入开源或静态部署
+public/ffmpeg-core/

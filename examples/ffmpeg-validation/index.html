@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>FFmpeg 核心验证</title><h1>固定版本浏览器编码验证</h1><button id="run">验证透明 MOV</button><pre id="status">等待开始</pre><script type="module">
+import {FFmpeg} from '@ffmpeg/ffmpeg';
+import {downloadFfmpegCore} from '/src/lib/ffmpegCore.ts';
+document.querySelector('#run').onclick=async()=>{
+ const status=document.querySelector('#status'); const ff=new FFmpeg();
+ try {
+ status.textContent='下载并校验固定版本内核…';
+ const [coreURL,wasmURL]=await downloadFfmpegCore(); await ff.load({coreURL,wasmURL});
+ const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d');for(let i=0;i<4;i++){ctx.fillStyle=`rgba(200,80,40,${[0,64,128,255][i]/255})`;ctx.fillRect(i*16,0,16,64);}const png=new Uint8Array(await (await new Promise(resolve=>canvas.toBlob(resolve,'image/png'))).arrayBuffer());
+ await ff.writeFile('frame_00000.png',png.slice()); await ff.writeFile('frame_00001.png',png.slice());
+ status.textContent='正在编码 ProRes 4444 XQ…';
+ const rc=await ff.exec(['-framerate','30','-i','frame_%05d.png','-c:v','prores_ks','-profile:v','5','-bits_per_mb','8000','-pix_fmt','yuva444p10le','-alpha_bits','16','-vendor','apl0','test.mov']);
+ if(rc!==0)throw Error('编码退出 '+rc);
+ const out=await ff.readFile('test.mov');
+ const dc=await ff.exec(['-i','test.mov','-frames:v','1','-f','rawvideo','-pix_fmt','rgba','decoded.rgba']);
+ if(dc!==0)throw Error('解码退出 '+dc);
+ const pixels=await ff.readFile('decoded.rgba'); let worst=0;
+ for(let y=0;y<64;y++)for(let x=0;x<64;x++){const target=x<16?0:x<32?64:x<48?128:255;worst=Math.max(worst,Math.abs(pixels[(y*64+x)*4+3]-target));}
+ if(worst>1)throw Error('透明度误差过大 '+worst);
+ status.textContent=JSON.stringify({ok:true,version:'0.12.10',bytes:out.length,alphaMaxError:worst,frames:2,worker:true},null,2);
+ }catch(e){status.textContent='失败：'+e.message;}finally{ff.terminate();}
+};
+</script>

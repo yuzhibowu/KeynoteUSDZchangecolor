@@ -89,3 +89,7 @@ ffmpeg.wasm 在浏览器里编 ProRes 4444 XQ（`prores_ks -profile:v 5 -pix_fmt
 厂商标记从 FFMP 改成 apl0。时长 = 循环长度，用当前视角和「取景」缩放。
 代码在 `src/lib/videoExport.ts` 和 `MotionPane.tsx` 的 `frameRef.render`。
 开发模式下 `@ffmpeg/ffmpeg` 必须从 Vite 预打包里排除（见 vite.config.ts）。
+
+## 2026-10-13 开源整理后的编码器来源
+
+旧的未知来源 `public/ffmpeg-core/` 已从发布文件和历史移除。浏览器独立 Worker 使用上游 `@ffmpeg/core@0.12.10`，首次编码从固定版本 CDN 下载并校验哈希。保留原 ProRes 4444 XQ 参数；真实浏览器两帧编码/解码透明度回环及本机独立解码通过（最大 alpha 误差 1/255）。首次编码需联网，帧数据不上传 CDN。若另行自托管内核，应处理其自身 GPL 许可及对应源码分发，见 THIRD_PARTY_NOTICES.md。

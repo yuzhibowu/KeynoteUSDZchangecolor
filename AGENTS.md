@@ -47,4 +47,4 @@ npm run audit:source
 
 ## 开源状态
 
-准备开始时 GitHub 仓库为 PRIVATE；用户已授权在检查无阻塞项后提交、推送并公开，当前 FFmpeg 源码/许可阻塞项仍未解决，先保持私有。不要将根 MIT LICENSE 解释成 FFmpeg WASM 也为 MIT。详见 `THIRD_PARTY_NOTICES.md`、`docs/OPEN_SOURCE_REVIEW.md`；现有 GPL 内核的确切构建源码尚需核实，用户已决定移除历史私人邮箱/主机名，本地与 GitHub main 的历史清理已完成并经全新远端克隆验证，仓库仍私有。后续提交使用仓库本地配置中的 GitHub noreply 身份。完成阻塞项处理与复核后可按用户授权公开，不能把已有测试通过当作许可已完成；远端历史替换状态见 `docs/HISTORY_PRIVACY.md`，不要 merge/push 旧克隆或备份中的未清理历史。
+准备开始时 GitHub 仓库为 PRIVATE；用户已授权在检查无阻塞项后提交、推送并公开，FFmpeg 原未知内核已移出当前分发文件和发布历史，采用外部固定版本 CDN + 哈希校验；核对最终历史和 dist 后按用户授权公开。不要将根 MIT LICENSE 解释成 FFmpeg WASM 也为 MIT。详见 `THIRD_PARTY_NOTICES.md`、`docs/OPEN_SOURCE_REVIEW.md`；FFmpeg 外部内核仍适用上游许可，不能复制进仓库/dist 而不处理其对应源码分发；用户已决定移除历史私人邮箱/主机名，本地与 GitHub main 的历史清理已完成并经全新远端克隆验证，仓库仍私有。后续提交使用仓库本地配置中的 GitHub noreply 身份。采用外部按需加载方案并核对仓库不含未知二进制后可按用户授权公开；远端历史替换状态见 `docs/HISTORY_PRIVACY.md`，不要 merge/push 旧克隆或备份中的未清理历史。
