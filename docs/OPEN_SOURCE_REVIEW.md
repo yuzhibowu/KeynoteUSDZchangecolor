@@ -1,5 +1,7 @@
 # 开源准备检查报告
 
+> 发布状态：2026-10-13 已按用户授权设为 PUBLIC，GitHub API 确认成功。最终结果见 [RELEASE.md](RELEASE.md)。下文保留准备与验证过程。
+
 日期：2026-10-13。检查起点 `432fe3b`，工作区干净；初次检查时分支 main 与本机 origin/main 一致；当时通过 `git ls-remote --heads --tags origin` 核对远端只有 main，没有远端标签。该核对发生在本地身份清理之前，不能用来判定当前本地与远端已同步。通过 GitHub CLI 只读查询确认 [yuzhibowu/KeynoteUSDZchangecolor](https://github.com/yuzhibowu/KeynoteUSDZchangecolor) 为 PRIVATE、默认分支 main、未识别到 LICENSE。初次准备未改可见性、推送或发布 npm。随后按用户要求清理 Git 身份和一条提交说明，并经用户确认用精确 lease 同步了 GitHub main；全新远端克隆验证无待清理身份，仓库仍私有。清理后的本地 main 为 `432fe3bd18dbb80d3c0fe051e162925b700dcae7`。
 
 ## 已完成的准备

@@ -47,4 +47,6 @@ npm run audit:source
 
 ## 开源状态
 
-准备开始时 GitHub 仓库为 PRIVATE；用户已授权在检查无阻塞项后提交、推送并公开，FFmpeg 原未知内核已移出当前分发文件和发布历史，采用外部固定版本 CDN + 哈希校验；核对最终历史和 dist 后按用户授权公开。不要将根 MIT LICENSE 解释成 FFmpeg WASM 也为 MIT。详见 `THIRD_PARTY_NOTICES.md`、`docs/OPEN_SOURCE_REVIEW.md`；FFmpeg 外部内核仍适用上游许可，不能复制进仓库/dist 而不处理其对应源码分发；用户已决定移除历史私人邮箱/主机名，本地与 GitHub main 的历史清理已完成并经全新远端克隆验证，仓库仍私有。后续提交使用仓库本地配置中的 GitHub noreply 身份。采用外部按需加载方案并核对仓库不含未知二进制后可按用户授权公开；远端历史替换状态见 `docs/HISTORY_PRIVACY.md`，不要 merge/push 旧克隆或备份中的未清理历史。
+2026-10-13 按用户授权公开，GitHub 已确认 PUBLIC。原未知 FFmpeg 内核已从当前文件和完整发布主线移除，采用外部固定版本 CDN 加载与哈希校验；仓库及 dist 不分发内核。外部内核仍适用上游 GPL，不是本项目 MIT 授权的内容；若另行自托管或打包，需处理其对应源码分发和许可。发布记录见 `docs/RELEASE.md`，详细边界见 `THIRD_PARTY_NOTICES.md` 和 `docs/OPEN_SOURCE_REVIEW.md`。
+
+历史私人邮箱/主机名清理已完成，并通过全新远端镜像核对。后续提交使用仓库本地 GitHub noreply 配置。不要 merge/push 旧克隆或备份中的未清理历史；详情见 `docs/HISTORY_PRIVACY.md`。
