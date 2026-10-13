@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "c947ee4",
+  "sourceCommit": "432fe3b",
   "note": "提取前原始代码输出；正向值是模型预测，不是新增 Apple 实拍。",
   "profiles": {
     "DEFAULT_COMP": [

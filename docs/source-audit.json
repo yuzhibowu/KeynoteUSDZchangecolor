@@ -1,29 +1,13 @@
 {
   "scope": "local reachable Git objects (--all) and tracked/unignored working files; no remote-only/deleted refs",
-  "commits": 153,
-  "reachable_blobs": 624,
-  "history_findings": [
-    {
-      "type": "private-path",
-      "path": "public/ffmpeg-core/ffmpeg-core.js",
-      "blob": "eba0ee30b065"
-    }
-  ],
-  "working_findings": [
-    {
-      "type": "private-path",
-      "path": "public/ffmpeg-core/ffmpeg-core.js"
-    }
-  ],
-  "large_blobs": [
-    {
-      "path": "public/ffmpeg-core/ffmpeg-core.wasm",
-      "bytes": 33743609
-    }
-  ],
+  "commits": 155,
+  "reachable_blobs": 677,
+  "history_findings": [],
+  "working_findings": [],
+  "large_blobs": [],
   "author_identity_count": 1,
   "non_github_noreply_identity_count": 0,
   "local_hostname_identity_count": 0,
   "limits": "Heuristic patterns only; no entropy analysis, external secret scanner, LFS, remote logs or ignored private assets.",
-  "snapshotBaseCommit": "c947ee49e5d9f18ca13446f289926e0e46a2fb77"
+  "snapshotBaseCommit": "b5aef5746bce3e580c9597efa871464011c40248"
 }
